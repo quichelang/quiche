@@ -117,51 +117,95 @@ impl Codegen {
             }
             ast::Stmt::ClassDef(c) => {
                 self.push_indent();
-                // Generate struct definition
-                self.output.push_str("#[derive(Clone, Debug)]\n");
-                self.push_indent();
-                self.output.push_str(&format!("struct {} {{\n", c.name));
 
-                let mut methods = Vec::new();
-
-                self.indent_level += 1;
-                for stmt in &c.body {
-                    match stmt {
-                        ast::Stmt::AnnAssign(a) => {
-                            self.push_indent();
-                            self.output.push_str(&self.expr_to_string(&a.target));
-                            self.output.push_str(": ");
-                            self.output.push_str(&self.map_type(&a.annotation));
-                            self.output.push_str(",\n");
-                        }
-                        ast::Stmt::FunctionDef(f) => {
-                            methods.push(f);
-                        }
-                        _ => {
-                            self.push_indent();
-                            self.output.push_str(
-                                "// Only fields (annotated) and methods supported in class\n",
-                            );
-                        }
+                // Check for @enum decorator
+                let is_enum = c.decorator_list.iter().any(|d| {
+                    if let ast::Expr::Name(n) = d {
+                        n.id.as_str() == "enum"
+                    } else {
+                        false
                     }
-                }
-                self.indent_level -= 1;
-                self.push_indent();
-                self.output.push_str("}\n\n");
+                });
 
-                // Generate impl block
-                if !methods.is_empty() {
+                if is_enum {
+                    self.output.push_str("#[derive(Clone, Debug, PartialEq)]\n");
                     self.push_indent();
-                    self.output.push_str(&format!("impl {} {{\n", c.name));
+                    self.output.push_str(&format!("enum {} {{\n", c.name));
                     self.indent_level += 1;
 
-                    for f in methods {
-                        self.generate_function_def(f.clone());
+                    for stmt in &c.body {
+                        if let ast::Stmt::AnnAssign(a) = stmt {
+                            self.push_indent();
+                            let variant_name = self.expr_to_string(&a.target);
+                            self.output.push_str(&variant_name);
+
+                            // Parse types from annotation List: [T1, T2]
+                            if let ast::Expr::List(l) = &*a.annotation {
+                                if !l.elts.is_empty() {
+                                    self.output.push_str("(");
+                                    for (i, t) in l.elts.iter().enumerate() {
+                                        if i > 0 {
+                                            self.output.push_str(", ");
+                                        }
+                                        self.output.push_str(&self.map_type(t));
+                                    }
+                                    self.output.push_str(")");
+                                }
+                            }
+                            self.output.push_str(",\n");
+                        }
                     }
 
                     self.indent_level -= 1;
                     self.push_indent();
                     self.output.push_str("}\n\n");
+                } else {
+                    // Generate struct definition
+                    self.output.push_str("#[derive(Clone, Debug)]\n");
+                    self.push_indent();
+                    self.output.push_str(&format!("struct {} {{\n", c.name));
+
+                    let mut methods = Vec::new();
+
+                    self.indent_level += 1;
+                    for stmt in &c.body {
+                        match stmt {
+                            ast::Stmt::AnnAssign(a) => {
+                                self.push_indent();
+                                self.output.push_str(&self.expr_to_string(&a.target));
+                                self.output.push_str(": ");
+                                self.output.push_str(&self.map_type(&a.annotation));
+                                self.output.push_str(",\n");
+                            }
+                            ast::Stmt::FunctionDef(f) => {
+                                methods.push(f);
+                            }
+                            _ => {
+                                self.push_indent();
+                                self.output.push_str(
+                                    "// Only fields (annotated) and methods supported in class\n",
+                                );
+                            }
+                        }
+                    }
+                    self.indent_level -= 1;
+                    self.push_indent();
+                    self.output.push_str("}\n\n");
+
+                    // Generate impl block
+                    if !methods.is_empty() {
+                        self.push_indent();
+                        self.output.push_str(&format!("impl {} {{\n", c.name));
+                        self.indent_level += 1;
+
+                        for f in methods {
+                            self.generate_function_def(f.clone());
+                        }
+
+                        self.indent_level -= 1;
+                        self.push_indent();
+                        self.output.push_str("}\n\n");
+                    }
                 }
             }
             ast::Stmt::Import(i) => {
@@ -192,9 +236,114 @@ impl Codegen {
                     }
                 }
             }
+            ast::Stmt::Match(m) => {
+                self.push_indent();
+                self.output.push_str("match ");
+                self.generate_expr(*m.subject);
+                self.output.push_str(" {\n");
+                self.indent_level += 1;
+
+                for case in m.cases {
+                    self.push_indent();
+                    self.generate_pattern(&case.pattern);
+                    if let Some(guard) = case.guard {
+                        self.output.push_str(" if ");
+                        self.generate_expr(*guard);
+                    }
+                    self.output.push_str(" => {\n");
+                    self.indent_level += 1;
+                    for stmt in case.body {
+                        self.generate_stmt(stmt);
+                    }
+                    self.indent_level -= 1;
+                    self.push_indent();
+                    self.output.push_str("}\n");
+                }
+
+                self.indent_level -= 1;
+                self.push_indent();
+                self.output.push_str("}\n");
+            }
             _ => {
                 self.push_indent();
                 self.output.push_str("// Unimplemented statement\n");
+            }
+        }
+    }
+
+    pub(crate) fn generate_pattern(&mut self, pat: &ast::Pattern) {
+        match pat {
+            ast::Pattern::MatchValue(v) => {
+                self.generate_expr(*v.value.clone());
+            }
+            ast::Pattern::MatchAs(a) => {
+                if let Some(name) = &a.name {
+                    self.output.push_str(name);
+                    // Add symbol to scope for inference? Pattern bindings imply new variables.
+                    self.add_symbol(name.to_string(), "/* inferred pattern bind */".to_string());
+                } else {
+                    self.output.push_str("_"); // Anonymous bind? or wildcard
+                }
+                if let Some(pattern) = &a.pattern {
+                    self.output.push_str(" @ ");
+                    self.generate_pattern(pattern);
+                }
+            }
+            ast::Pattern::MatchClass(c) => {
+                // Class name: Shape.Circle -> Shape::Circle
+                // Self-contained logic to print class path
+                match &*c.cls {
+                    ast::Expr::Attribute(a) => {
+                        self.output.push_str(&self.expr_to_string(&a.value));
+                        self.output.push_str("::");
+                        self.output.push_str(&a.attr);
+                    }
+                    ast::Expr::Name(n) => {
+                        self.output.push_str(&n.id);
+                    }
+                    _ => self.output.push_str("/* unknown match class */"),
+                }
+
+                if !c.patterns.is_empty() {
+                    // Tuple style: (p1, p2)
+                    self.output.push_str("(");
+                    for (i, p) in c.patterns.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.generate_pattern(p);
+                    }
+                    self.output.push_str(")");
+                } else if !c.kwd_attrs.is_empty() {
+                    // Struct style: { k: p, .. }
+                    self.output.push_str(" { ");
+                    for (i, (attr, p)) in c.kwd_attrs.iter().zip(c.kwd_patterns.iter()).enumerate()
+                    {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.output.push_str(attr);
+                        self.output.push_str(": ");
+                        self.generate_pattern(p);
+                    }
+                    self.output.push_str(", .. }");
+                }
+            }
+            ast::Pattern::MatchStar(_) => {
+                self.output.push_str(".."); // Wildcard match in list/slice
+            }
+            ast::Pattern::MatchOr(o) => {
+                for (i, p) in o.patterns.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(" | ");
+                    }
+                    self.generate_pattern(p);
+                }
+            }
+            _ => {
+                // Fallback (e.g. wildcards often Parse as MatchAs without name if Python < 3.10? No, Python 3.10 wildcard is MatchAs(None))
+                // Actually MatchAs name is Option. If None -> `_`.
+                self.output.push_str("_");
             }
         }
     }

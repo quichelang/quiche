@@ -86,8 +86,21 @@ impl Codegen {
                 }
             }
             ast::Expr::Attribute(a) => {
+                let base_str = self.expr_to_string(&a.value);
                 self.generate_expr(*a.value.clone());
-                self.output.push_str(".");
+                // Heuristic: Capitalized base -> Type/Enum static access (::)
+                // Lowercase base -> Instance access (.)
+                let sep = if base_str
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+                {
+                    "::"
+                } else {
+                    "."
+                };
+                self.output.push_str(sep);
                 self.output.push_str(&a.attr);
             }
             ast::Expr::Name(n) => {
