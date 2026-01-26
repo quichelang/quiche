@@ -29,13 +29,27 @@ print(v[-2])   # 4 (second to last)
 
 **Compiles to:** `v[v.len() - n]`
 
-## Method Aliasing (Planned)
+## F-Strings (String Interpolation)
+
+Embed expressions inside string literals using `f"..."`.
+
+```python
+name: String = "World"
+msg: String = f"Hello {name}, 2+2={2+2}"
+```
+
+**Compiles to:** `format!("Hello {}, 2+2={}", name, 2+2)`
+
+## Method Aliasing
 
 | Python Method | Rust Method |
 |---------------|-------------|
 | `list.append(x)` | `vec.push(x)` |
 | `list.pop()` | `vec.pop()` |
-| `str.upper()` | `str.to_uppercase()` |
+| `list.insert(i, x)` | `vec.insert(i, x)` |
+| `list.clear()` | `vec.clear()` |
+| `dict.get(k)` | `map.get(k)` |
+| `dict.keys()` | `map.keys()` |
 
 ## Slicing (Planned)
 

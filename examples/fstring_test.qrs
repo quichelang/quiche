@@ -1,0 +1,15 @@
+def main():
+    name: String = "World"
+    age: i32 = 25
+    
+    # Basic f-string
+    msg: String = f"Hello, {name}!"
+    print(msg)
+    
+    # Multiple placeholders
+    info: String = f"Name: {name}, Age: {age}"
+    print(info)
+    
+    # Expression in f-string
+    result: String = f"2 + 2 = {2 + 2}"
+    print(result)

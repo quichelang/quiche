@@ -271,6 +271,33 @@ impl Codegen {
                 self.generate_expr(*l.body);
                 self.output.push_str(")");
             }
+            ast::Expr::JoinedStr(j) => {
+                // f-string: f"Hello {name}" -> format!("Hello {}", name)
+                self.output.push_str("format!(\"");
+                let mut args: Vec<ast::Expr> = Vec::new();
+
+                for value in &j.values {
+                    match value {
+                        ast::Expr::Constant(c) => {
+                            if let ast::Constant::Str(s) = &c.value {
+                                self.output.push_str(s);
+                            }
+                        }
+                        ast::Expr::FormattedValue(f) => {
+                            self.output.push_str("{}");
+                            args.push(*f.value.clone());
+                        }
+                        _ => {}
+                    }
+                }
+
+                self.output.push_str("\"");
+                for arg in args {
+                    self.output.push_str(", ");
+                    self.generate_expr(arg);
+                }
+                self.output.push_str(")");
+            }
             _ => self.output.push_str("/* unhandled expression */"),
         }
     }
