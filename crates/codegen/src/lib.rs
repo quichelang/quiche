@@ -1,8 +1,11 @@
 use rustpython_parser::ast;
 
+use std::collections::HashMap;
+
 pub struct Codegen {
     output: String,
     indent_level: usize,
+    scopes: Vec<HashMap<String, String>>,
 }
 
 impl Codegen {
@@ -10,6 +13,7 @@ impl Codegen {
         Self {
             output: String::new(),
             indent_level: 0,
+            scopes: vec![HashMap::new()],
         }
     }
 
@@ -56,9 +60,38 @@ impl Codegen {
                 }
                 self.output.push_str("\n");
             }
+            ast::Stmt::While(w) => {
+                self.push_indent();
+                self.output.push_str("while ");
+                self.generate_expr(*w.test);
+                self.output.push_str(" {\n");
+                self.indent_level += 1;
+                for stmt in w.body {
+                    self.generate_stmt(stmt);
+                }
+                self.indent_level -= 1;
+                self.push_indent();
+                self.output.push_str("}\n");
+            }
+            ast::Stmt::For(f) => {
+                self.push_indent();
+                self.output.push_str("for ");
+                self.generate_expr(*f.target);
+                self.output.push_str(" in ");
+                self.generate_expr(*f.iter);
+                self.output.push_str(" {\n");
+                self.indent_level += 1;
+                for stmt in f.body {
+                    self.generate_stmt(stmt);
+                }
+                self.indent_level -= 1;
+                self.push_indent();
+                self.output.push_str("}\n");
+            }
             ast::Stmt::Assign(a) => {
                 self.push_indent();
-                self.output.push_str("let ");
+                // Reassignment: x = y
+                // We assume explicit 'AnnAssign' for declarations
                 for (i, target) in a.targets.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(" = ");
@@ -72,10 +105,15 @@ impl Codegen {
             ast::Stmt::AnnAssign(a) => {
                 self.push_indent();
                 // Handle: target: annotation = value
-                self.output.push_str("let ");
-                self.generate_expr(*a.target);
+                self.output.push_str("let mut ");
+                let target_str = self.expr_to_string(&a.target);
+                self.output.push_str(&target_str);
                 self.output.push_str(": ");
-                self.output.push_str(&self.map_type(&a.annotation));
+                let type_ann = self.map_type(&a.annotation);
+                self.output.push_str(&type_ann);
+
+                // Register symbol
+                self.add_symbol(target_str, type_ann);
 
                 if let Some(value) = &a.value {
                     self.output.push_str(" = ");
@@ -177,6 +215,12 @@ impl Codegen {
                         "/* untyped */".to_string()
                     };
                     self.output.push_str(&format!("{}: {}", arg.arg, type_ann));
+
+                    // Register arg in FUTURE scope (we haven't pushed it yet, wait.
+                    // Function args are in the function body scope.
+                    // We must push scope first?
+                    // But we are generating signature.
+                    // We can collect args and register them after pushing scope.
                 }
             }
 
@@ -192,6 +236,20 @@ impl Codegen {
         }
 
         self.indent_level += 1;
+        self.enter_scope(); // Start function scope
+
+        // Register arguments in new scope
+        if !is_main_with_args {
+            for arg_with_default in f.args.args.iter() {
+                let arg = &arg_with_default.def;
+                if arg.arg.as_str() != "self" {
+                    if let Some(annotation) = &arg.annotation {
+                        let type_ann = self.map_type(annotation);
+                        self.add_symbol(arg.arg.as_string(), type_ann);
+                    }
+                }
+            }
+        }
 
         // Inject args extraction for main
         if is_main_with_args {
@@ -202,12 +260,15 @@ impl Codegen {
                     "let {}: Vec<String> = std::env::args().collect();\n",
                     arg.def.arg
                 ));
+                self.add_symbol(arg.def.arg.as_string(), "Vec<String>".to_string());
             }
         }
 
         for stmt in f.body {
             self.generate_stmt(stmt);
         }
+
+        self.exit_scope(); // End function scope
         self.indent_level -= 1;
         self.push_indent();
         self.output.push_str("}\n\n");
@@ -242,6 +303,15 @@ impl Codegen {
                     self.output.push_str(&format!(" {} ", op_str));
                     self.generate_expr(right.clone());
                 }
+            }
+            ast::Expr::IfExp(i) => {
+                self.output.push_str("if ");
+                self.generate_expr(*i.test);
+                self.output.push_str(" { ");
+                self.generate_expr(*i.body);
+                self.output.push_str(" } else { ");
+                self.generate_expr(*i.orelse);
+                self.output.push_str(" }");
             }
             ast::Expr::Call(c) => {
                 let func_name = if let ast::Expr::Name(n) = &*c.func {
@@ -314,6 +384,16 @@ impl Codegen {
                 }
                 self.output.push_str("]");
             }
+            ast::Expr::Tuple(t) => {
+                self.output.push_str("(");
+                for (i, elt) in t.elts.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.generate_expr(elt.clone());
+                }
+                self.output.push_str(")");
+            }
             _ => self.output.push_str("/* unhandled expression */"),
         }
     }
@@ -349,17 +429,38 @@ impl Codegen {
                 _ => n.id.to_string(),
             },
             ast::Expr::Subscript(s) => {
-                let base = self.map_type(&s.value);
-                let inner = self.map_type(&s.slice);
-
-                // Handle Vec[T] -> Vec<T>
-                if base == "Vec" || base == "List" {
-                    format!("Vec<{}>", inner)
-                } else if base == "Option" {
-                    format!("Option<{}>", inner)
+                let is_tuple_access = if let Some(ty) = self.get_expr_type(&s.value) {
+                    ty.starts_with("(")
                 } else {
-                    format!("{}<{}>", base, inner)
+                    false
+                };
+
+                if is_tuple_access {
+                    // Try to generate tuple access: val.0
+                    if let ast::Expr::Constant(c) = &*s.slice {
+                        if let ast::Constant::Int(idx) = &c.value {
+                            self.generate_expr(*s.value.clone());
+                            self.output.push_str(&format!(".{}", idx));
+                            return;
+                        }
+                    }
                 }
+
+                // Fallback to Vec/Index access: val[slice]
+                self.generate_expr(*s.value.clone());
+                self.output.push_str("[");
+                self.generate_expr(*s.slice.clone());
+                self.output.push_str("]");
+            }
+            ast::Expr::Tuple(t) => {
+                self.output.push_str("(");
+                for (i, elt) in t.elts.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.generate_expr(elt.clone());
+                }
+                self.output.push_str(")");
             }
             _ => format!("/* complex type: {:?} */", expr),
         }
@@ -375,6 +476,69 @@ impl Codegen {
     fn push_indent(&mut self) {
         for _ in 0..self.indent_level {
             self.output.push_str("    ");
+        }
+    }
+
+    fn enter_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    fn exit_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn add_symbol(&mut self, name: String, ty: String) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, ty);
+        }
+    }
+
+    fn get_expr_type(&self, expr: &ast::Expr) -> Option<String> {
+        match expr {
+            ast::Expr::Name(n) => self.get_symbol(&n.id).cloned(),
+            ast::Expr::Subscript(s) => {
+                let base_type = self.get_expr_type(&s.value)?;
+                // Check if base is a Tuple (starts with '(')
+                if base_type.starts_with("(") {
+                    // It's a tuple type: (A, B, C)
+                    // We need to extract the Nth element type.
+                    // Slice must be an integer constant.
+                    if let ast::Expr::Constant(c) = &*s.slice {
+                        if let ast::Constant::Int(idx) = &c.value {
+                            // Parse tuple string to find Nth element
+                            let content = &base_type[1..base_type.len() - 1]; // Strip parens
+                                                                              // Split by comma respecting parens (< and (
+                            let mut depth = 0;
+                            let mut start = 0;
+                            let mut current_idx = 0;
+                            let target_idx = idx.to_usize()?;
+
+                            for (i, c) in content.char_indices() {
+                                match c {
+                                    '(' | '<' => depth += 1,
+                                    ')' | '>' => depth -= 1,
+                                    ',' => {
+                                        if depth == 0 {
+                                            if current_idx == target_idx {
+                                                return Some(content[start..i].trim().to_string());
+                                            }
+                                            start = i + 1;
+                                            current_idx += 1;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            // Last element
+                            if current_idx == target_idx {
+                                return Some(content[start..].trim().to_string());
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
         }
     }
 }

@@ -1,0 +1,27 @@
+
+def main():
+    # Test If/Else
+    x: i32 = 10
+    if x > 5:
+        print("x is big")
+    else:
+        print("x is small")
+
+    # Test While Loop
+    count: i32 = 0
+    while count < 3:
+        print(count)
+        count = count + 1
+
+    # Test For Loop
+    # Note: range(3) is not yet implemented in parser/codegen standard lib mapping
+    # So we use a generic iterator (Vec)
+    items: Vec[i32] = [10, 20, 30]
+    for item in items:
+        print(item)
+
+    # Test Ternary Operator
+    a: i32 = 5
+    b: i32 = 10
+    max_val: i32 = a if a > b else b
+    print(max_val)
