@@ -1,6 +1,6 @@
 use rustpython_parser::ast;
 use rustpython_parser::{parse, Mode};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub mod dict;
 pub mod expr;
@@ -12,6 +12,7 @@ pub struct Codegen {
     pub(crate) output: String,
     pub(crate) indent_level: usize,
     pub(crate) scopes: Vec<HashMap<String, String>>,
+    pub(crate) foreign_symbols: HashSet<String>,
 }
 
 impl Codegen {
@@ -20,6 +21,7 @@ impl Codegen {
             output: String::new(),
             indent_level: 0,
             scopes: vec![HashMap::new()],
+            foreign_symbols: HashSet::new(),
         }
     }
 

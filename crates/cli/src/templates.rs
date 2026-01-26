@@ -15,7 +15,7 @@ pub fn get_cargo_toml(name: &str, is_lib: bool) -> String {
         r#"[package]
 name = "{}"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # Break out of any parent workspace
 [workspace]
@@ -80,6 +80,18 @@ def hello():
 
 pub fn get_lib_rs() -> &'static str {
     r#"
+#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+
+mod quiche {
+    #![allow(unused_macros, unused_imports)]
+    macro_rules! call {
+        ($func:path, $($arg:expr),*) => {
+            $func( $($arg),* )
+        };
+    }
+    pub(crate) use call;
+}
+
 // Re-export everything from the transpiled module
 include!(concat!(env!("OUT_DIR"), "/lib.rs"));
 "#
@@ -94,6 +106,18 @@ def main():
 
 pub fn get_main_rs() -> &'static str {
     r#"
+#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+
+mod quiche {
+    #![allow(unused_macros, unused_imports)]
+    macro_rules! call {
+        ($func:path, $($arg:expr),*) => {
+            $func( $($arg),* )
+        };
+    }
+    pub(crate) use call;
+}
+
 include!(concat!(env!("OUT_DIR"), "/main.rs"));
 "#
 }

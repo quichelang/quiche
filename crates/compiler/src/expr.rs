@@ -42,6 +42,38 @@ impl Codegen {
                 self.output.push_str(" }");
             }
             ast::Expr::Call(c) => {
+                // Check foreign symbols (rust.* imports)
+                let foreign_name = if let ast::Expr::Name(n) = &*c.func {
+                    if self.foreign_symbols.contains(n.id.as_str()) {
+                        Some(n.id.to_string())
+                    } else {
+                        None
+                    }
+                } else if let ast::Expr::Attribute(attr) = &*c.func {
+                    if let ast::Expr::Name(n) = &*attr.value {
+                        if self.foreign_symbols.contains(n.id.as_str()) {
+                            Some(format!("{}::{}", n.id, attr.attr))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(path) = foreign_name {
+                    self.output.push_str("quiche::call!(");
+                    self.output.push_str(&path);
+                    for arg in &c.args {
+                        self.output.push_str(", ");
+                        self.generate_expr(arg.clone());
+                    }
+                    self.output.push_str(")");
+                    return;
+                }
+
                 // Check for method call: obj.method(args)
                 if let ast::Expr::Attribute(attr) = &*c.func {
                     let method_name = attr.attr.as_str();
@@ -107,6 +139,10 @@ impl Codegen {
                     if let Some(arg) = c.args.first() {
                         self.generate_expr(arg.clone());
                     }
+                    if c.args.len() > 1 {
+                        self.output.push_str(", \"{}\", ");
+                        self.generate_expr(c.args[1].clone());
+                    }
                     self.output.push_str(")");
                 } else if func_name == "assert_eq" || func_name == "assert_str_eq" {
                     self.output.push_str("assert_eq!(");
@@ -129,7 +165,7 @@ impl Codegen {
                     }
                     // Skip message for now or pass as second arg
                     if c.args.len() > 1 {
-                        self.output.push_str(", ");
+                        self.output.push_str(", \"{}\", ");
                         self.generate_expr(c.args[1].clone());
                     }
                     self.output.push_str(")");

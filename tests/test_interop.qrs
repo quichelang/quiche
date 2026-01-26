@@ -1,0 +1,22 @@
+
+from rust.std.fs import read_dir
+
+@extern(path="std::vec::Vec")
+class Vector:
+    pass
+
+def test_dynamic_macro():
+    # Should transpile to: let entries = quiche::call!(read_dir, String::from("."));
+    entries = read_dir(".")
+    
+    for entry in entries.unwrap():
+        entry = entry.unwrap()
+        if entry.path().is_dir():
+            print(entry.file_name())
+    
+def test_extern_binding():
+    # Should use std::vec::Vec
+    pass
+
+test_dynamic_macro()
+test_extern_binding() 

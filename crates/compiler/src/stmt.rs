@@ -118,6 +118,12 @@ impl Codegen {
             ast::Stmt::ClassDef(c) => {
                 self.push_indent();
 
+                if let Some(path) = self.extract_extern_path(&c.decorator_list) {
+                    self.output
+                        .push_str(&format!("pub use {} as {};\n", path, c.name));
+                    return;
+                }
+
                 // Check for @enum decorator
                 let is_enum = c.decorator_list.iter().any(|d| {
                     if let ast::Expr::Name(n) = d {
@@ -229,10 +235,42 @@ impl Codegen {
                         return;
                     }
 
-                    let mod_name = module.as_str().replace(".", "::");
+                    let mut mod_name = module.as_str().replace(".", "::");
+                    let mut is_rust_interop = false;
+
+                    if module.as_str() == "rust" {
+                        is_rust_interop = true;
+                        mod_name = String::new();
+                    } else if module.as_str().starts_with("rust.") {
+                        is_rust_interop = true;
+                        mod_name = module
+                            .as_str()
+                            .strip_prefix("rust.")
+                            .unwrap()
+                            .replace(".", "::");
+                    }
+
                     for alias in i.names {
                         let name = alias.name.as_str();
-                        if let Some(asname) = alias.asname {
+                        let target_name = if let Some(asname) = &alias.asname {
+                            asname.as_str()
+                        } else {
+                            name
+                        };
+
+                        if is_rust_interop {
+                            self.foreign_symbols.insert(target_name.to_string());
+                        }
+
+                        if mod_name.is_empty() {
+                            // from rust import crate -> use crate;
+                            if let Some(asname) = alias.asname {
+                                self.output
+                                    .push_str(&format!("use {} as {};\n", name, asname));
+                            } else {
+                                self.output.push_str(&format!("use {};\n", name));
+                            }
+                        } else if let Some(asname) = alias.asname {
                             self.output
                                 .push_str(&format!("use {}::{} as {};\n", mod_name, name, asname));
                         } else {
@@ -357,6 +395,12 @@ impl Codegen {
     pub(crate) fn generate_function_def(&mut self, f: ast::StmtFunctionDef) {
         self.push_indent();
 
+        if let Some(path) = self.extract_extern_path(&f.decorator_list) {
+            self.output
+                .push_str(&format!("pub use {} as {};\n", path, f.name));
+            return;
+        }
+
         let is_main_with_args = f.name.as_str() == "main" && !f.args.args.is_empty();
 
         if is_main_with_args {
@@ -435,5 +479,28 @@ impl Codegen {
         self.indent_level -= 1;
         self.push_indent();
         self.output.push_str("}\n\n");
+    }
+
+    fn extract_extern_path(&self, decorators: &[ast::Expr]) -> Option<String> {
+        for d in decorators {
+            if let ast::Expr::Call(c) = d {
+                if let ast::Expr::Name(n) = &*c.func {
+                    if n.id.as_str() == "extern" {
+                        for kw in &c.keywords {
+                            if let Some(arg) = &kw.arg {
+                                if arg == "path" {
+                                    if let ast::Expr::Constant(const_val) = &kw.value {
+                                        if let ast::Constant::Str(s) = &const_val.value {
+                                            return Some(s.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 }

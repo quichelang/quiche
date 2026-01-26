@@ -45,7 +45,10 @@ fn main() {
             } else {
                 // If we are in the quiche repository root (dev mode), run cargo test
                 // which triggers tests/runner.rs
-                run_cargo_command("test", &args[2..]);
+                // Use --test runner to avoid running empty lib tests
+                let mut test_args = vec!["--test".to_string(), "runner".to_string()];
+                test_args.extend_from_slice(&args[2..]);
+                run_cargo_command("test", &test_args);
             }
         }
         _ => {
@@ -124,6 +127,23 @@ fn run_single_file(filename: &str, script_args: &[String]) {
     if let Some(rust_code) = compile(&source) {
         let rust_code = rust_code.replace("#[test]", "");
         let mut full_code = String::new();
+        // Global suppression for transpiled code
+        full_code.push_str(
+            "#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n",
+        );
+        full_code.push_str(
+            r#"
+mod quiche {
+    #![allow(unused_macros, unused_imports)]
+    macro_rules! call {
+        ($func:path, $($arg:expr),*) => {
+            $func( $($arg),* )
+        };
+    }
+    pub(crate) use call;
+}
+"#,
+        );
         full_code.push_str(&dependencies);
         full_code.push_str("\n");
         full_code.push_str(&rust_code);
@@ -143,6 +163,8 @@ fn run_single_file(filename: &str, script_args: &[String]) {
         println!("--- Compiling and Running ---");
         let status = Command::new("rustc")
             .arg(tmp_rs)
+            .arg("--edition")
+            .arg("2024")
             .arg("-o")
             .arg("target/tmp_bin")
             .status()
