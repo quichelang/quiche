@@ -1,0 +1,22 @@
+
+# Test for Structs (Class -> Struct)
+
+struct Point:
+    x: f64
+    y: f64
+    
+    # Static constructor
+    def new(x: f64, y: f64) -> Self:
+        # Assuming Self(...) works if mapped to tuple struct or we use kwargs?
+        # Let's use kwargs which we just implemented mapping for Name { key: val }
+        return Self(x=x, y=y)
+    
+    # Method with self
+    def distance(self, other: Point) -> f64:
+        # Basic access logic not fully implemented in codegen (Attribute access), 
+        # but let's test if signature generates correctly: fn distance(&self, other: Point) -> f64
+        return 0.0
+
+def main():
+    p: Point = Point(x=1.0, y=2.0)
+    print(p)

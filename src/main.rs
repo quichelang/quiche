@@ -11,7 +11,10 @@ fn main() {
     }
 
     let filename = &args[1];
-    let source = fs::read_to_string(filename).expect("Failed to read file");
+    let source_raw = fs::read_to_string(filename).expect("Failed to read file");
+
+    // Pre-process: map 'struct' keyword to 'class' for parser compatibility
+    let source = source_raw.replace("struct ", "class ");
 
     if let Some(rust_code) = compile(&source) {
         // Prepare valid Rust with a main wrapper for global code if necessary
