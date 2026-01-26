@@ -24,7 +24,6 @@ edition = "2021"
 quiche_compiler = {{ path = "../crates/compiler" }}
 
 [dependencies]
-quiche_runtime = {{ path = "../quiche_runtime" }}
 "#,
         name
     );
@@ -95,12 +94,6 @@ def main():
 
 pub fn get_main_rs() -> &'static str {
     r#"
-// Alias quiche_runtime::test to lib::test for backward compatibility with existing tests
-// In improved version, we'd map standard library imports in the compiler.
-pub mod lib {
-    pub use quiche_runtime as test;
-}
-
 include!(concat!(env!("OUT_DIR"), "/main.rs"));
 "#
 }

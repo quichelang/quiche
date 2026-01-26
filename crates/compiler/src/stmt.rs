@@ -222,7 +222,13 @@ impl Codegen {
             }
             ast::Stmt::ImportFrom(i) => {
                 self.push_indent();
-                if let Some(module) = i.module {
+                if let Some(module) = &i.module {
+                    if module.as_str() == "lib.test" {
+                        self.output
+                            .push_str("// skipped lib.test import (using native macros)\n");
+                        return;
+                    }
+
                     let mod_name = module.as_str().replace(".", "::");
                     for alias in i.names {
                         let name = alias.name.as_str();

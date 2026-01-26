@@ -118,24 +118,8 @@ fn run_single_file(filename: &str, script_args: &[String]) {
     let source = source_raw.replace("struct ", "class ");
 
     // Virtual Module System (Poor Man's Linker)
-    let mut dependencies = String::new();
-    if source.contains("lib.test") {
-        let lib_path = "quiche_runtime/src/lib.qrs";
-        if let Ok(lib_source) = fs::read_to_string(lib_path) {
-            let lib_source = lib_source.replace("struct ", "class ");
-            if let Some(rust_code) = compile(&lib_source) {
-                dependencies.push_str("pub mod lib {\n");
-                dependencies.push_str("    pub mod test {\n");
-                for line in rust_code.lines() {
-                    dependencies.push_str("        ");
-                    dependencies.push_str(line);
-                    dependencies.push_str("\n");
-                }
-                dependencies.push_str("    }\n");
-                dependencies.push_str("}\n");
-            }
-        }
-    }
+    // Removed in favor of native macros and Cargo dependencies.
+    let dependencies = String::new();
 
     if let Some(rust_code) = compile(&source) {
         let rust_code = rust_code.replace("#[test]", "");

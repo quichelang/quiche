@@ -102,6 +102,37 @@ impl Codegen {
                         self.generate_expr(arg.clone());
                     }
                     self.output.push_str(")");
+                } else if func_name == "assert" {
+                    self.output.push_str("assert!(");
+                    if let Some(arg) = c.args.first() {
+                        self.generate_expr(arg.clone());
+                    }
+                    self.output.push_str(")");
+                } else if func_name == "assert_eq" || func_name == "assert_str_eq" {
+                    self.output.push_str("assert_eq!(");
+                    // assert_eq(left, right, [msg])
+                    if c.args.len() >= 2 {
+                        self.generate_expr(c.args[0].clone());
+                        self.output.push_str(", ");
+                        self.generate_expr(c.args[1].clone());
+
+                        if c.args.len() > 2 {
+                            self.output.push_str(", \"{}\", ");
+                            self.generate_expr(c.args[2].clone());
+                        }
+                    }
+                    self.output.push_str(")");
+                } else if func_name == "assert_true" {
+                    self.output.push_str("assert!(");
+                    if let Some(arg) = c.args.first() {
+                        self.generate_expr(arg.clone());
+                    }
+                    // Skip message for now or pass as second arg
+                    if c.args.len() > 1 {
+                        self.output.push_str(", ");
+                        self.generate_expr(c.args[1].clone());
+                    }
+                    self.output.push_str(")");
                 } else if func_name == "len" {
                     // len(x) -> x.len()
                     if let Some(arg) = c.args.first() {
