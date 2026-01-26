@@ -1,18 +1,6 @@
 [workspace]
 members = [
-    "crates/codegen",
+    "crates/compiler",
+    "crates/cli",
 ]
 resolver = "2"
-
-[package]
-name = "quiche"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-rustpython-parser = "0.4.0"
-quiche_codegen = { path = "crates/codegen" }
-
-[[bin]]
-name = "quiche-run"
-path = "src/main.rs"

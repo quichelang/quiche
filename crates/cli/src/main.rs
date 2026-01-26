@@ -1,4 +1,4 @@
-use quiche::compile;
+use quiche_compiler::compile;
 use std::env;
 use std::fs;
 use std::process::Command;

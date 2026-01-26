@@ -1,0 +1,11 @@
+[package]
+name = "quiche_cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quiche_compiler = { path = "../compiler" }
+
+[[bin]]
+name = "quiche"
+path = "src/main.rs"

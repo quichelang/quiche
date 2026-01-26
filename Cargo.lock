@@ -296,15 +296,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "quiche"
+name = "quiche_cli"
 version = "0.1.0"
 dependencies = [
- "quiche_codegen",
- "rustpython-parser",
+ "quiche_compiler",
 ]
 
 [[package]]
-name = "quiche_codegen"
+name = "quiche_compiler"
 version = "0.1.0"
 dependencies = [
  "rustpython-parser",
