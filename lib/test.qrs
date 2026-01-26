@@ -1,0 +1,33 @@
+# Quiche Test Framework
+# Simple assertion-based testing
+
+def assert_eq(actual: i32, expected: i32, msg: String):
+    """Assert two i32 values are equal."""
+    if actual != expected:
+        print("FAIL:")
+        print(msg)
+        print(actual)
+        print(expected)
+    else:
+        print("PASS")
+
+def assert_true(condition: bool, msg: String):
+    """Assert condition is true."""
+    if condition:
+        print("PASS")
+    else:
+        print("FAIL:")
+        print(msg)
+
+def assert_false(condition: bool, msg: String):
+    """Assert condition is false."""
+    if condition:
+        print("FAIL:")
+        print(msg)
+    else:
+        print("PASS")
+
+# Example usage:
+# def test_addition():
+#     result: i32 = 2 + 2
+#     assert_eq(result, 4, "2 + 2 should equal 4")

@@ -42,6 +42,48 @@ impl Codegen {
                 self.output.push_str(" }");
             }
             ast::Expr::Call(c) => {
+                // Check for method call: obj.method(args)
+                if let ast::Expr::Attribute(attr) = &*c.func {
+                    let method_name = attr.attr.as_str();
+
+                    // Check for list method aliasing
+                    if let Some((rust_method, _)) = crate::list::map_list_method(method_name) {
+                        self.generate_expr(*attr.value.clone());
+                        self.output.push_str(".");
+                        self.output.push_str(rust_method);
+                        self.output.push_str("(");
+                        for (i, arg) in c.args.iter().enumerate() {
+                            if i > 0 {
+                                self.output.push_str(", ");
+                            }
+                            self.generate_expr(arg.clone());
+                        }
+                        self.output.push_str(")");
+                        return;
+                    }
+
+                    // Check for dict method aliasing
+                    if let Some((rust_method, key_needs_ref)) =
+                        crate::dict::map_dict_method(method_name)
+                    {
+                        self.generate_expr(*attr.value.clone());
+                        self.output.push_str(".");
+                        self.output.push_str(rust_method);
+                        self.output.push_str("(");
+                        for (i, arg) in c.args.iter().enumerate() {
+                            if i > 0 {
+                                self.output.push_str(", ");
+                            }
+                            if i == 0 && key_needs_ref {
+                                self.output.push_str("&");
+                            }
+                            self.generate_expr(arg.clone());
+                        }
+                        self.output.push_str(")");
+                        return;
+                    }
+                }
+
                 let func_name = if let ast::Expr::Name(n) = &*c.func {
                     n.id.as_str()
                 } else {
@@ -57,6 +99,12 @@ impl Codegen {
                         self.generate_expr(arg.clone());
                     }
                     self.output.push_str(")");
+                } else if func_name == "len" {
+                    // len(x) -> x.len()
+                    if let Some(arg) = c.args.first() {
+                        self.generate_expr(arg.clone());
+                        self.output.push_str(".len()");
+                    }
                 } else if !c.keywords.is_empty() {
                     // Assume Struct Init: Name(key=val) -> Name { key: val }
                     self.generate_expr(*c.func);
@@ -178,6 +226,21 @@ impl Codegen {
                     self.generate_expr(*s.slice.clone());
                     self.output.push_str("]");
                     return;
+                }
+
+                // Check for negative indexing first
+                if let ast::Expr::UnaryOp(u) = &*s.slice {
+                    if matches!(u.op, ast::UnaryOp::USub) {
+                        // x[-n] -> x[x.len() - n]
+                        let value_str = self.expr_to_string(&s.value);
+                        self.generate_expr(*s.value.clone());
+                        self.output.push_str("[");
+                        self.output.push_str(&value_str);
+                        self.output.push_str(".len() - ");
+                        self.generate_expr(*u.operand.clone());
+                        self.output.push_str("]");
+                        return;
+                    }
                 }
 
                 // Fallback to Vec/Index access: val[slice]

@@ -1,7 +1,9 @@
 use rustpython_parser::ast;
 use std::collections::HashMap;
 
+pub mod dict;
 pub mod expr;
+pub mod list;
 pub mod stmt;
 pub mod types;
 

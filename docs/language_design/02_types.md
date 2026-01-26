@@ -9,7 +9,7 @@ Quiche uses a **Type-First** design. Unlike Python, types are static and map dir
 | **Integers** | `i8`, `i16`, `i32`, `i64`, `isize`, `u8`, `u16`, `u32`, `u64`, `usize` |
 | **Floats** | `f32`, `f64` |
 | **Boolean** | `bool` |
-| **String** | `String` (Owned), `str` (Slice, usually implicit) |
+| **String** | `String` (Owned, default for literals), `str` (Borrowed `&str`) |
 | **Containers** | `Vec[T]`, `HashMap[K, V]`, `Option[T]`, `Result[T, E]` |
 | **Tuples** | `Tuple[A, B]` maps to `(A, B)` |
 

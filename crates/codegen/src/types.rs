@@ -27,7 +27,8 @@ impl Codegen {
 
                 // Bool/String
                 "bool" => "bool".to_string(),
-                "str" | "String" => "String".to_string(),
+                "str" => "&str".to_string(),
+                "String" => "String".to_string(),
 
                 // Pass through others
                 _ => n.id.to_string(),

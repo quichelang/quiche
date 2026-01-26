@@ -1,7 +1,5 @@
 @enum
 class Shape:
-    # Definition using AnnAssign
-    # VariantName: [Types]
     Circle: [f64]
     Rectangle: [f64, f64]
     Point: []
@@ -11,8 +9,6 @@ class User:
     name: String
 
 def main():
-    # Constructor mapping: Shape.Circle(...)
-    # We need to support this.
     s: Shape = Shape.Circle(10.0)
     
     match s:

@@ -1,0 +1,43 @@
+def main():
+    # Test List methods
+    v: Vec[i32] = [1, 2, 3]
+    print(v)
+    
+    # append -> push
+    v.append(4)
+    print(v)
+    
+    # pop
+    v.pop()
+    print(v)
+    
+    # insert
+    v.insert(0, 0)
+    print(v)
+    
+    # clear
+    v.clear()
+    print(v)
+    
+    # extend
+    v2: Vec[i32] = [10, 20]
+    v.extend(v2)
+    print(v)
+
+    # Test Dict methods
+    d: Dict[String, i32] = {"a": 1}
+    print(d)
+    
+    # insert
+    d.insert("b", 2)
+    print(d)
+    
+    # get (returns Option)
+    print(d.get("a"))
+    
+    # remove
+    d.remove("a")
+    print(d)
+    
+    # keys
+    print(d.keys())

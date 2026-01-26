@@ -1,0 +1,11 @@
+def main():
+    # Test len() built-in
+    v: Vec[i32] = [1, 2, 3, 4, 5]
+    print(len(v))  # Should print 5
+    
+    s: String = "Hello"
+    print(len(s))  # Should print 5
+    
+    # Test negative indexing
+    print(v[-1])   # Should print 5 (last element)
+    print(v[-2])   # Should print 4

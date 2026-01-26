@@ -1,0 +1,60 @@
+# Example tests using Quiche test framework
+
+def assert_eq(actual: i32, expected: i32, msg: String):
+    if actual != expected:
+        print("FAIL:")
+        print(msg)
+    else:
+        print("PASS")
+
+def assert_eq_usize(actual: usize, expected: usize, msg: String):
+    if actual != expected:
+        print("FAIL:")
+        print(msg)
+    else:
+        print("PASS")
+
+def assert_true(condition: bool, msg: String):
+    if condition:
+        print("PASS")
+    else:
+        print("FAIL:")
+        print(msg)
+
+def test_arithmetic():
+    result: i32 = 2 + 2
+    assert_eq(result, 4, "2 + 2 should equal 4")
+    
+    result = 10 - 3
+    assert_eq(result, 7, "10 - 3 should equal 7")
+    
+    result = 5 * 5
+    assert_eq(result, 25, "5 * 5 should equal 25")
+
+def test_list_operations():
+    v: Vec[i32] = [1, 2, 3]
+    assert_eq_usize(len(v), 3, "List should have 3 elements")
+    
+    v.append(4)
+    assert_eq_usize(len(v), 4, "After append, list should have 4 elements")
+    
+    assert_eq(v[-1], 4, "Last element should be 4")
+
+def test_conditionals():
+    x: i32 = 10
+    assert_true(x > 5, "10 should be greater than 5")
+    assert_true(x == 10, "x should equal 10")
+
+def main():
+    print("=== Running Quiche Tests ===")
+    
+    print("Test: Arithmetic")
+    test_arithmetic()
+    
+    print("Test: List Operations")
+    test_list_operations()
+    
+    print("Test: Conditionals")
+    test_conditionals()
+    
+    print("=== Tests Complete ===")
