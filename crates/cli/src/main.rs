@@ -126,39 +126,73 @@ fn run_single_file(filename: &str, script_args: &[String]) {
 
     if let Some(rust_code) = compile(&source) {
         let rust_code = rust_code.replace("#[test]", "");
-        let mut full_code = String::new();
-        // Global suppression for transpiled code
-        full_code.push_str(
-            "#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n",
-        );
-        full_code.push_str(
-            r#"
+
+        let quiche_module = r#"
 mod quiche {
     #![allow(unused_macros, unused_imports)]
+    
+    pub trait QuicheResult {
+        type Output;
+        fn quiche_handle(self) -> Self::Output;
+    }
+    
+    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {
+        type Output = T;
+        fn quiche_handle(self) -> T {
+            self.expect("Quiche Exception")
+        }
+    }
+    
+    impl<T> QuicheResult for Option<T> {
+        type Output = T;
+        fn quiche_handle(self) -> T {
+            self.expect("Quiche Exception: Unexpected None")
+        }
+    }
+    
+    pub trait QuicheGeneric {
+        fn quiche_handle(&self) -> Self;
+    }
+    
+    impl<T: Clone> QuicheGeneric for T {
+        fn quiche_handle(&self) -> Self {
+            self.clone()
+        }
+    }
+    
     macro_rules! call {
         ($func:path, $($arg:expr),*) => {
-            $func( $($arg),* )
+            {
+                use crate::quiche::{QuicheResult, QuicheGeneric};
+                $func( $($arg),* ).quiche_handle()
+            }
         };
     }
     pub(crate) use call;
 }
-"#,
+"#;
+
+        let wrapped_user_code = if !rust_code.contains("fn main") {
+            format!("fn main() {{\n{}\n}}\n", rust_code)
+        } else {
+            rust_code
+        };
+
+        // Assemble final code
+        let mut full_code = String::new();
+        full_code.push_str(
+            "#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n",
         );
+        full_code.push_str(quiche_module);
         full_code.push_str(&dependencies);
         full_code.push_str("\n");
-        full_code.push_str(&rust_code);
-
-        let wrapped_code = if !full_code.contains("fn main") {
-            format!("fn main() {{\n{}}}\n", full_code)
-        } else {
-            full_code
-        };
+        full_code.push_str(&wrapped_user_code);
 
         if !Path::new("target").exists() {
             fs::create_dir("target").ok();
         }
         let tmp_rs = "target/tmp.rs";
-        fs::write(tmp_rs, wrapped_code).expect("Failed to write temp Rust file");
+        fs::write(tmp_rs, full_code).expect("Failed to write temp Rust file");
 
         println!("--- Compiling and Running ---");
         let status = Command::new("rustc")

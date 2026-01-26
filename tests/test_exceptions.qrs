@@ -1,0 +1,27 @@
+def test_manual_panic():
+    caught = False
+    try:
+        assert(False, "Manual panic")
+    except:
+        caught = True
+    assert(caught, "Should catch manual panic")
+
+def test_dynamic_exception():
+    from rust.std.fs import read_dir
+    caught = False
+    try:
+        # This calls auto-unwrapping read_dir
+        read_dir("non_existent_folder_12345_xyz")
+    except Any as e:
+        # Basic check if e exists (it's a string)
+        # print("Caught error: " + e) 
+        # String concatenation might not be working yet for mixed types? 
+        # But e is String.
+        caught = True
+    
+    assert(caught, "Should catch native exception")
+
+def main():
+    test_manual_panic()
+    test_dynamic_exception()
+    print("All exception tests passed!")

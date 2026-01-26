@@ -84,9 +84,42 @@ pub fn get_lib_rs() -> &'static str {
 
 mod quiche {
     #![allow(unused_macros, unused_imports)]
+    
+    pub trait QuicheResult {
+        type Output;
+        fn quiche_handle(self) -> Self::Output;
+    }
+    
+    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {
+        type Output = T;
+        fn quiche_handle(self) -> T {
+            self.expect("Quiche Exception")
+        }
+    }
+    
+    impl<T> QuicheResult for Option<T> {
+        type Output = T;
+        fn quiche_handle(self) -> T {
+            self.expect("Quiche Exception: Unexpected None")
+        }
+    }
+    
+    pub trait QuicheGeneric {
+        fn quiche_handle(&self) -> Self;
+    }
+    
+    impl<T: Clone> QuicheGeneric for T {
+        fn quiche_handle(&self) -> Self {
+            self.clone()
+        }
+    }
+
     macro_rules! call {
         ($func:path, $($arg:expr),*) => {
-            $func( $($arg),* )
+            {
+                use crate::quiche::{QuicheResult, QuicheGeneric};
+                $func( $($arg),* ).quiche_handle()
+            }
         };
     }
     pub(crate) use call;
@@ -110,9 +143,42 @@ pub fn get_main_rs() -> &'static str {
 
 mod quiche {
     #![allow(unused_macros, unused_imports)]
+    
+    pub trait QuicheResult {
+        type Output;
+        fn quiche_handle(self) -> Self::Output;
+    }
+    
+    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {
+        type Output = T;
+        fn quiche_handle(self) -> T {
+            self.expect("Quiche Exception")
+        }
+    }
+    
+    impl<T> QuicheResult for Option<T> {
+        type Output = T;
+        fn quiche_handle(self) -> T {
+            self.expect("Quiche Exception: Unexpected None")
+        }
+    }
+    
+    pub trait QuicheGeneric {
+        fn quiche_handle(&self) -> Self;
+    }
+    
+    impl<T: Clone> QuicheGeneric for T {
+        fn quiche_handle(&self) -> Self {
+            self.clone()
+        }
+    }
+
     macro_rules! call {
         ($func:path, $($arg:expr),*) => {
-            $func( $($arg),* )
+            {
+                use crate::quiche::{QuicheResult, QuicheGeneric};
+                $func( $($arg),* ).quiche_handle()
+            }
         };
     }
     pub(crate) use call;

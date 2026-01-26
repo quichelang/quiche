@@ -9,7 +9,7 @@ def test_dynamic_macro():
     # Should transpile to: let entries = quiche::call!(read_dir, String::from("."));
     entries = read_dir(".")
     
-    for entry in entries.unwrap():
+    for entry in entries:
         entry = entry.unwrap()
         if entry.path().is_dir():
             print(entry.file_name())

@@ -115,6 +115,41 @@ impl Codegen {
                 self.generate_expr(*e.value);
                 self.output.push_str(";\n");
             }
+            ast::Stmt::Try(t) => {
+                self.push_indent();
+                self.output.push_str("let _quiche_try_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {\n");
+                self.indent_level += 1;
+                for stmt in t.body {
+                    self.generate_stmt(stmt);
+                }
+                self.indent_level -= 1;
+                self.push_indent();
+                self.output.push_str("}));\n");
+
+                self.push_indent();
+                self.output
+                    .push_str("if let Err(_quiche_err) = _quiche_try_result {\n");
+                self.indent_level += 1;
+
+                for handler in t.handlers {
+                    match handler {
+                        ast::ExceptHandler::ExceptHandler(inner) => {
+                            if let Some(name) = &inner.name {
+                                self.push_indent();
+                                self.output.push_str(&format!("let {} = _quiche_err.downcast_ref::<String>().map(|s| s.clone()).or_else(|| _quiche_err.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| \"Unknown Error\".to_string());\n", name));
+                            }
+
+                            for stmt in &inner.body {
+                                self.generate_stmt(stmt.clone());
+                            }
+                        }
+                    }
+                }
+
+                self.indent_level -= 1;
+                self.push_indent();
+                self.output.push_str("}\n");
+            }
             ast::Stmt::ClassDef(c) => {
                 self.push_indent();
 
