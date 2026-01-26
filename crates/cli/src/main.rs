@@ -43,7 +43,9 @@ fn main() {
             if Path::new("Cargo.toml").exists() {
                 run_cargo_command("test", &args[2..]);
             } else {
-                println!("No Cargo.toml found. Cannot run tests.");
+                // If we are in the quiche repository root (dev mode), run cargo test
+                // which triggers tests/runner.rs
+                run_cargo_command("test", &args[2..]);
             }
         }
         _ => {
@@ -118,16 +120,15 @@ fn run_single_file(filename: &str, script_args: &[String]) {
     // Virtual Module System (Poor Man's Linker)
     let mut dependencies = String::new();
     if source.contains("lib.test") {
-        let lib_path = "lib/test.qrs";
+        let lib_path = "quiche_runtime/src/lib.qrs";
         if let Ok(lib_source) = fs::read_to_string(lib_path) {
             let lib_source = lib_source.replace("struct ", "class ");
             if let Some(rust_code) = compile(&lib_source) {
                 dependencies.push_str("pub mod lib {\n");
                 dependencies.push_str("    pub mod test {\n");
                 for line in rust_code.lines() {
-                    let pub_line = line.replace("fn ", "pub fn ");
                     dependencies.push_str("        ");
-                    dependencies.push_str(&pub_line);
+                    dependencies.push_str(line);
                     dependencies.push_str("\n");
                 }
                 dependencies.push_str("    }\n");
@@ -137,6 +138,7 @@ fn run_single_file(filename: &str, script_args: &[String]) {
     }
 
     if let Some(rust_code) = compile(&source) {
+        let rust_code = rust_code.replace("#[test]", "");
         let mut full_code = String::new();
         full_code.push_str(&dependencies);
         full_code.push_str("\n");
