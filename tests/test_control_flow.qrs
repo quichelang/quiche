@@ -1,0 +1,55 @@
+# Control Flow & Arithmetic Tests
+from lib.test import assert_eq, assert_true
+
+def test_arithmetic():
+    print("Running test_arithmetic...")
+    x: i32 = 10
+    y: i32 = 5
+    assert_eq(x + y, 15, "Add")
+    assert_eq(x - y, 5, "Sub")
+    assert_eq(x * y, 50, "Mult")
+    assert_eq(x / y, 2, "Div")
+
+def test_factorial():
+    print("Running test_factorial...")
+    res: i32 = 1
+    i: i32 = 1
+    while i <= 5:
+        res = res * i
+        i = i + 1
+    assert_eq(res, 120, "Factorial(5) should be 120")
+
+def test_loops():
+    print("Running test_loops...")
+    # While loop
+    sum: i32 = 0
+    k: i32 = 0
+    while k < 10:
+        k = k + 1
+        sum = sum + k
+    assert_eq(sum, 55, "While loop summation")
+    
+    # For loop (Iterating Vec)
+    items: Vec[i32] = [10, 20, 30]
+    total: i32 = 0
+    for item in items:
+        total = total + item
+    assert_eq(total, 60, "For loop summation")
+
+def test_ternary():
+    print("Running test_ternary...")
+    a: i32 = 5
+    b: i32 = 10
+    max_val: i32 = a if a > b else b
+    assert_eq(max_val, 10, "Ternary max check")
+    
+    min_val: i32 = a if a < b else b
+    assert_eq(min_val, 5, "Ternary min check")
+
+def main():
+    print("=== Control Flow Suite ===")
+    test_arithmetic()
+    test_factorial()
+    test_loops()
+    test_ternary()
+    print("=== Done ===")

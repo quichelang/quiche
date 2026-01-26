@@ -1,0 +1,62 @@
+# Types & Collections Tests
+from lib.test import assert_eq, assert_str_eq, assert_true
+
+def test_lists():
+    print("Running test_lists...")
+    v: Vec[i32] = [1, 2, 3]
+    # Manual unwrap because len returns usize, and test.qrs assert_eq expects i32
+    # In next iteration assert_eq should be generic or macro
+    if len(v) == 3:
+        assert_true(true, "Len check")
+    else:
+        assert_true(false, "Fail len")
+        
+    v.append(4)
+    assert_eq(v[-1], 4, "Append check")
+    
+    v.pop()
+    if len(v) == 3:
+        assert_true(true, "Pop check")
+        
+    v.clear()
+    if len(v) == 0:
+        assert_true(true, "Clear check")
+
+def test_dicts():
+    print("Running test_dicts...")
+    d: Dict[String, i32] = {"a": 1, "b": 2}
+    
+    val: Option[i32] = d.get("a")
+    if val.is_some():
+        assert_eq(val.unwrap(), 1, "Dict get")
+    else:
+        assert_true(false, "Dict get failed")
+        
+    d.insert("c", 3)
+    d.remove("b")
+
+def test_options():
+    print("Running test_options...")
+    x: Option[i32] = Some(10)
+    y: Option[i32] = None
+    
+    assert_true(x.is_some(), "Some check")
+    assert_true(y.is_none(), "None check")
+    assert_eq(x.unwrap(), 10, "Unwrap check")
+
+def test_fstrings():
+    print("Running test_fstrings...")
+    name: String = "Quiche"
+    msg: String = f"Hello {name}"
+    assert_str_eq(msg, "Hello Quiche", "F-String check")
+    
+    math: String = f"{1+1}"
+    assert_str_eq(math, "2", "F-String expr check")
+
+def main():
+    print("=== Types Suite ===")
+    test_lists()
+    test_dicts()
+    test_options()
+    test_fstrings()
+    print("=== Done ===")

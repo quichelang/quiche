@@ -16,13 +16,42 @@ fn main() {
     // Pre-process: map 'struct' keyword to 'class' for parser compatibility
     let source = source_raw.replace("struct ", "class ");
 
+    // Virtual Module System (Poor Man's Linker)
+    // Scan for `from lib.test` or `import lib.test`
+    // Hardcoded for lib.test support for now to enable test suite
+    let mut dependencies = String::new();
+    if source.contains("lib.test") {
+        let lib_path = "lib/test.qrs";
+        if let Ok(lib_source) = fs::read_to_string(lib_path) {
+            let lib_source = lib_source.replace("struct ", "class ");
+            if let Some(rust_code) = compile(&lib_source) {
+                dependencies.push_str("pub mod lib {\n");
+                dependencies.push_str("    pub mod test {\n");
+                // Indent code
+                for line in rust_code.lines() {
+                    let pub_line = line.replace("fn ", "pub fn ");
+                    dependencies.push_str("        ");
+                    dependencies.push_str(&pub_line);
+                    dependencies.push_str("\n");
+                }
+                dependencies.push_str("    }\n");
+                dependencies.push_str("}\n");
+            }
+        }
+    }
+
     if let Some(rust_code) = compile(&source) {
-        // Prepare valid Rust with a main wrapper for global code if necessary
-        // For now, we assume global code is handled or the user provided a main()
-        let wrapped_code = if !rust_code.contains("fn main") {
-            format!("fn main() {{\n{}}}\n", rust_code)
+        // Prepare valid Rust with dependencies
+        let mut full_code = String::new();
+        // Add dependencies first
+        full_code.push_str(&dependencies);
+        full_code.push_str("\n");
+        full_code.push_str(&rust_code);
+
+        let wrapped_code = if !full_code.contains("fn main") {
+            format!("fn main() {{\n{}}}\n", full_code)
         } else {
-            rust_code
+            full_code
         };
 
         let tmp_rs = "target/tmp.rs";

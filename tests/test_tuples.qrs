@@ -1,0 +1,21 @@
+# Tuple Tests
+from lib.test import assert_eq
+
+def test_basic_tuple():
+    print("Running test_basic_tuple...")
+    t: Tuple[i32, i32] = (1, 2)
+    assert_eq(t[0], 1, "Tuple index 0")
+    assert_eq(t[1], 2, "Tuple index 1")
+
+def test_nested_tuple():
+    print("Running test_nested_tuple...")
+    nested: Tuple[i32, Tuple[i32, i32]] = (10, (20, 30))
+    assert_eq(nested[0], 10, "Nested index 0")
+    assert_eq(nested[1][0], 20, "Nested deep index 1.0")
+    assert_eq(nested[1][1], 30, "Nested deep index 1.1")
+
+def main():
+    print("=== Tuple Suite ===")
+    test_basic_tuple()
+    test_nested_tuple()
+    print("=== Done ===")

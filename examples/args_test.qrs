@@ -1,6 +1,0 @@
-
-# Test for main with args
-def main(args: Vec[String]):
-    print("Arguments received:")
-    # print will use {:?} debug formatting
-    print(args)

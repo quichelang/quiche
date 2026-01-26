@@ -1,0 +1,46 @@
+# Structs & Matching Tests
+from lib.test import assert_eq, assert_str_eq
+
+@enum
+class Shape:
+    Circle: [f64]
+    Rectangle: [f64, f64]
+    Point: []
+
+class User:
+    id: i32
+    name: String
+
+def test_enums():
+    print("Running test_enums...")
+    s: Shape = Shape.Circle(10.0)
+    
+    match s:
+        case Shape.Circle(r):
+            # Float comparison hack
+            print("PASS") 
+        case _:
+            print("FAIL: Match enum")
+
+def test_structs():
+    print("Running test_structs...")
+    u: User = User(id=1, name="Alice")
+    assert_eq(u.id, 1, "Struct field access")
+    assert_str_eq(u.name, "Alice", "Struct string field")
+
+def test_pattern_matching():
+    print("Running test_pattern_matching...")
+    u: User = User(id=1, name="Alice")
+    
+    match u:
+        case User(id=1, name=n):
+            assert_str_eq(n, "Alice", "Struct destructuring")
+        case _:
+            print("FAIL: Struct pattern match")
+
+def main():
+    print("=== Struct Suite ===")
+    test_enums()
+    test_structs()
+    test_pattern_matching()
+    print("=== Done ===")

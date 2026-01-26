@@ -1,5 +1,0 @@
-def calculate(a: i32, b: i32) -> i32:
-    result = a * b + 10
-    return result
-
-print(calculate(5, 5))
