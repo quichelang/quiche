@@ -62,11 +62,21 @@ impl Codegen {
             ast::Stmt::Assign(a) => {
                 self.push_indent();
                 // Reassignment: x = y
-                // We assume explicit 'AnnAssign' for declarations
+                // If x is new, emit 'let mut x'
                 for (i, target) in a.targets.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(" = ");
                     }
+
+                    if i == 0 && a.targets.len() == 1 {
+                        if let ast::Expr::Name(n) = target {
+                            if !self.has_symbol(&n.id) {
+                                self.output.push_str("let mut ");
+                                self.add_symbol(n.id.to_string(), "/* inferred */".to_string());
+                            }
+                        }
+                    }
+
                     self.generate_expr(target.clone());
                 }
                 self.output.push_str(" = ");
@@ -152,6 +162,34 @@ impl Codegen {
                     self.indent_level -= 1;
                     self.push_indent();
                     self.output.push_str("}\n\n");
+                }
+            }
+            ast::Stmt::Import(i) => {
+                self.push_indent();
+                for alias in i.names {
+                    let name = alias.name.as_str().replace(".", "::");
+                    if let Some(asname) = alias.asname {
+                        self.output
+                            .push_str(&format!("use {} as {};\n", name, asname));
+                    } else {
+                        self.output.push_str(&format!("use {};\n", name));
+                    }
+                }
+            }
+            ast::Stmt::ImportFrom(i) => {
+                self.push_indent();
+                if let Some(module) = i.module {
+                    let mod_name = module.as_str().replace(".", "::");
+                    for alias in i.names {
+                        let name = alias.name.as_str();
+                        if let Some(asname) = alias.asname {
+                            self.output
+                                .push_str(&format!("use {}::{} as {};\n", mod_name, name, asname));
+                        } else {
+                            self.output
+                                .push_str(&format!("use {}::{};\n", mod_name, name));
+                        }
+                    }
                 }
             }
             _ => {

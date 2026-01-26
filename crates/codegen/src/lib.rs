@@ -54,6 +54,10 @@ impl Codegen {
         }
     }
 
+    pub(crate) fn has_symbol(&self, name: &str) -> bool {
+        self.get_symbol(name).is_some()
+    }
+
     pub(crate) fn get_symbol(&self, name: &str) -> Option<&String> {
         for scope in self.scopes.iter().rev() {
             if let Some(ty) = scope.get(name) {

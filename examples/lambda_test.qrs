@@ -1,0 +1,16 @@
+def main():
+    # Basic lambda assignment
+    # Note: explicit types needed for closures assigned to vars in Rust usually, 
+    # or type inference handles it if used immediately. 
+    # "add = lambda..." transpiles to "let add = |...| ..."
+    # We will try immediate usage first as it's cleaner in Rust.
+    
+    val: i32 = (lambda x: x + 1)(10)
+    print(val)
+
+    # In functional context (dummy map since we don't have iter adapters fully typed yet)
+    # We can test valid syntax generation at least
+    
+    adder = lambda a, b: a + b
+    res: i32 = adder(5, 7)
+    print(res)

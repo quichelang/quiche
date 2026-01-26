@@ -41,6 +41,20 @@ impl Codegen {
                     format!("Vec<{}>", inner)
                 } else if base == "Option" {
                     format!("Option<{}>", inner)
+                } else if base == "Result" || base == "HashMap" || base == "Dict" {
+                    // Result[A, B] -> inner is (A, B) -> Result<A, B>
+                    // We need to strip the parens from the tuple inner
+                    let final_inner = if inner.starts_with("(") && inner.ends_with(")") {
+                        &inner[1..inner.len() - 1]
+                    } else {
+                        &inner
+                    };
+                    let rust_base = if base == "Dict" || base == "HashMap" {
+                        "std::collections::HashMap"
+                    } else {
+                        &base
+                    };
+                    format!("{}<{}>", rust_base, final_inner)
                 } else if base == "Tuple" {
                     // Tuple[T, U] -> inner is (T, U)
                     // Tuple[T] -> inner is T -> (T,)

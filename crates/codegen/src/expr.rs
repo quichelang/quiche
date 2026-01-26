@@ -85,10 +85,16 @@ impl Codegen {
                     self.output.push_str(")");
                 }
             }
+            ast::Expr::Attribute(a) => {
+                self.generate_expr(*a.value.clone());
+                self.output.push_str(".");
+                self.output.push_str(&a.attr);
+            }
             ast::Expr::Name(n) => {
                 self.output.push_str(&n.id);
             }
             ast::Expr::Constant(c) => match c.value {
+                ast::Constant::None => self.output.push_str("None"),
                 ast::Constant::Int(i) => self.output.push_str(&i.to_string()),
                 ast::Constant::Float(f) => {
                     let s = f.to_string();
@@ -98,7 +104,7 @@ impl Codegen {
                         self.output.push_str(&format!("{}.0", s));
                     }
                 }
-                ast::Constant::Str(s) => self.output.push_str(&format!("\"{}\"", s)),
+                ast::Constant::Str(s) => self.output.push_str(&format!("String::from(\"{}\")", s)),
                 ast::Constant::Bool(b) => self.output.push_str(if b { "true" } else { "false" }),
                 _ => self.output.push_str("/* unhandled constant */"),
             },
@@ -112,15 +118,37 @@ impl Codegen {
                 }
                 self.output.push_str("]");
             }
+            ast::Expr::Dict(d) => {
+                self.output.push_str("std::collections::HashMap::from([");
+                for (i, (k, v)) in d.keys.iter().zip(d.values.iter()).enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.output.push_str("(");
+                    if let Some(key) = k {
+                        self.generate_expr(key.clone());
+                    } else {
+                        self.output.push_str("/* **kwargs not supported */");
+                    }
+                    self.output.push_str(", ");
+                    self.generate_expr(v.clone());
+                    self.output.push_str(")");
+                }
+                self.output.push_str("])");
+            }
             ast::Expr::Subscript(s) => {
-                // Check for tuple access via symbol table
-                let is_tuple_access = if let Some(ty) = self.get_expr_type(&s.value) {
-                    ty.starts_with("(")
-                } else {
-                    false
-                };
+                // Check for tuple/map access via symbol table
+                let expr_type = self.get_expr_type(&s.value);
+                let is_tuple = expr_type
+                    .as_ref()
+                    .map(|t| t.starts_with("("))
+                    .unwrap_or(false);
+                let is_map = expr_type
+                    .as_ref()
+                    .map(|t| t.contains("HashMap") || t.contains("Dict"))
+                    .unwrap_or(false);
 
-                if is_tuple_access {
+                if is_tuple {
                     if let ast::Expr::Constant(c) = &*s.slice {
                         if let ast::Constant::Int(idx) = &c.value {
                             self.generate_expr(*s.value.clone());
@@ -128,6 +156,15 @@ impl Codegen {
                             return;
                         }
                     }
+                }
+
+                if is_map {
+                    // Map access: d[&key]
+                    self.generate_expr(*s.value.clone());
+                    self.output.push_str("[&");
+                    self.generate_expr(*s.slice.clone());
+                    self.output.push_str("]");
+                    return;
                 }
 
                 // Fallback to Vec/Index access: val[slice]
@@ -144,6 +181,18 @@ impl Codegen {
                     }
                     self.generate_expr(elt.clone());
                 }
+                self.output.push_str(")");
+            }
+            ast::Expr::Lambda(l) => {
+                self.output.push_str("(|");
+                for (i, arg) in l.args.args.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.output.push_str(&arg.def.arg);
+                }
+                self.output.push_str("| ");
+                self.generate_expr(*l.body);
                 self.output.push_str(")");
             }
             _ => self.output.push_str("/* unhandled expression */"),
