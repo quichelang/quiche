@@ -37,7 +37,12 @@ fn main() {
             .expect("Failed to run rustc");
 
         if status.success() {
+            // Forward arguments to the compiled binary
+            // args[0] is quiche-run, args[1] is filename, args[2..] are for the script
+            let script_args = if args.len() > 2 { &args[2..] } else { &[] };
+
             let output = Command::new("./target/tmp_bin")
+                .args(script_args)
                 .output()
                 .expect("Failed to run binary");
 

@@ -154,36 +154,57 @@ impl Codegen {
 
     fn generate_function_def(&mut self, f: ast::StmtFunctionDef) {
         self.push_indent();
-        self.output.push_str(&format!("fn {}(", f.name));
 
-        // Generate arguments
-        for (i, arg_with_default) in f.args.args.iter().enumerate() {
-            if i > 0 {
-                self.output.push_str(", ");
-            }
-            let arg = &arg_with_default.def;
-            if arg.arg.as_str() == "self" {
-                self.output.push_str("&self");
-            } else {
-                let type_ann = if let Some(annotation) = &arg.annotation {
-                    self.map_type(annotation)
+        let is_main_with_args = f.name.as_str() == "main" && !f.args.args.is_empty();
+
+        if is_main_with_args {
+            self.output.push_str("fn main() {\n");
+        } else {
+            self.output.push_str(&format!("fn {}(", f.name));
+
+            // Generate arguments
+            for (i, arg_with_default) in f.args.args.iter().enumerate() {
+                if i > 0 {
+                    self.output.push_str(", ");
+                }
+                let arg = &arg_with_default.def;
+                if arg.arg.as_str() == "self" {
+                    self.output.push_str("&self");
                 } else {
-                    "/* untyped */".to_string()
-                };
-                self.output.push_str(&format!("{}: {}", arg.arg, type_ann));
+                    let type_ann = if let Some(annotation) = &arg.annotation {
+                        self.map_type(annotation)
+                    } else {
+                        "/* untyped */".to_string()
+                    };
+                    self.output.push_str(&format!("{}: {}", arg.arg, type_ann));
+                }
+            }
+
+            self.output.push_str(")");
+
+            // Return type
+            if let Some(ret_expr) = f.returns {
+                self.output
+                    .push_str(&format!(" -> {}", self.map_type(&ret_expr)));
+            }
+
+            self.output.push_str(" {\n");
+        }
+
+        self.indent_level += 1;
+
+        // Inject args extraction for main
+        if is_main_with_args {
+            self.push_indent();
+            // Assuming first arg is 'args'
+            if let Some(arg) = f.args.args.first() {
+                self.output.push_str(&format!(
+                    "let {}: Vec<String> = std::env::args().collect();\n",
+                    arg.def.arg
+                ));
             }
         }
 
-        self.output.push_str(")");
-
-        // Return type
-        if let Some(ret_expr) = f.returns {
-            self.output
-                .push_str(&format!(" -> {}", self.map_type(&ret_expr)));
-        }
-
-        self.output.push_str(" {\n");
-        self.indent_level += 1;
         for stmt in f.body {
             self.generate_stmt(stmt);
         }
