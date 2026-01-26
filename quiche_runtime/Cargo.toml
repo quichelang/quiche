@@ -1,0 +1,16 @@
+[package]
+name = "quiche_runtime"
+version = "0.1.0"
+edition = "2021"
+
+# Break out of any parent workspace
+[workspace]
+
+[build-dependencies]
+quiche_compiler = { path = "../crates/compiler" }
+
+[dependencies]
+
+
+[lib]
+path = "src/lib.rs"

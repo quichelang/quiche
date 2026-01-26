@@ -356,7 +356,12 @@ impl Codegen {
         if is_main_with_args {
             self.output.push_str("fn main() {\n");
         } else {
-            self.output.push_str(&format!("fn {}(", f.name));
+            // Auto-detect test functions
+            if f.name.starts_with("test_") {
+                self.output.push_str("#[test]\n");
+                self.push_indent();
+            }
+            self.output.push_str(&format!("pub fn {}(", f.name));
 
             // Generate arguments
             for (i, arg_with_default) in f.args.args.iter().enumerate() {
