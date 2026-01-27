@@ -604,6 +604,42 @@ class Codegen:
                 self.generate_expr(deref(l.body))
                 self.emit(")")
 
+            case ast.Expr.FString(f):
+                self.emit("format!(\"")
+                for part in f.value:
+                    match part:
+                        case ast.FStringPart.Literal(lit):
+                            self.emit(lit.value.to_string())
+                        case ast.FStringPart.FString(fs):
+                            for element in fs.elements:
+                                match element:
+                                    case ast.InterpolatedStringElement.Literal(l):
+                                        self.emit(l.value.to_string())
+                                    case ast.InterpolatedStringElement.Interpolation(i):
+                                        self.emit("{}")
+                                        self.emit(", ")
+                                        self.generate_expr(ast.Expr.clone(as_ref(deref(i.expression))))
+                self.emit("\")")
+
+            case ast.Expr.Dict(d):
+                self.emit("std::collections::HashMap::from([")
+                idx_dict = 0
+                for item in d.items:
+                    if idx_dict > 0: self.emit(", ")
+                    key_val = as_ref(item).key
+                    val_val = as_ref(deref(as_ref(item).value))
+                    match key_val:
+                        case Some(k):
+                            self.emit("(")
+                            self.generate_expr(ast.Expr.clone(as_ref(deref(k))))
+                            self.emit(", ")
+                            self.generate_expr(ast.Expr.clone(as_ref(val_val)))
+                            self.emit(")")
+                        case None:
+                            self.emit("/* **kwargs */")
+                    idx_dict = idx_dict + 1
+                self.emit("])")
+
             case _: self.emit("/* expr */")
 
     def infer_expr_type(self, expr: ast.Expr) -> String:

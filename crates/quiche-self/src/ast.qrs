@@ -271,3 +271,31 @@ def parse_module(source: StrRef) -> Result[Parsed, ParseError]:
 @extern(path="ruff_python_parser::Parsed<ruff_python_ast::ModModule>", no_generic=True)
 class Parsed:
     def into_syntax(self) -> ModModule: pass
+
+# F-String support
+@extern(path="ruff_python_ast::FStringPart", no_generic=True)
+class FStringPart:
+    pass
+
+@extern(path="ruff_python_ast::InterpolatedStringElement", no_generic=True)
+class InterpolatedStringElement:
+    pass
+
+@extern(path="ruff_python_ast::ExprFString", no_generic=True)
+class ExprFString:
+    value: List[FStringPart]
+
+# Dict literal support
+@extern(path="ruff_python_ast::ExprDict", no_generic=True)
+class ExprDict:
+    items: List[Any]
+
+# Try-Except support
+@extern(path="ruff_python_ast::StmtTry", no_generic=True)
+class StmtTry:
+    body: List[Stmt]
+    handlers: List[ExceptHandler]
+
+@extern(path="ruff_python_ast::ExceptHandler", no_generic=True)
+class ExceptHandler:
+    pass
