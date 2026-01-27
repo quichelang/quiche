@@ -51,7 +51,7 @@ impl Codegen {
                 self.output.push_str(" in (");
                 self.generate_expr(*f.iter);
                 self.output
-                    .push_str(").into_iter().map(|__q| quiche::check!(__q)) {\n");
+                    .push_str(").into_iter().map(|__q| crate::quiche::check!(__q)) {\n");
                 self.indent_level += 1;
                 for stmt in f.body {
                     self.generate_stmt(stmt);
@@ -171,10 +171,18 @@ impl Codegen {
                                                 }
                                             }
                                         } else if arg == "no_generic" {
-                                            if let ast::Expr::Constant(c) = &keyword.value {
-                                                if let ast::Constant::Bool(b) = c.value {
-                                                    no_generic = b;
+                                            match &keyword.value {
+                                                ast::Expr::Constant(c) => {
+                                                    if let ast::Constant::Bool(b) = c.value {
+                                                        no_generic = b;
+                                                    }
                                                 }
+                                                ast::Expr::Name(n) => {
+                                                    if n.id.as_str() == "true" {
+                                                        no_generic = true;
+                                                    }
+                                                }
+                                                _ => {}
                                             }
                                         }
                                     }
@@ -187,11 +195,11 @@ impl Codegen {
                 if let Some(path) = extern_path {
                     if no_generic {
                         self.output
-                            .push_str(&format!("type {} = {};\n", c.name, path));
+                            .push_str(&format!("pub type {} = {};\n", c.name, path));
                     } else {
                         // type Vector<T> = std::vec::Vec<T>;
                         self.output
-                            .push_str(&format!("type {}<T> = {}<T>;\n", c.name, path));
+                            .push_str(&format!("pub type {}<T> = {}<T>;\n", c.name, path));
                     }
                     return;
                 }
@@ -208,7 +216,7 @@ impl Codegen {
                 if is_enum {
                     self.output.push_str("#[derive(Clone, Debug, PartialEq)]\n");
                     self.push_indent();
-                    self.output.push_str(&format!("enum {} {{\n", c.name));
+                    self.output.push_str(&format!("pub enum {} {{\n", c.name));
                     self.indent_level += 1;
 
                     for stmt in &c.body {
@@ -241,7 +249,7 @@ impl Codegen {
                     // Generate struct definition
                     self.output.push_str("#[derive(Clone, Debug)]\n");
                     self.push_indent();
-                    self.output.push_str(&format!("struct {} {{\n", c.name));
+                    self.output.push_str(&format!("pub struct {} {{\n", c.name));
 
                     let mut methods = Vec::new();
 
@@ -250,6 +258,7 @@ impl Codegen {
                         match stmt {
                             ast::Stmt::AnnAssign(a) => {
                                 self.push_indent();
+                                self.output.push_str("pub ");
                                 self.output.push_str(&self.expr_to_string(&a.target));
                                 self.output.push_str(": ");
                                 self.output.push_str(&self.map_type(&a.annotation));
@@ -286,18 +295,7 @@ impl Codegen {
                     }
                 }
             }
-            ast::Stmt::Import(i) => {
-                self.push_indent();
-                for alias in i.names {
-                    let name = alias.name.as_str().replace(".", "::");
-                    if let Some(asname) = alias.asname {
-                        self.output
-                            .push_str(&format!("use {} as {};\n", name, asname));
-                    } else {
-                        self.output.push_str(&format!("use {};\n", name));
-                    }
-                }
-            }
+
             ast::Stmt::ImportFrom(i) => {
                 self.push_indent();
                 if let Some(module) = &i.module {
@@ -335,12 +333,28 @@ impl Codegen {
                         }
 
                         if mod_name.is_empty() {
-                            // from rust import crate -> use crate;
+                            // Import: "from rust import crate" or "import module"
+                            // If it's a simple name and not strict "rust" or "std", assume crate-local? (Or simple crate dependency)
+                            // Ideally, we'd check against a list of local modules.
+                            // For now, let's assume if it's NOT a known 3rd party or std, it's local if no dots.
+
+                            // NOTE: This logic is heuristic-based for the prototype.
+                            let is_likely_local = !name.contains("::")
+                                && name != "std"
+                                && name != "rust"
+                                && name != "rustpython_parser";
+
+                            let use_path = if is_likely_local {
+                                format!("crate::{}", name)
+                            } else {
+                                name.to_string()
+                            };
+
                             if let Some(asname) = alias.asname {
                                 self.output
-                                    .push_str(&format!("use {} as {};\n", name, asname));
+                                    .push_str(&format!("use {} as {};\n", use_path, asname));
                             } else {
-                                self.output.push_str(&format!("use {};\n", name));
+                                self.output.push_str(&format!("use {};\n", use_path));
                             }
                         } else if let Some(asname) = alias.asname {
                             self.output
@@ -349,6 +363,33 @@ impl Codegen {
                             self.output
                                 .push_str(&format!("use {}::{};\n", mod_name, name));
                         }
+                    }
+                }
+            }
+            ast::Stmt::Import(i) => {
+                self.push_indent();
+                for alias in i.names {
+                    let name = alias.name.as_str();
+                    // Heuristic for local vs crate import
+                    let is_likely_local = !name.contains(".")
+                        && name != "std"
+                        && name != "rust"
+                        && name != "rustpython_parser";
+
+                    let use_path = if is_likely_local {
+                        format!("crate::{}", name)
+                    } else {
+                        name.replace(".", "::")
+                    };
+
+                    if let Some(asname) = alias.asname {
+                        self.output.push_str(&format!(
+                            "use {} as {};\n",
+                            use_path,
+                            asname.as_str()
+                        ));
+                    } else {
+                        self.output.push_str(&format!("use {};\n", use_path));
                     }
                 }
             }
@@ -467,7 +508,7 @@ impl Codegen {
     pub(crate) fn generate_function_def(&mut self, f: ast::StmtFunctionDef) {
         self.push_indent();
 
-        if let Some(path) = self.extract_extern_path(&f.decorator_list) {
+        if let Some((path, _no_generic)) = self.extract_extern_path(&f.decorator_list) {
             self.output
                 .push_str(&format!("pub use {} as {};\n", path, f.name));
             return;
@@ -553,21 +594,40 @@ impl Codegen {
         self.output.push_str("}\n\n");
     }
 
-    fn extract_extern_path(&self, decorators: &[ast::Expr]) -> Option<String> {
+    fn extract_extern_path(&self, decorators: &[ast::Expr]) -> Option<(String, bool)> {
         for d in decorators {
             if let ast::Expr::Call(c) = d {
                 if let ast::Expr::Name(n) = &*c.func {
                     if n.id.as_str() == "extern" {
+                        let mut path = None;
+                        let mut no_generic = false;
                         for kw in &c.keywords {
                             if let Some(arg) = &kw.arg {
                                 if arg == "path" {
                                     if let ast::Expr::Constant(const_val) = &kw.value {
                                         if let ast::Constant::Str(s) = &const_val.value {
-                                            return Some(s.clone());
+                                            path = Some(s.clone());
                                         }
+                                    }
+                                } else if arg == "no_generic" {
+                                    match &kw.value {
+                                        ast::Expr::Constant(c) => {
+                                            if let ast::Constant::Bool(b) = c.value {
+                                                no_generic = b;
+                                            }
+                                        }
+                                        ast::Expr::Name(n) => {
+                                            if n.id.as_str() == "true" {
+                                                no_generic = true;
+                                            }
+                                        }
+                                        _ => {}
                                     }
                                 }
                             }
+                        }
+                        if let Some(p) = path {
+                            return Some((p, no_generic));
                         }
                     }
                 }

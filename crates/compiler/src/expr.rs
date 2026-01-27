@@ -81,7 +81,7 @@ impl Codegen {
                 };
 
                 if let Some(path) = foreign_name {
-                    self.output.push_str("quiche::check!((");
+                    self.output.push_str("crate::quiche::check!((");
                     self.output.push_str(&path);
                     self.output.push_str(")(");
                     for (i, arg) in c.args.iter().enumerate() {
@@ -100,7 +100,7 @@ impl Codegen {
 
                     // List
                     if let Some((rust_method, _)) = crate::list::map_list_method(method_name) {
-                        self.output.push_str("quiche::check!(");
+                        self.output.push_str("crate::quiche::check!(");
                         self.generate_expr(*attr.value.clone());
                         self.output.push_str(".");
                         self.output.push_str(rust_method);
@@ -119,7 +119,7 @@ impl Codegen {
                     if let Some((rust_method, key_needs_ref)) =
                         crate::dict::map_dict_method(method_name)
                     {
-                        self.output.push_str("quiche::check!(");
+                        self.output.push_str("crate::quiche::check!(");
                         self.generate_expr(*attr.value.clone());
                         self.output.push_str(".");
                         self.output.push_str(rust_method);
@@ -178,7 +178,7 @@ impl Codegen {
                     return;
                 }
 
-                self.output.push_str("quiche::check!(");
+                self.output.push_str("crate::quiche::check!(");
 
                 if func_name == "print" {
                     self.output.push_str("println!(\"{:?}\", ");

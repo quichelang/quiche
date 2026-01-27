@@ -57,15 +57,15 @@ class StmtExpr:
 class ExprConstant:
     pass
 
-@extern(path="rustpython_parser::ast::ExprBinOp", no_generic=true)
+@extern(path="rustpython_parser::ast::ExprBinOp", no_generic=True)
 class ExprBinOp:
     pass
 
-@extern(path="rustpython_parser::parser::ParseError", no_generic=true)
+@extern(path="rustpython_parser::ParseError", no_generic=True)
 class ParseError:
     pass
 
-@extern(path="rustpython_parser::parser::parse_program")
-def parse_program(source: str, filename: str) -> Result[Mod, ParseError]:
+@extern(path="rustpython_parser::parse_program")
+def parse_program(source: StrRef, filename: StrRef) -> Result[Mod, ParseError]:
     pass
 

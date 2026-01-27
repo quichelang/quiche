@@ -3,144 +3,15 @@ class RustString:
     def new() -> RustString: pass
     def push_str(self, s: StrRef): pass
 
-# --- AST Bindings ---
-@extern(path="rustpython_parser::ast::ModModule", no_generic=True)
-class ModModule:
-    pass
-
-@extern(path="rustpython_parser::ast::Mod", no_generic=True)
-class Mod:
-    pass
-
-@extern(path="rustpython_parser::ast::Stmt", no_generic=True)
-class Stmt:
-    pass
-
-@extern(path="rustpython_parser::ast::Expr", no_generic=True)
-class Expr:
-    pass
-
-@extern(path="rustpython_parser::ast::Operator", no_generic=True)
-class Operator:
-    pass
-
-@extern(path="rustpython_parser::ast::Constant", no_generic=True)
-class Constant:
-    pass
-
-@extern(path="rustpython_parser::ast::Arguments", no_generic=True)
-class Arguments:
-    pass
-
-@extern(path="rustpython_parser::ast::Arg", no_generic=True)
-class Arg:
-    pass
-
-@extern(path="rustpython_parser::ast::ExprName", no_generic=True)
-class ExprName:
-    pass
-
-@extern(path="rustpython_parser::ast::StmtFunctionDef", no_generic=True)
-class StmtFunctionDef:
-    pass
-
-@extern(path="rustpython_parser::ast::StmtReturn", no_generic=True)
-class StmtReturn:
-    pass
-
-@extern(path="rustpython_parser::ast::StmtAssign", no_generic=True)
-class StmtAssign:
-    pass
-
-@extern(path="rustpython_parser::ast::StmtExpr", no_generic=True)
-class StmtExpr:
-    pass
-
-@extern(path="rustpython_parser::ast::ExprConstant", no_generic=True)
-class ExprConstant:
-    pass
-
-@extern(path="rustpython_parser::ast::ExprBinOp", no_generic=true)
-class ExprBinOp:
-    pass
-
 @extern(path="rustpython_parser::ParseError", no_generic=True)
 class ParseError:
     pass
 
+from compiler import Codegen
+
 @extern(path="rustpython_parser::parse_program")
-def parse_program(source: StrRef, filename: StrRef) -> Result[List[Stmt], ParseError]:
+def parse_program(source: StrRef, filename: StrRef) -> Result[List[ast.Stmt], ParseError]:
     pass
-
-# --- Compiler ---
-
-class Codegen:
-    output: RustString
-
-    def __init__(self):
-        self.output = RustString.new()
-
-    def new() -> Codegen:
-        return Codegen(output=RustString.new())
-
-    def generate_stmt(self, stmt: Stmt):
-        match stmt:
-            case Stmt.FunctionDef(f):
-                self.output.push_str(as_ref("fn "))
-                self.output.push_str(as_ref(f.name))
-                self.output.push_str(as_ref("() {\n"))
-                for s in f.body:
-                    self.generate_stmt(s)
-                self.output.push_str(as_ref("}\n"))
-            case Stmt.Expr(e):
-                self.generate_expr(deref(e.value))
-                self.output.push_str(as_ref(";\n"))
-            case Stmt.Return(r):
-                self.output.push_str(as_ref("return "))
-                match r.value:
-                    case Some(v):
-                        self.generate_expr(deref(v))
-                    case None:
-                        pass
-                self.output.push_str(as_ref(";\n"))
-            case Stmt.Assign(a):
-                # Simple single target assignment
-                match as_ref(a.targets[0]):
-                    case Expr.Name(n):
-                         self.output.push_str(as_ref("let "))
-                         self.output.push_str(as_ref(n.id))
-                         self.output.push_str(as_ref(" = "))
-                    case _:
-                         pass
-                self.generate_expr(deref(a.value))
-                self.output.push_str(as_ref(";\n"))
-            case _:
-                self.output.push_str(as_ref("// Unimplemented stmt\n"))
-
-    def generate_expr(self, expr: Expr):
-        match expr:
-            case Expr.Constant(c):
-                match c.value:
-                    case Constant.Int(i):
-                        # i is BigInt? rustpython_ast::Constant::Int(BigInt)
-                        # ToString?
-                        # i.to_string()
-                        self.output.push_str(as_ref("42")) # Placeholder until BigInt binding
-                    case Constant.Str(s):
-                         self.output.push_str(as_ref("\""))
-                         self.output.push_str(as_ref(s))
-                         self.output.push_str(as_ref("\""))
-                    case _:
-                        self.output.push_str(as_ref("/* const */"))
-            case Expr.Name(n):
-                self.output.push_str(as_ref(n.id))
-            case Expr.BinOp(b):
-                self.generate_expr(deref(b.left))
-                # Operator mapping is needed, assume Add (+)
-                self.output.push_str(as_ref(" + "))
-                self.generate_expr(deref(b.right))
-            case _:
-                self.output.push_str(as_ref("/* expr */"))
 
 # --- Main ---
 
@@ -157,7 +28,7 @@ def main():
     # Parse
     match parse_program(as_ref(source), as_ref("<embedded>")):
         case Ok(stmts):
-            # Compile
+            # Compile using modular Codegen
             codegen = Codegen.new()
             
             for stmt in stmts:
@@ -168,4 +39,3 @@ def main():
             
         case Err(e):
             print("Parse Error")
-            # print(e)

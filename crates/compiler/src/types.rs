@@ -79,6 +79,7 @@ impl Codegen {
                 output.push_str(")");
                 output
             }
+            ast::Expr::Attribute(_) => self.expr_to_string(expr).replace("::", "::"), // Already uses :: from expr_to_string
             _ => format!("/* complex type: {:?} */", expr),
         }
     }
@@ -86,6 +87,7 @@ impl Codegen {
     pub(crate) fn expr_to_string(&self, expr: &ast::Expr) -> String {
         match expr {
             ast::Expr::Name(n) => n.id.to_string(),
+            ast::Expr::Attribute(a) => format!("{}::{}", self.expr_to_string(&a.value), a.attr),
             _ => "unknown".to_string(),
         }
     }

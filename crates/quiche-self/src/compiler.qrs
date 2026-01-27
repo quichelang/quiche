@@ -1,9 +1,9 @@
 import ast
 
-@extern(path="std::string::String", no_generic=true)
+@extern(path="std::string::String", no_generic=True)
 class RustString:
     def new() -> RustString: pass
-    def push_str(self, s: str): pass
+    def push_str(self, s: StrRef): pass
 
 class Codegen:
     output: RustString
@@ -11,62 +11,61 @@ class Codegen:
     def __init__(self):
         self.output = RustString.new()
 
+    def new() -> Codegen:
+        return Codegen(output=RustString.new())
+
     def generate_stmt(self, stmt: ast.Stmt):
         match stmt:
             case ast.Stmt.FunctionDef(f):
-                self.output.push_str("fn ")
-                self.output.push_str(f.name)
-                self.output.push_str("() {\n")
+                self.output.push_str(as_ref("fn "))
+                self.output.push_str(as_ref(f.name))
+                self.output.push_str(as_ref("() {\n"))
                 for s in f.body:
                     self.generate_stmt(s)
-                self.output.push_str("}\n")
+                self.output.push_str(as_ref("}\n"))
             case ast.Stmt.Expr(e):
-                self.generate_expr(e.value)
-                self.output.push_str(";\n")
+                self.generate_expr(deref(e.value))
+                self.output.push_str(as_ref(";\n"))
             case ast.Stmt.Return(r):
-                self.output.push_str("return ")
+                self.output.push_str(as_ref("return "))
                 match r.value:
                     case Some(v):
-                        self.generate_expr(v)
+                        self.generate_expr(deref(v))
                     case None:
                         pass
-                self.output.push_str(";\n")
+                self.output.push_str(as_ref(";\n"))
             case ast.Stmt.Assign(a):
                 # Simple single target assignment
-                match a.targets[0]:
+                match as_ref(a.targets[0]):
                     case ast.Expr.Name(n):
-                         self.output.push_str("let ")
-                         self.output.push_str(n.id)
-                         self.output.push_str(" = ")
+                         self.output.push_str(as_ref("let "))
+                         self.output.push_str(as_ref(n.id))
+                         self.output.push_str(as_ref(" = "))
                     case _:
                          pass
-                self.generate_expr(a.value)
-                self.output.push_str(";\n")
+                self.generate_expr(deref(a.value))
+                self.output.push_str(as_ref(";\n"))
             case _:
-                self.output.push_str("// Unimplemented stmt\n")
+                self.output.push_str(as_ref("// Unimplemented stmt\n"))
 
     def generate_expr(self, expr: ast.Expr):
         match expr:
             case ast.Expr.Constant(c):
                 match c.value:
                     case ast.Constant.Int(i):
-                        # Need to_string on BigInt
-                        # Quiche doesn't support method call on extern enum variant payload easily unless implied?
-                        # i.to_string() should work if BigInt has to_string
-                        # self.output.push_str(i.to_string())
-                        self.output.push_str("42") # Placeholder until BigInt binding
+                        self.output.push_str(as_ref("42")) # Placeholder until BigInt binding
                     case ast.Constant.Str(s):
-                         self.output.push_str("\"")
-                         self.output.push_str(s)
-                         self.output.push_str("\"")
+                         self.output.push_str(as_ref("\""))
+                         self.output.push_str(as_ref(s))
+                         self.output.push_str(as_ref("\""))
                     case _:
-                        self.output.push_str("/* const */")
+                        self.output.push_str(as_ref("/* const */"))
             case ast.Expr.Name(n):
-                self.output.push_str(n.id)
+                self.output.push_str(as_ref(n.id))
             case ast.Expr.BinOp(b):
-                self.generate_expr(b.left)
+                self.generate_expr(deref(b.left))
                 # Operator mapping is needed, assume Add (+)
-                self.output.push_str(" + ")
-                self.generate_expr(b.right)
+                self.output.push_str(as_ref(" + "))
+                self.generate_expr(deref(b.right))
             case _:
-                self.output.push_str("/* expr */")
+                self.output.push_str(as_ref("/* expr */"))
