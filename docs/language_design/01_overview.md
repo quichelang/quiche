@@ -5,18 +5,21 @@ Quiche is a language that offers the **ergonomics of Python** with the **perform
 
 ## Core Principles
 
-1.  **Python Syntax, Rust Semantics**:
-    -   We use Python's syntax (`def`, `class`, `if`, `match`) because it is readable and familiar.
-    -   We enforce Rust's semantics (static typing, move semantics, exhaustiveness) because they are correct and performant.
+1.  **Less Verbose Rust (The 80/20 Rule)**:
+    -   We aim to support 80% of use-cases with 20% less flexibility if it means significantly less verbosity.
+    -   We make meaningful assumptions (like "Strings are usually owned") to remove friction.
+    -   Constraints are added to support performance without the cognitive load of full Rust.
 
-2.  **Native Compilation**:
+2.  **Python Syntax, Rust Semantics**:
+    -   We use Python's syntax (`def`, `class`, `if`, `match`) because it is readable and familiar.
+    -   We enforce Rust's semantics (static typing, move semantics, exhaustiveness).
+
+3.  **Native Compilation**:
     -   Quiche compiles directly to idiomatic Rust.
     -   There is no runtime overhead (VM or GC).
-    -   `match` compiles to `match`. `class` compiles to `struct`.
 
-3.  **No "Holes"**:
-    -   We do not attempt to emulate Python's dynamic features (like `getattr` on arbitrary objects or runtime type modification).
-    -   If a feature cannot be statically analyzed or compiled to safe Rust, it is generally excluded or requires `unsafe` blocks.
+4.  **No "Holes"**:
+    -   We do not attempt to emulate Python's dynamic features (like `getattr` on arbitrary objects).
 
 ## Syntax Mapping Legend
 

@@ -14,58 +14,61 @@ class Codegen:
     def new() -> Codegen:
         return Codegen(output=RustString.new())
 
+    def emit(self, s: String):
+        self.output.push_str(as_ref(s))
+
     def generate_stmt(self, stmt: ast.Stmt):
         match stmt:
             case ast.Stmt.FunctionDef(f):
-                self.output.push_str(as_ref("fn "))
-                self.output.push_str(as_ref(f.name))
-                self.output.push_str(as_ref("() {\n"))
+                self.emit("fn ")
+                self.emit(f.name.to_string())
+                self.emit("() {\n")
                 for s in f.body:
                     self.generate_stmt(s)
-                self.output.push_str(as_ref("}\n"))
+                self.emit("}\n")
             case ast.Stmt.Expr(e):
                 self.generate_expr(deref(e.value))
-                self.output.push_str(as_ref(";\n"))
+                self.emit(";\n")
             case ast.Stmt.Return(r):
-                self.output.push_str(as_ref("return "))
+                self.emit("return ")
                 match r.value:
                     case Some(v):
                         self.generate_expr(deref(v))
                     case None:
                         pass
-                self.output.push_str(as_ref(";\n"))
+                self.emit(";\n")
             case ast.Stmt.Assign(a):
                 # Simple single target assignment
                 match as_ref(a.targets[0]):
                     case ast.Expr.Name(n):
-                         self.output.push_str(as_ref("let "))
-                         self.output.push_str(as_ref(n.id))
-                         self.output.push_str(as_ref(" = "))
+                         self.emit("let ")
+                         self.emit(n.id.to_string())
+                         self.emit(" = ")
                     case _:
                          pass
                 self.generate_expr(deref(a.value))
-                self.output.push_str(as_ref(";\n"))
+                self.emit(";\n")
             case _:
-                self.output.push_str(as_ref("// Unimplemented stmt\n"))
+                self.emit("// Unimplemented stmt\n")
 
     def generate_expr(self, expr: ast.Expr):
         match expr:
             case ast.Expr.Constant(c):
                 match c.value:
                     case ast.Constant.Int(i):
-                        self.output.push_str(as_ref("42")) # Placeholder until BigInt binding
+                        self.emit("42") # Placeholder until BigInt binding
                     case ast.Constant.Str(s):
-                         self.output.push_str(as_ref("\""))
-                         self.output.push_str(as_ref(s))
-                         self.output.push_str(as_ref("\""))
+                         self.emit("\"")
+                         self.emit(s)
+                         self.emit("\"")
                     case _:
-                        self.output.push_str(as_ref("/* const */"))
+                        self.emit("/* const */")
             case ast.Expr.Name(n):
-                self.output.push_str(as_ref(n.id))
+                self.emit(n.id.to_string())
             case ast.Expr.BinOp(b):
                 self.generate_expr(deref(b.left))
                 # Operator mapping is needed, assume Add (+)
-                self.output.push_str(as_ref(" + "))
+                self.emit(" + ")
                 self.generate_expr(deref(b.right))
             case _:
-                self.output.push_str(as_ref("/* expr */"))
+                self.emit("/* expr */")
