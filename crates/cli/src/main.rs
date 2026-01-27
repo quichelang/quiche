@@ -9,20 +9,23 @@ mod templates;
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
+        eprintln!("Error: No command specified.");
         print_usage();
-        return;
+        std::process::exit(1);
     }
 
     match args[1].as_str() {
         "new" => {
             if args.len() < 3 {
+                eprintln!("Error: Missing project name.");
                 println!("Usage: quiche new [--lib] <project_name>");
-                return;
+                std::process::exit(1);
             }
             if args[2] == "--lib" {
                 if args.len() < 4 {
+                    eprintln!("Error: Missing project name.");
                     println!("Usage: quiche new --lib <project_name>");
-                    return;
+                    std::process::exit(1);
                 }
                 create_new_project(&args[3], true);
             } else {
@@ -36,7 +39,9 @@ fn main() {
             if Path::new("Cargo.toml").exists() {
                 run_cargo_command("run", &args[2..]);
             } else {
-                println!("No Cargo.toml found. Did you mean 'quiche <file.qrs>'?");
+                eprintln!("Error: No Cargo.toml found in current directory.");
+                eprintln!("To run a single script, use: quiche <file.qrs>");
+                std::process::exit(1);
             }
         }
         "test" => {
@@ -46,17 +51,43 @@ fn main() {
                 // If we are in the quiche repository root (dev mode), run cargo test
                 // which triggers tests/runner.rs
                 // Use --test runner to avoid running empty lib tests
-                let mut test_args = vec!["--test".to_string(), "runner".to_string()];
-                test_args.extend_from_slice(&args[2..]);
-                run_cargo_command("test", &test_args);
+                // Check if we are actually in the root by checking for tests/runner.rs presence maybe?
+                // Or just assume if no Cargo.toml, checking for tests dir
+                if Path::new("tests/runner.rs").exists() {
+                    let mut test_args = vec!["--test".to_string(), "runner".to_string()];
+                    test_args.extend_from_slice(&args[2..]);
+                    run_cargo_command("test", &test_args);
+                } else {
+                    eprintln!("Error: No Cargo.toml found.");
+                    std::process::exit(1);
+                }
             }
         }
-        _ => {
-            let filename = &args[1];
-            if filename.ends_with(".qrs") {
-                run_single_file(filename, &args[2..]);
+        arg => {
+            if arg.ends_with(".qrs") {
+                if !Path::new(arg).exists() {
+                    eprintln!("Error: File '{}' not found.", arg);
+                    std::process::exit(1);
+                }
+                run_single_file(arg, &args[2..]);
             } else {
+                eprintln!("Error: Unrecognized command or file '{}'", arg);
+                if Path::new(arg).exists() {
+                    eprintln!("Note: Quiche scripts must end with .qrs extension.");
+                } else {
+                    // Simple suggestions
+                    let cmds = ["new", "build", "run", "test"];
+                    for cmd in cmds {
+                        // Check for common typo (1 char off) - manually or just prefix
+                        if cmd.starts_with(arg) || arg.starts_with(cmd) {
+                            eprintln!("Did you mean '{}'?", cmd);
+                            break;
+                        }
+                    }
+                }
+                println!();
                 print_usage();
+                std::process::exit(1);
             }
         }
     }
@@ -82,9 +113,21 @@ fn create_new_project(name: &str, is_lib: bool) {
 
     fs::write(path.join("Quiche.toml"), templates::get_quiche_toml(name))
         .expect("Failed to write Quiche.toml");
+    // Determine path to compiler crate (relative to CLI crate which is compiled)
+    // CARGO_MANIFEST_DIR points to crates/cli
+    let compiler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("compiler")
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new("../crates/compiler").to_path_buf());
+
+    let compiler_path_str = compiler_path.to_str().unwrap().replace("\\", "/");
+    // Escape backslashes for Windows path in string literal if needed, but Cargo handles / fine.
+
     fs::write(
         path.join("Cargo.toml"),
-        templates::get_cargo_toml(name, is_lib),
+        templates::get_cargo_toml(name, is_lib, &compiler_path_str),
     )
     .expect("Failed to write Cargo.toml");
     fs::write(path.join("build.rs"), templates::get_build_rs()).expect("Failed to write build.rs");
@@ -117,7 +160,13 @@ fn run_cargo_command(cmd: &str, args: &[String]) {
 }
 
 fn run_single_file(filename: &str, script_args: &[String]) {
-    let source_raw = fs::read_to_string(filename).expect("Failed to read file");
+    let source_raw = match fs::read_to_string(filename) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error: Failed to read file '{}': {}", filename, e);
+            std::process::exit(1);
+        }
+    };
     let source = source_raw.replace("struct ", "class ");
 
     // Virtual Module System (Poor Man's Linker)

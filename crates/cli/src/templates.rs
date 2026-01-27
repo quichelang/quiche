@@ -10,7 +10,7 @@ version = "0.1.0"
     )
 }
 
-pub fn get_cargo_toml(name: &str, is_lib: bool) -> String {
+pub fn get_cargo_toml(name: &str, is_lib: bool, compiler_path: &str) -> String {
     let mut s = format!(
         r#"[package]
 name = "{}"
@@ -21,11 +21,11 @@ edition = "2024"
 [workspace]
 
 [build-dependencies]
-quiche_compiler = {{ path = "../crates/compiler" }}
+quiche_compiler = {{ path = "{}" }}
 
 [dependencies]
 "#,
-        name
+        name, compiler_path
     );
 
     if is_lib {
