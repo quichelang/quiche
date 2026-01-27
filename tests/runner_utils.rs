@@ -1,8 +1,11 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
+#[allow(dead_code)]
 pub fn compile_binary(package: &str, binary: &str) -> PathBuf {
     // Compile the binary once
     let status = Command::new("cargo")
@@ -30,26 +33,55 @@ pub fn compile_binary(package: &str, binary: &str) -> PathBuf {
     binary_path
 }
 
+fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Option<ExitStatus> {
+    let start = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait().expect("Failed to wait on child") {
+            return Some(status);
+        }
+
+        if start.elapsed() > timeout {
+            let _ = child.kill();
+            return None;
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[allow(dead_code)]
 pub fn run_spec_test(binary: &Path, spec_path: &Path) -> bool {
     let test_name = spec_path.file_name().unwrap().to_string_lossy();
     println!("Running spec: {}", test_name);
 
-    let output = Command::new(binary)
+    let mut child = Command::new(binary)
         .arg(spec_path)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .expect("Failed to execute binary");
 
-    if !output.status.success() {
-        println!("FAILED: {}", test_name);
-        println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
-        println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
-        return false;
-    } else {
-        println!("PASSED: {}", test_name);
-        return true;
+    match wait_with_timeout(&mut child, Duration::from_secs(15)) {
+        Some(status) => {
+            let output = child.wait_with_output().expect("Failed to read output");
+            if !status.success() {
+                println!("FAILED: {}", test_name);
+                println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
+                println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+                return false;
+            } else {
+                println!("PASSED: {}", test_name);
+                return true;
+            }
+        }
+        None => {
+            println!("TIMEOUT: {}", test_name);
+            return false;
+        }
     }
 }
 
+#[allow(dead_code)]
 pub fn run_integration_tests(package: &str, binary: &str) {
     let binary_path = compile_binary(package, binary);
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -79,6 +111,7 @@ pub fn run_integration_tests(package: &str, binary: &str) {
     }
 }
 
+#[allow(dead_code)]
 pub fn get_quiche_shim() -> &'static str {
     r#"
 mod quiche {
@@ -122,21 +155,34 @@ mod quiche {
 "#
 }
 
+#[allow(dead_code)]
 pub fn run_transpilation_test(binary: &Path, spec_path: &Path, project_root: &Path) -> bool {
     let test_name = spec_path.file_name().unwrap().to_string_lossy();
     println!("Running spec (transpilation): {}", test_name);
 
     // 1. Run Transpiler
-    let output = Command::new(binary)
+    let mut child = Command::new(binary)
         .arg(spec_path)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .expect("Failed to execute transpiler");
 
-    if !output.status.success() {
-        println!("Transpilation FAILED: {}", test_name);
-        println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
-        return false;
-    }
+    let output = match wait_with_timeout(&mut child, Duration::from_secs(15)) {
+        Some(status) => {
+            let out = child.wait_with_output().expect("Failed to read output");
+            if !status.success() {
+                println!("Transpilation FAILED: {}", test_name);
+                println!("Stderr: {}", String::from_utf8_lossy(&out.stderr));
+                return false;
+            }
+            out
+        }
+        None => {
+            println!("Transpilation TIMEOUT: {}", test_name);
+            return false;
+        }
+    };
 
     let rust_code = String::from_utf8_lossy(&output.stdout);
     if rust_code.contains("Type Errors found") {
@@ -193,24 +239,41 @@ quiche_runtime = {{ path = "{}" }}
 
     // 4. Run `cargo run`
     // Use --quiet to avoid build output spam
-    let run_output = Command::new("cargo")
+    // CRITICAL: Set CARGO_TARGET_DIR to avoid locking the main workspace target dir
+    // logic: project_root is a temp dir, so we can just use project_root/target
+    let target_dir = project_root.join("target");
+
+    let mut child = Command::new("cargo")
         .arg("run")
         .arg("--quiet")
         .current_dir(project_root)
-        .output()
+        .env("CARGO_TARGET_DIR", target_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .expect("Failed to run cargo run");
 
-    if !run_output.status.success() {
-        println!("Execution FAILED: {}", test_name);
-        println!("Stdout: {}", String::from_utf8_lossy(&run_output.stdout));
-        println!("Stderr: {}", String::from_utf8_lossy(&run_output.stderr));
-        return false;
-    } else {
-        println!("PASSED: {}", test_name);
-        return true;
+    match wait_with_timeout(&mut child, Duration::from_secs(15)) {
+        Some(status) => {
+            let output = child.wait_with_output().expect("Failed to read output");
+            if !status.success() {
+                println!("Execution FAILED: {}", test_name);
+                println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
+                println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+                return false;
+            } else {
+                println!("PASSED: {}", test_name);
+                return true;
+            }
+        }
+        None => {
+            println!("Execution TIMEOUT: {}", test_name);
+            return false;
+        }
     }
 }
 
+#[allow(dead_code)]
 pub fn run_self_hosted_tests(package: &str, binary: &str) {
     let binary_path = compile_binary(package, binary);
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
