@@ -142,14 +142,43 @@ impl Codegen {
                     }
                 }
 
-                // 3. Builtins & Generic Calls (Wrap ALL)
-                self.output.push_str("quiche::check!(");
-
+                // 3. Builtins & Generic Calls (Wrap ALL, except specific builtins)
                 let func_name = if let ast::Expr::Name(n) = &*c.func {
                     n.id.as_str()
                 } else {
                     ""
                 };
+
+                // Handle as_ref and deref without check! wrapper to preserve ref/deref semantics
+                if func_name == "as_ref" {
+                    if let Some(arg) = c.args.first() {
+                        self.output.push_str("&");
+                        self.generate_expr(arg.clone());
+                    }
+                    return;
+                }
+
+                if func_name == "deref" {
+                    if let Some(arg) = c.args.first() {
+                        self.output.push_str("*");
+                        self.generate_expr(arg.clone());
+                    }
+                    return;
+                }
+
+                if func_name == "parse_program" {
+                    self.output.push_str("parse_program(");
+                    for (i, arg) in c.args.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.generate_expr(arg.clone());
+                    }
+                    self.output.push_str(")");
+                    return;
+                }
+
+                self.output.push_str("quiche::check!(");
 
                 if func_name == "print" {
                     self.output.push_str("println!(\"{:?}\", ");
@@ -196,6 +225,16 @@ impl Codegen {
                     if let Some(arg) = c.args.first() {
                         self.generate_expr(arg.clone());
                         self.output.push_str(".len()");
+                    }
+                } else if func_name == "deref" {
+                    if let Some(arg) = c.args.first() {
+                        self.output.push_str("*");
+                        self.generate_expr(arg.clone());
+                    }
+                } else if func_name == "as_ref" {
+                    if let Some(arg) = c.args.first() {
+                        self.output.push_str("&");
+                        self.generate_expr(arg.clone());
                     }
                 } else if !c.keywords.is_empty() {
                     // Struct Init
@@ -259,7 +298,9 @@ impl Codegen {
                         self.output.push_str(&format!("{}.0", s));
                     }
                 }
-                ast::Constant::Str(s) => self.output.push_str(&format!("String::from(\"{}\")", s)),
+                ast::Constant::Str(s) => self
+                    .output
+                    .push_str(&format!("String::from(\"{}\")", s.replace("\"", "\\\""))),
                 ast::Constant::Bool(b) => self.output.push_str(if b { "true" } else { "false" }),
                 _ => self.output.push_str("/* unhandled constant */"),
             },

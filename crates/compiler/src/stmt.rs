@@ -154,9 +154,10 @@ impl Codegen {
             ast::Stmt::ClassDef(c) => {
                 self.push_indent();
 
-                // Check for @extern(path="...")
-                // We need to implement extract_extern_path helper or inline it here
+                // Check for @extern(path="...", no_generic=true)
                 let mut extern_path = None;
+                let mut no_generic = false;
+
                 for decorator in &c.decorator_list {
                     if let ast::Expr::Call(call) = decorator {
                         if let ast::Expr::Name(n) = &*call.func {
@@ -169,6 +170,12 @@ impl Codegen {
                                                     extern_path = Some(s.clone());
                                                 }
                                             }
+                                        } else if arg == "no_generic" {
+                                            if let ast::Expr::Constant(c) = &keyword.value {
+                                                if let ast::Constant::Bool(b) = c.value {
+                                                    no_generic = b;
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -178,10 +185,14 @@ impl Codegen {
                 }
 
                 if let Some(path) = extern_path {
-                    // type Vector<T> = std::vec::Vec<T>;
-                    // Minimal generic support for now
-                    self.output
-                        .push_str(&format!("type {}<T> = {}<T>;\n", c.name, path));
+                    if no_generic {
+                        self.output
+                            .push_str(&format!("type {} = {};\n", c.name, path));
+                    } else {
+                        // type Vector<T> = std::vec::Vec<T>;
+                        self.output
+                            .push_str(&format!("type {}<T> = {}<T>;\n", c.name, path));
+                    }
                     return;
                 }
 
@@ -481,7 +492,7 @@ impl Codegen {
                 }
                 let arg = &arg_with_default.def;
                 if arg.arg.as_str() == "self" {
-                    self.output.push_str("&self");
+                    self.output.push_str("&mut self");
                 } else {
                     let type_ann = if let Some(annotation) = &arg.annotation {
                         self.map_type(annotation)
