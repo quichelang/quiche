@@ -7,6 +7,7 @@ from compiler import Codegen
 class RustString:
     def new() -> RustString: pass
     def push_str(self, s: StrRef): pass
+    def clone(self) -> RustString: pass
 
 @extern(path="rustpython_parser::ParseError", no_generic=True)
 class ParseError:
@@ -16,20 +17,20 @@ class ParseError:
 def parse_program(source: StrRef, filename: StrRef) -> Result[List[ast.Stmt], ParseError]:
     pass
 
+@extern(path="crate::quiche::env_args_helper")
+def env_args() -> List[String]: pass
+
+@extern(path="std::fs::read_to_string")
+def read_to_string(path: String) -> String: pass 
+
+@extern(path="std::process::exit")
+def exit(code: i32): pass
+
+
 # --- Main ---
 
-def main():
-    print("=== Quiche Self-Hosted Compiler Prototype ===")
-    
-    # Simple source code to compile
-    source = "def foo():\n    x = 42\n    return x\n"
-    
-    print("Input Source:")
-    print(source)
-    print("---------------------------------------------")
-    
-    # Parse
-    match parse_program(as_ref(source), as_ref("<embedded>")):
+def compile_source(source: String, filename: String):
+    match parse_program(as_ref(source), as_ref(filename)):
         case Ok(stmts):
               # Type Check
             checker = types.TypeChecker.new()
@@ -40,16 +41,34 @@ def main():
                 print("Type Errors found:")
                 for err in checker.errors:
                     print(err)
+                exit(1)
             else:
-                print("Type Check Passed")
-                
                 # Codegen
                 codegen = compiler.Codegen.new()
                 for stmt in stmts:
                     codegen.generate_stmt(stmt)
                     
-                print("Generated Rust Code:")
                 print(codegen.output) 
             
         case Err(e):
-            print("Parse Error")
+            # print("Parse Error")
+            # ParseError might be opaque or hard to print if not Debug?
+            # Rust usually prints it.
+            print("Parse Error encountered")
+            exit(1)
+
+def main():
+    cli_args = env_args()
+    
+    if cli_args.len() > 1:
+        # Clone manually to avoid Host Compiler confusion on cli_args[1].clone()
+        filename = RustString.clone(as_ref(cli_args[1]))
+        
+        # auto-unwraps (panics) on error due to Host Compiler check! macro
+        source = read_to_string(filename.clone()) 
+        compile_source(source, filename)
+    else:
+        print("Usage: quiche_self <file.qrs>")
+        print("Running default demo...")
+        demo_source = "def foo():\n    x = 42\n    return x\n"
+        compile_source(demo_source, "<demo>")

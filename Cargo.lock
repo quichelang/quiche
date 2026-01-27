@@ -210,6 +210,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
+name = "num-bigint"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -306,6 +316,20 @@ dependencies = [
 name = "quiche_compiler"
 version = "0.1.0"
 dependencies = [
+ "rustpython-parser",
+]
+
+[[package]]
+name = "quiche_runtime"
+version = "0.1.0"
+
+[[package]]
+name = "quiche_self"
+version = "0.1.0"
+dependencies = [
+ "num-bigint",
+ "quiche_compiler",
+ "quiche_runtime",
  "rustpython-parser",
 ]
 

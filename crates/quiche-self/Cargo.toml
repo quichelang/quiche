@@ -3,14 +3,15 @@ name = "quiche_self"
 version = "0.1.0"
 edition = "2024"
 
-# Break out of any parent workspace
-[workspace]
+
 
 [build-dependencies]
 quiche_compiler = { path = "/Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/crates/compiler" }
 
 [dependencies]
 rustpython-parser = "0.4.0"
+quiche_runtime = { path = "../runtime" }
+num-bigint = "0.4"
 
 [[bin]]
 name = "quiche_self"

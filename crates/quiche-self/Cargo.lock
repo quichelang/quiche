@@ -303,10 +303,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "quiche_runtime"
+version = "0.1.0"
+
+[[package]]
 name = "quiche_self"
 version = "0.1.0"
 dependencies = [
  "quiche_compiler",
+ "quiche_runtime",
  "rustpython-parser",
 ]
 

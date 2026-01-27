@@ -2,5 +2,7 @@
 members = [
     "crates/compiler",
     "crates/cli",
+    "crates/quiche-self",
+    "crates/runtime",
 ]
 resolver = "2"

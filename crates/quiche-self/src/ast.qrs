@@ -4,6 +4,7 @@
 @extern(path="rustpython_parser::ast::Identifier", no_generic=True)
 class Identifier:
     def to_string(self) -> String: pass
+    def clone(self) -> Identifier: pass
 
 @extern(path="rustpython_parser::ast::ModModule", no_generic=True)
 class ModModule:
@@ -15,15 +16,19 @@ class Mod:
 
 @extern(path="rustpython_parser::ast::Stmt", no_generic=True)
 class Stmt:
-    pass
+    def clone(self) -> Stmt: pass
 
 @extern(path="rustpython_parser::ast::Expr", no_generic=True)
 class Expr:
-    pass
+    def clone(self) -> Expr: pass
 
 @extern(path="rustpython_parser::ast::Operator", no_generic=True)
 class Operator:
     pass
+
+@extern(path="rustpython_parser::ast::Int", no_generic=True)
+class Int:
+    def to_u32(self) -> Option[u32]: pass
 
 @extern(path="rustpython_parser::ast::Constant", no_generic=True)
 class Constant:
@@ -99,6 +104,96 @@ class ExprTuple:
 @extern(path="rustpython_parser::ast::ExprList", no_generic=True)
 class ExprList:
     elts: List[Expr]
+
+@extern(path="rustpython_parser::ast::ExprIfExp", no_generic=True)
+class ExprIfExp:
+    test: Box[Expr]
+    body: Box[Expr]
+    orelse: Box[Expr]
+
+@extern(path="rustpython_parser::ast::ExprCompare", no_generic=True)
+class ExprCompare:
+    left: Box[Expr]
+    ops: List[CmpOp]
+    comparators: List[Expr]
+
+@extern(path="rustpython_parser::ast::CmpOp", no_generic=True)
+class CmpOp:
+    pass
+
+@extern(path="rustpython_parser::ast::StmtAnnAssign", no_generic=True)
+class StmtAnnAssign:
+    target: Box[Expr]
+    annotation: Box[Expr]
+    value: Option[Box[Expr]]
+    simple: usize # bool?
+
+@extern(path="num_bigint::BigInt", no_generic=True)
+class BigInt:
+    def to_string(self) -> String: pass
+
+@extern(path="rustpython_parser::ast::StmtClassDef", no_generic=True)
+class StmtClassDef:
+    name: Identifier
+    bases: List[Expr]
+    keywords: List[Keyword]
+    body: List[Stmt]
+    decorator_list: List[Expr]
+
+@extern(path="rustpython_parser::ast::Keyword", no_generic=True)
+class Keyword:
+    arg: Option[Identifier]
+    value: Box[Expr]
+
+@extern(path="rustpython_parser::ast::StmtMatch", no_generic=True)
+class StmtMatch:
+    subject: Box[Expr]
+    cases: List[MatchCase]
+
+@extern(path="rustpython_parser::ast::MatchCase", no_generic=True)
+class MatchCase:
+    pattern: Box[Pattern]
+    guard: Option[Box[Expr]]
+    body: List[Stmt]
+
+@extern(path="rustpython_parser::ast::StmtImport", no_generic=True)
+class StmtImport:
+    names: List[Alias]
+
+@extern(path="rustpython_parser::ast::StmtImportFrom", no_generic=True)
+class StmtImportFrom:
+    module: Option[Identifier]
+    names: List[Alias]
+    level: Option[usize]
+
+@extern(path="rustpython_parser::ast::Alias", no_generic=True)
+class Alias:
+    name: Identifier
+    asname: Option[Identifier]
+
+@extern(path="rustpython_parser::ast::Pattern", no_generic=True)
+class Pattern:
+    def clone(self) -> Pattern: pass
+
+@extern(path="rustpython_parser::ast::PatternMatchValue", no_generic=True)
+class PatternMatchValue:
+    value: Box[Expr]
+
+@extern(path="rustpython_parser::ast::PatternMatchClass", no_generic=True)
+class PatternMatchClass:
+    cls: Box[Expr]
+    patterns: List[Pattern]
+    kwd_attrs: List[Identifier]
+    kwd_patterns: List[Pattern]
+
+@extern(path="rustpython_parser::ast::PatternMatchAs", no_generic=True)
+class PatternMatchAs:
+    pattern: Option[Box[Pattern]]
+    name: Option[Identifier]
+    
+@extern(path="rustpython_parser::ast::PatternMatchOr", no_generic=True)
+class PatternMatchOr:
+    patterns: List[Pattern]
 
 @extern(path="rustpython_parser::ParseError", no_generic=True)
 class ParseError:
