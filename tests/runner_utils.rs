@@ -1,0 +1,241 @@
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+pub fn compile_binary(package: &str, binary: &str) -> PathBuf {
+    // Compile the binary once
+    let status = Command::new("cargo")
+        .args(&["build", "-p", package, "--bin", binary])
+        .status()
+        .expect("Failed to build binary");
+
+    assert!(status.success(), "Failed to compile binary {}", binary);
+
+    // Located in target/debug/binary
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    // Start from the crate's manifest dir (e.g. crates/cli) and go to workspace root
+    // But since this file is included via #[path], CARGO_MANIFEST_DIR will be the crate running the test
+    // which is e.g. crates/cli or crates/quiche-self.
+    // Both are 2 levels deep from workspace root usually?
+    // Let's assume standard layout: crates/<crate>/Cargo.toml
+    let workspace_root = PathBuf::from(manifest_dir).join("../..");
+    let binary_path = workspace_root.join("target/debug").join(binary);
+
+    assert!(
+        binary_path.exists(),
+        "Binary not found at {:?}",
+        binary_path
+    );
+    binary_path
+}
+
+pub fn run_spec_test(binary: &Path, spec_path: &Path) -> bool {
+    let test_name = spec_path.file_name().unwrap().to_string_lossy();
+    println!("Running spec: {}", test_name);
+
+    let output = Command::new(binary)
+        .arg(spec_path)
+        .output()
+        .expect("Failed to execute binary");
+
+    if !output.status.success() {
+        println!("FAILED: {}", test_name);
+        println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
+        println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+        return false;
+    } else {
+        println!("PASSED: {}", test_name);
+        return true;
+    }
+}
+
+pub fn run_integration_tests(package: &str, binary: &str) {
+    let binary_path = compile_binary(package, binary);
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    // Assumes crates/<crate_name>/tests/runner.rs context
+    let tests_dir = PathBuf::from(manifest_dir).join("../../tests");
+
+    if !tests_dir.exists() {
+        println!("Tests dir not found at {:?}", tests_dir);
+        return;
+    }
+
+    let mut failed = false;
+    let entries = fs::read_dir(tests_dir).expect("Failed to read tests dir");
+
+    for entry in entries {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.extension().unwrap_or_default() == "qrs" {
+            if !run_spec_test(&binary_path, &path) {
+                failed = true;
+            }
+        }
+    }
+
+    if failed {
+        panic!("Some integration tests failed");
+    }
+}
+
+pub fn get_quiche_shim() -> &'static str {
+    r#"
+mod quiche {
+    #![allow(unused_macros, unused_imports)]
+    
+    // High Priority: Consumes Self (Result/Option)
+    pub trait QuicheResult {
+        type Output;
+        fn quiche_handle(self) -> Self::Output;
+    }
+    
+    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {
+        type Output = T;
+        fn quiche_handle(self) -> T {
+            self.expect("Quiche Exception")
+        }
+    }
+    
+    // Low Priority: Takes &Self (Clone fallback)
+    pub trait QuicheGeneric {
+        fn quiche_handle(&self) -> Self;
+    }
+    
+    impl<T: Clone> QuicheGeneric for T {
+        fn quiche_handle(&self) -> Self {
+            self.clone()
+        }
+    }
+    
+    macro_rules! check {
+        ($val:expr) => {
+            {
+                use crate::quiche::{QuicheResult, QuicheGeneric};
+                ($val).quiche_handle()
+            }
+        };
+    }
+    pub(crate) use check;
+    pub(crate) use check as call;
+}
+"#
+}
+
+pub fn run_transpilation_test(binary: &Path, spec_path: &Path) -> bool {
+    let test_name = spec_path.file_name().unwrap().to_string_lossy();
+    println!("Running spec (transpilation): {}", test_name);
+
+    // 1. Run Transpiler
+    let output = Command::new(binary)
+        .arg(spec_path)
+        .output()
+        .expect("Failed to execute transpiler");
+
+    if !output.status.success() {
+        println!("Transpilation FAILED: {}", test_name);
+        println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+        return false;
+    }
+
+    let rust_code = String::from_utf8_lossy(&output.stdout);
+    if rust_code.contains("Type Errors found") {
+        println!("Transpilation Type Errors: {}", test_name);
+        println!("{}", rust_code);
+        return false;
+    }
+
+    // 2. Wrap if needed
+    let wrapped_user_code = if !rust_code.contains("fn main") {
+        format!("fn main() {{\n{}\n}}\n", rust_code)
+    } else {
+        rust_code.to_string()
+    };
+
+    let mut full_code = String::new();
+    full_code.push_str(
+        "#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n",
+    );
+    full_code.push_str(&wrapped_user_code);
+
+    // 3. Create Temp Cargo Project
+    let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+    let proj_dir = temp_dir.path();
+    let src_dir = proj_dir.join("src");
+    fs::create_dir(&src_dir).expect("Failed to create src dir");
+
+    // Resolve path to runtime relative to CWD (runner context)
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    // Assuming we are in crates/quiche-self/tests/runner.rs, so manifest is crates/quiche-self
+    // Runtime is ../runtime.
+    // Need absolute path for generated Cargo.toml to be safe
+    let runtime_path = PathBuf::from(manifest_dir)
+        .join("../runtime")
+        .canonicalize()
+        .unwrap();
+    let runtime_path_str = runtime_path.to_str().unwrap().replace("\\", "/");
+
+    let cargo_toml = format!(
+        r#"
+[package]
+name = "test_bin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quiche_runtime = {{ path = "{}" }}
+"#,
+        runtime_path_str
+    );
+
+    fs::write(proj_dir.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
+    fs::write(src_dir.join("main.rs"), full_code).expect("Failed to write main.rs");
+
+    // 4. Run `cargo run`
+    // Use --quiet to avoid build output spam
+    let run_output = Command::new("cargo")
+        .arg("run")
+        .arg("--quiet")
+        .current_dir(proj_dir)
+        .output()
+        .expect("Failed to run cargo run");
+
+    if !run_output.status.success() {
+        println!("Execution FAILED: {}", test_name);
+        println!("Stdout: {}", String::from_utf8_lossy(&run_output.stdout));
+        println!("Stderr: {}", String::from_utf8_lossy(&run_output.stderr));
+        return false;
+    } else {
+        println!("PASSED: {}", test_name);
+        return true;
+    }
+}
+
+pub fn run_self_hosted_tests(package: &str, binary: &str) {
+    let binary_path = compile_binary(package, binary);
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let tests_dir = PathBuf::from(manifest_dir).join("../../tests");
+
+    if !tests_dir.exists() {
+        println!("Tests dir not found at {:?}", tests_dir);
+        return;
+    }
+
+    let mut failed = false;
+    let entries = fs::read_dir(tests_dir).expect("Failed to read tests dir");
+
+    for entry in entries {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.extension().unwrap_or_default() == "qrs" {
+            // Use transpilation runner
+            if !run_transpilation_test(&binary_path, &path) {
+                failed = true;
+            }
+        }
+    }
+
+    if failed {
+        panic!("Some integration tests failed");
+    }
+}

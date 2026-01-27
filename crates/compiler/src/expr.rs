@@ -16,6 +16,20 @@ impl Codegen {
                 self.output.push_str(&format!(" {} ", op_str));
                 self.generate_expr(*b.right);
             }
+            ast::Expr::BoolOp(b) => {
+                let op_str = match b.op {
+                    ast::BoolOp::And => "&&",
+                    ast::BoolOp::Or => "||",
+                };
+                for (i, value) in b.values.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(&format!(" {} ", op_str));
+                    }
+                    self.output.push_str("(");
+                    self.generate_expr(value.clone());
+                    self.output.push_str(")");
+                }
+            }
             ast::Expr::UnaryOp(u) => {
                 let op_str = match u.op {
                     ast::UnaryOp::Invert => "!",
@@ -196,6 +210,15 @@ impl Codegen {
                         self.generate_expr(arg.clone());
                     }
                     self.output.push_str(")");
+                } else if func_name == "print_str" {
+                    self.output.push_str("println!(\"{}\", ");
+                    for (i, arg) in c.arguments.args.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.generate_expr(arg.clone());
+                    }
+                    self.output.push_str(")");
                 } else if func_name == "assert" {
                     self.output.push_str("assert!(");
                     if let Some(arg) = c.arguments.args.first() {
@@ -299,7 +322,19 @@ impl Codegen {
                 let base_str = self.expr_to_string(&a.value);
                 self.generate_expr(*a.value.clone());
 
-                let sep = if self.is_type_or_mod(&base_str) {
+                let sep = if matches!(
+                    &*a.value,
+                    ast::Expr::StringLiteral(_)
+                        | ast::Expr::NumberLiteral(_)
+                        | ast::Expr::BooleanLiteral(_)
+                        | ast::Expr::NoneLiteral(_)
+                        | ast::Expr::List(_)
+                        | ast::Expr::Dict(_)
+                        | ast::Expr::Tuple(_)
+                        | ast::Expr::Lambda(_)
+                ) {
+                    "."
+                } else if self.is_type_or_mod(&base_str) {
                     "::"
                 } else {
                     "."

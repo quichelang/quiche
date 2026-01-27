@@ -67,6 +67,9 @@ impl Codegen {
                 output
             }
             ast::Expr::Attribute(_) => self.expr_to_string(expr),
+            ast::Expr::StringLiteral(_) => "String".to_string(),
+            ast::Expr::BooleanLiteral(_) => "bool".to_string(),
+            ast::Expr::NumberLiteral(_) => "i32".to_string(),
             _ => format!("/* complex type: {:?} */", expr),
         }
     }
@@ -84,6 +87,13 @@ impl Codegen {
                 format!("{}{}{}", base_str, sep, a.attr)
             }
             ast::Expr::Subscript(_) => self.map_type_expr(expr), // Use turbo-fish for expressions
+            ast::Expr::StringLiteral(s) => s.value.to_string(),
+            ast::Expr::BooleanLiteral(b) => (if b.value { "true" } else { "false" }).to_string(),
+            ast::Expr::NumberLiteral(n) => match &n.value {
+                ast::Number::Int(i) => i.to_string(),
+                ast::Number::Float(f) => f.to_string(),
+                _ => "0".to_string(),
+            },
             _ => format!("/* unknown: {:?} */", expr),
         }
     }

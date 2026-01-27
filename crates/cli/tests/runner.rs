@@ -1,56 +1,56 @@
-use std::env;
-use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
+use tempfile::TempDir;
+
+#[path = "../../../tests/runner_utils.rs"]
+mod runner_utils;
 
 #[test]
-fn run_integration_tests() {
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    // crates/cli -> ../../tests
-    let tests_dir = PathBuf::from(manifest_dir).join("../../tests");
+fn integration_tests() {
+    runner_utils::run_integration_tests("quiche_cli", "quiche");
+}
 
-    if !tests_dir.exists() {
-        println!("Tests dir not found at {:?}", tests_dir);
-        return;
-    }
+#[test]
+fn test_project_lifecycle() {
+    let binary_path = runner_utils::compile_binary("quiche_cli", "quiche");
 
-    let mut failed = false;
-    let entries = fs::read_dir(tests_dir).expect("Failed to read tests dir");
+    // 1. Create a temp directory
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let root = temp_dir.path();
 
-    // Locate the quiche binary
-    // Using cargo run logic or locating the binary in target/debug
-    // Reliable way: cargo build first, then execute target/debug/quiche
+    // 2. Run `quiche new test_proj`
+    let status = Command::new(&binary_path)
+        .arg("new")
+        .arg("test_proj")
+        .current_dir(root)
+        .status()
+        .expect("Failed to run quiche new");
 
-    for entry in entries {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().unwrap_or_default() == "qrs" {
-            let test_name = path.file_name().unwrap().to_string_lossy();
-            println!("Running spec: {}", test_name);
+    assert!(status.success(), "quiche new failed");
 
-            // Invoke quiche cli
-            // We use standard cargo invocation to run the binary from the workspace
-            let status = Command::new("cargo")
-                .arg("run")
-                .arg("-p")
-                .arg("quiche_cli")
-                .arg("--bin")
-                .arg("quiche")
-                .arg("--")
-                .arg(&path)
-                .status()
-                .expect("Failed to execute quiche");
+    let proj_dir = root.join("test_proj");
+    assert!(proj_dir.exists());
+    assert!(proj_dir.join("Cargo.toml").exists());
+    assert!(proj_dir.join("src/main.qrs").exists());
 
-            if !status.success() {
-                println!("FAILED: {}", test_name);
-                failed = true;
-            } else {
-                println!("PASSED: {}", test_name);
-            }
-        }
-    }
+    // 3. Run `quiche run` inside the project
+    // This tests the delegation to cargo
+    let output = Command::new(&binary_path)
+        .arg("run")
+        .current_dir(&proj_dir)
+        .output()
+        .expect("Failed to run quiche run");
 
-    if failed {
-        panic!("Some integration tests failed");
-    }
+    assert!(
+        output.status.success(),
+        "quiche run failed:\nStdout: {}\nStderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Hello, Quiche!"),
+        "Output did not contain 'Hello, Quiche!', got:\n{}",
+        stdout
+    );
 }

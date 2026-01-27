@@ -26,18 +26,28 @@ class Codegen:
             case ast.Stmt.FunctionDef(f):
                 self.emit("fn ")
                 self.emit(f.name.as_str().to_string())
-                self.emit("() {\n")
+                self.emit("(")
                 self.symbols.enter_scope()
-                # Register args
-                # Register args
+                # Register keys and emit args
+                first_arg = True
                 for param_def in f.parameters.args:
+                     if not first_arg:
+                         self.emit(", ")
+                     first_arg = False
+                     
                      param = param_def.parameter
+                     self.emit(param.name.as_str().to_string())
+                     self.emit(": ")
+                     
                      match param.annotation:
                          case Some(ann):
                              type_name = self.type_to_string(ast.Expr.clone(as_ref(ann)))
+                             self.emit(type_name.clone())
                              self.symbols.insert(param.name.as_str().to_string(), types.Symbol.new(param.name.as_str().to_string(), type_name, False))
                          case None:
+                             self.emit("Any") # Fallback? Or error?
                              pass
+                self.emit(") {\n")
 
                 for s in f.body:
                     self.generate_stmt(s)
@@ -258,8 +268,13 @@ class Codegen:
 
             case ast.Stmt.ImportFrom(i):
                  # from .a import b -> use super::a::b;
-                 self.emit("use ")
-                 # from .a import b -> use super::a::b;
+                 match as_ref(i.module):
+                     case Some(m):
+                         if m.as_str().to_string() == "lib.test":
+                             self.emit("// skipped lib.test import\n")
+                             return
+                     case None: pass
+                 
                  self.emit("use ")
                  
                  lvl_from = i.level
@@ -276,8 +291,6 @@ class Codegen:
                          mod_path_from = mod_str_from.replace(dot_sep_from_mod.as_str(), col_sep_from_mod.as_str())
                          self.emit(mod_path_from)
                          self.emit("::")
-                     case None: pass
-                 
                      case None: pass
                  
                  params_len = i.names.len()
@@ -332,12 +345,73 @@ class Codegen:
             case ast.Expr.Name(n):
                 self.emit(n.id.as_str().to_string())
             case ast.Expr.Call(c):
-                self.emit("quiche_runtime::call!(")
-                self.generate_expr(deref(c.func))
-                for arg in c.arguments.args:
-                    self.emit(", ")
-                    self.generate_expr(arg)
-                self.emit(")")
+                # Check for intrinsics
+                func_name = ""
+                match as_ref(deref(c.func)):
+                    case ast.Expr.Name(n):
+                         func_name = n.id.as_str().to_string()
+                    case _: pass
+                
+                if func_name == "print":
+                    self.emit("println!(\"{:?}\", ")
+                    first_arg: bool = True
+                    for arg in c.arguments.args:
+                        if not first_arg:
+                            self.emit(", ")
+                        first_arg = False
+                        self.generate_expr(arg)
+                    self.emit(")")
+                elif func_name == "print_str":
+                    self.emit("println!(\"{}\", ")
+                    first_arg: bool = True
+                    for arg in c.arguments.args:
+                        if not first_arg:
+                            self.emit(", ")
+                        first_arg = False
+                        self.generate_expr(arg)
+                    self.emit(")")
+                elif func_name == "len":
+                    # Assume len(x) -> x.len()
+                    # But x needs to be an expression that supports .len() (Vec, String, etc)
+                    if c.arguments.args.len() == 1:
+                        self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                        self.emit(".len()")
+                    else:
+                        # Fallback if wrong args
+                        self.emit("0") 
+                elif func_name == "assert_eq" or func_name == "assert_str_eq":
+                    self.emit("assert_eq!(")
+                    if c.arguments.args.len() >= 2:
+                        self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                        self.emit(", ")
+                        self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[1])))
+                        if c.arguments.args.len() > 2:
+                             self.emit(", \"{:?}\", ")
+                             self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[2])))
+                    self.emit(")")
+                elif func_name == "assert_true":
+                    self.emit("assert!(")
+                    if c.arguments.args.len() >= 1:
+                        self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                        if c.arguments.args.len() > 1:
+                             self.emit(", \"{:?}\", ")
+                             self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[1])))
+                    self.emit(")")
+                elif func_name == "range":
+                    if c.arguments.args.len() == 1:
+                        self.emit("0..")
+                        self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                    elif c.arguments.args.len() >= 2:
+                        self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                        self.emit("..")
+                        self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[1])))
+                else:
+                    self.emit("quiche_runtime::call!(")
+                    self.generate_expr(deref(c.func))
+                    for arg in c.arguments.args:
+                        self.emit(", ")
+                        self.generate_expr(arg)
+                    self.emit(")")
             
             case ast.Expr.List(l):
                 self.emit("vec![")
@@ -351,9 +425,42 @@ class Codegen:
 
             case ast.Expr.BinOp(b):
                 self.generate_expr(deref(b.left))
-                # Operator mapping is needed, assume Add (+)
-                self.emit(" + ")
+                match b.op:
+                    case ast.Operator.Add: self.emit(" + ")
+                    case ast.Operator.Sub: self.emit(" - ")
+                    case ast.Operator.Mult: self.emit(" * ")
+                    case ast.Operator.Div: self.emit(" / ")
+                    case _: self.emit(" + ")
                 self.generate_expr(deref(b.right))
+
+            case ast.Expr.BoolOp(b):
+                is_or: bool = False
+                match b.op:
+                    case ast.BoolOp.Or: is_or = True
+                    case _: pass
+                
+                j_bool: usize = 0
+                for v in b.values:
+                    if j_bool > 0:
+                        self.emit(" ")
+                        if is_or:
+                            self.emit("||")
+                        else:
+                            self.emit("&&")
+                        self.emit(" ")
+                    self.emit("(")
+                    self.generate_expr(v)
+                    self.emit(")")
+                    j_bool = j_bool + 1
+            
+            case ast.Expr.UnaryOp(u):
+                match u.op:
+                    case ast.UnaryOp.Not: self.emit("!")
+                    case ast.UnaryOp.Invert: self.emit("!")
+                    case ast.UnaryOp.UAdd: self.emit("+")
+                    case ast.UnaryOp.USub: self.emit("-")
+                    case _: self.emit("!")
+                self.generate_expr(deref(u.operand))
             
             case ast.Expr.If(i):
                  self.emit("if ")
@@ -500,10 +607,41 @@ class Codegen:
     def type_to_string(self, expr: ast.Expr) -> String:
         match expr:
             case ast.Expr.Name(n):
-                return n.id.as_str().to_string()
+                s = n.id.as_str().to_string()
+                if s == "List":
+                     return "Vec"
+                if s == "Dict":
+                     return "std::collections::HashMap"
+                return s
             case ast.Expr.Subscript(s):
-                # e.g. Tuple[i32, i32]
-                id = self.type_to_string(deref(s.value))
-                return id # Just return base for now, e.g. "Tuple"
+                base = self.type_to_string(deref(s.value))
+                res = RustString.new()
+                res.push_str(as_ref(base))
+                res.push_str(as_ref("<"))
+                
+                match deref(s.slice):
+                    case ast.Expr.Tuple(t):
+                         i: usize = 0
+                         for e in t.elts:
+                             if i > 0: 
+                                 res.push_str(as_ref(", "))
+                             res.push_str(as_ref(self.type_to_string(e)))
+                             i = i + 1
+                    case _:
+                        res.push_str(as_ref(self.type_to_string(deref(s.slice))))
+                
+                res.push_str(as_ref(">"))
+                return res
+            case ast.Expr.Tuple(t):
+                 res = RustString.new()
+                 res.push_str(as_ref("("))
+                 i: usize = 0
+                 for e in t.elts:
+                     if i > 0: 
+                         res.push_str(as_ref(", "))
+                     res.push_str(as_ref(self.type_to_string(e)))
+                     i = i + 1
+                 res.push_str(as_ref(")"))
+                 return res
             case _:
                 return "unknown"

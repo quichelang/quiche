@@ -13,9 +13,11 @@ impl Codegen {
                 self.generate_expr(*i.test);
                 self.output.push_str(" {\n");
                 self.indent_level += 1;
+                self.enter_scope();
                 for stmt in i.body {
                     self.generate_stmt(stmt);
                 }
+                self.exit_scope();
                 self.indent_level -= 1;
                 self.push_indent();
                 self.output.push_str("}");
@@ -28,9 +30,11 @@ impl Codegen {
                         self.output.push_str(" else {\n");
                     }
                     self.indent_level += 1;
+                    self.enter_scope();
                     for stmt in clause.body {
                         self.generate_stmt(stmt);
                     }
+                    self.exit_scope();
                     self.indent_level -= 1;
                     self.push_indent();
                     self.output.push_str("}");
@@ -43,9 +47,11 @@ impl Codegen {
                 self.generate_expr(*w.test);
                 self.output.push_str(" {\n");
                 self.indent_level += 1;
+                self.enter_scope();
                 for stmt in w.body {
                     self.generate_stmt(stmt);
                 }
+                self.exit_scope();
                 self.indent_level -= 1;
                 self.push_indent();
                 self.output.push_str("}\n");
@@ -56,6 +62,7 @@ impl Codegen {
                 self.generate_expr(*f.iter);
                 self.output.push_str(").into_iter() {\n");
                 self.indent_level += 1;
+                self.enter_scope();
                 self.push_indent();
                 self.output.push_str("let ");
                 self.generate_expr(*f.target.clone());
@@ -63,6 +70,7 @@ impl Codegen {
                 for stmt in f.body {
                     self.generate_stmt(stmt);
                 }
+                self.exit_scope();
                 self.indent_level -= 1;
                 self.push_indent();
                 self.output.push_str("}\n");
@@ -415,9 +423,11 @@ impl Codegen {
                     }
                     self.output.push_str(" => {\n");
                     self.indent_level += 1;
+                    self.enter_scope();
                     for stmt in case.body {
                         self.generate_stmt(stmt);
                     }
+                    self.exit_scope();
                     self.indent_level -= 1;
                     self.push_indent();
                     self.output.push_str("}\n");

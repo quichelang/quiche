@@ -52,7 +52,7 @@ def compile_source(source: String, filename: String):
         for stmt in stmts:
             codegen.generate_stmt(stmt)
             
-        print(codegen.output)
+        print_str(codegen.output)
 
 def main():
     cli_args = env_args()

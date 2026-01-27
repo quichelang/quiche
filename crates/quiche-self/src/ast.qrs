@@ -26,6 +26,14 @@ class Expr:
 class Operator:
     pass
 
+@extern(path="ruff_python_ast::BoolOp", no_generic=True)
+class BoolOp:
+    pass
+
+@extern(path="ruff_python_ast::UnaryOp", no_generic=True)
+class UnaryOp:
+    pass
+
 @extern(path="ruff_python_ast::Int", no_generic=True)
 class Int:
     def to_u32(self) -> Option[u32]: pass
@@ -99,6 +107,16 @@ class ExprBinOp:
     left: Box[Expr]
     op: Operator
     right: Box[Expr]
+
+@extern(path="ruff_python_ast::ExprBoolOp", no_generic=True)
+class ExprBoolOp:
+    op: BoolOp
+    values: List[Expr]
+
+@extern(path="ruff_python_ast::ExprUnaryOp", no_generic=True)
+class ExprUnaryOp:
+    op: UnaryOp
+    operand: Box[Expr]
 
 @extern(path="ruff_python_ast::ExprAttribute", no_generic=True)
 class ExprAttribute:
