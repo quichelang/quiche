@@ -1,5 +1,5 @@
-use rustpython_parser::ast;
-use rustpython_parser::{parse, Mode};
+use ruff_python_ast as ast;
+use ruff_python_parser::parse_module;
 use std::collections::{HashMap, HashSet};
 
 pub mod dict;
@@ -27,24 +27,23 @@ impl Codegen {
         }
     }
 
-    pub fn generate_module(&mut self, module: ast::Mod) -> String {
-        match module {
-            ast::Mod::Module(m) => {
+    pub fn generate_module(&mut self, module: &ast::ModModule) -> String {
+        {
+            {
                 let mut linked = HashSet::new();
                 let mut filtered_body = Vec::new();
 
-                for stmt in m.body {
+                for stmt in &module.body {
                     let mut is_hint = false;
                     if let ast::Stmt::Expr(e) = &stmt {
-                        if let ast::Expr::Constant(c) = &*e.value {
-                            if let ast::Constant::Str(s) = &c.value {
-                                if s.starts_with("quiche:link=") {
-                                    let links = &s["quiche:link=".len()..];
-                                    for link in links.split(',') {
-                                        linked.insert(link.trim().to_string());
-                                    }
-                                    is_hint = true;
+                        if let ast::Expr::StringLiteral(s) = &*e.value {
+                            let s = s.value.to_str();
+                            if s.starts_with("quiche:link=") {
+                                let links = &s["quiche:link=".len()..];
+                                for link in links.split(',') {
+                                    linked.insert(link.trim().to_string());
                                 }
+                                is_hint = true;
                             }
                         }
                     }
@@ -55,11 +54,8 @@ impl Codegen {
 
                 self.linked_modules = linked;
                 for stmt in filtered_body {
-                    self.generate_stmt(stmt);
+                    self.generate_stmt(stmt.clone());
                 }
-            }
-            _ => {
-                self.output.push_str("// Only modules are supported\n");
             }
         }
         self.output.clone()
@@ -105,6 +101,8 @@ impl Codegen {
             || base_str == "compiler"
             || base_str == "types"
             || base_str == "rustpython_parser"
+            || base_str == "ruff_python_parser"
+            || base_str == "ruff_python_ast"
             || base_str.starts_with("std::")
             || base_str.starts_with("crate::")
             || base_str.contains("::")
@@ -121,10 +119,10 @@ impl Codegen {
 }
 
 pub fn compile(source: &str) -> Option<String> {
-    match parse(source, Mode::Module, "input.py") {
-        Ok(ast) => {
+    match parse_module(source) {
+        Ok(parsed) => {
             let mut cg = Codegen::new();
-            let rust_code = cg.generate_module(ast);
+            let rust_code = cg.generate_module(parsed.syntax());
             // println!("Successfully generated Rust code:\n{}", rust_code);
             Some(rust_code)
         }

@@ -1,12 +1,12 @@
 use codegen::Codegen;
-pub use quiche_codegen as codegen;
-use rustpython_parser::{parse, Mode};
+pub use quiche_compiler as codegen;
+use ruff_python_parser::parse_module;
 
 pub fn compile(source: &str) -> Option<String> {
-    match parse(source, Mode::Module, "input.py") {
-        Ok(ast) => {
+    match parse_module(source) {
+        Ok(parsed) => {
             let mut cg = Codegen::new();
-            let rust_code = cg.generate_module(ast);
+            let rust_code = cg.generate_module(parsed.syntax());
             println!("Successfully generated Rust code:\n{}", rust_code);
             Some(rust_code)
         }

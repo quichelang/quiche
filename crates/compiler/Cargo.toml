@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rustpython-parser = "0.4.0"
+ruff_python_parser = { git = "https://github.com/astral-sh/ruff" }
+ruff_python_ast = { git = "https://github.com/astral-sh/ruff" }

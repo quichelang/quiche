@@ -5,6 +5,7 @@ import types
 class RustString:
     def new() -> RustString: pass
     def push_str(self, s: StrRef): pass
+    def len(self) -> usize: pass
 
 class Codegen:
     output: RustString
@@ -24,16 +25,17 @@ class Codegen:
         match stmt:
             case ast.Stmt.FunctionDef(f):
                 self.emit("fn ")
-                self.emit(f.name.to_string())
+                self.emit(f.name.as_str().to_string())
                 self.emit("() {\n")
                 self.symbols.enter_scope()
                 # Register args
-                for arg_def in f.args.args:
-                     arg = arg_def.def_
-                     match arg.annotation:
+                # Register args
+                for param_def in f.parameters.args:
+                     param = param_def.parameter
+                     match param.annotation:
                          case Some(ann):
                              type_name = self.type_to_string(ast.Expr.clone(as_ref(ann)))
-                             self.symbols.insert(arg.arg.to_string(), types.Symbol.new(arg.arg.to_string(), type_name, False))
+                             self.symbols.insert(param.name.as_str().to_string(), types.Symbol.new(param.name.as_str().to_string(), type_name, False))
                          case None:
                              pass
 
@@ -57,15 +59,15 @@ class Codegen:
                 match as_ref(a.targets[0]):
                     case ast.Expr.Name(n):
                          self.emit("let ")
-                         self.emit(n.id.to_string())
+                         self.emit(n.id.as_str().to_string())
                          self.emit(" = ")
                          assign_val_type = self.infer_expr_type(ast.Expr.clone(as_ref(a.value)))
                          self.emit("/* Inserting Assign: ")
-                         self.emit(n.id.to_string())
+                         self.emit(n.id.as_str().to_string())
                          self.emit(" Type: ")
                          self.emit(assign_val_type.clone())
                          self.emit(" */")
-                         self.symbols.insert(n.id.to_string(), types.Symbol.new(n.id.to_string(), assign_val_type, False))
+                         self.symbols.insert(n.id.as_str().to_string(), types.Symbol.new(n.id.as_str().to_string(), assign_val_type, False))
                     case _:
                          pass
                 self.generate_expr(deref(a.value))
@@ -74,15 +76,15 @@ class Codegen:
                  match as_ref(deref(a.target)):
                      case ast.Expr.Name(n):
                          self.emit("let ")
-                         self.emit(n.id.to_string())
+                         self.emit(n.id.as_str().to_string())
                          self.emit(" = ")
                          ann_type_name = self.type_to_string(ast.Expr.clone(as_ref(a.annotation)))
                          self.emit("/* Inserting AnnAssign: ")
-                         self.emit(n.id.to_string())
+                         self.emit(n.id.as_str().to_string())
                          self.emit(" Type: ")
                          self.emit(ann_type_name.clone())
                          self.emit(" */")
-                         self.symbols.insert(n.id.to_string(), types.Symbol.new(n.id.to_string(), ann_type_name, False))
+                         self.symbols.insert(n.id.as_str().to_string(), types.Symbol.new(n.id.as_str().to_string(), ann_type_name, False))
                      case _:
                          pass
                  match a.value:
@@ -97,7 +99,7 @@ class Codegen:
                  self.emit("for ")
                  match as_ref(deref(f.target)):
                      case ast.Expr.Name(n):
-                         self.emit(n.id.to_string())
+                         self.emit(n.id.as_str().to_string())
                      case _:
                          self.emit("_")
                  self.emit(" in ")
@@ -113,11 +115,20 @@ class Codegen:
                  for s in i.body:
                      self.generate_stmt(s)
                  self.emit("}")
-                 if i.orelse.len() > 0:
-                     self.emit(" else {\n")
-                     for s in i.orelse:
-                         self.generate_stmt(s)
-                     self.emit("}")
+                 for clause in i.elif_else_clauses:
+                     match clause.test:
+                         case Some(t):
+                             self.emit(" else if ")
+                             self.generate_expr(t)
+                             self.emit(" {\n")
+                             for s in clause.body:
+                                 self.generate_stmt(s)
+                             self.emit("}")
+                         case None:
+                             self.emit(" else {\n")
+                             for s in clause.body:
+                                 self.generate_stmt(s)
+                             self.emit("}")
                  self.emit("\n")
             case ast.Stmt.While(w):
                  self.emit("while ")
@@ -130,19 +141,18 @@ class Codegen:
                  is_enum = False
                  is_extern = False
                  for dec in c.decorator_list:
-                     match dec:
+                     match dec.expression:
                          case ast.Expr.Name(n):
-                             dec_id = n.id.to_string()
-                             dec_id = n.id.to_string()
-                             if dec_id.len() == 4:
+                             dec_id = n.id.as_str().to_string()
+                             if dec_id == "enum":
                                  is_enum = True
-                             if dec_id.len() == 6:
+                             if dec_id == "extern":
                                  is_extern = True
                          case _: pass
                  
                  if is_extern:
                      self.emit("// Extern class ")
-                     self.emit(c.name.to_string())
+                     self.emit(c.name.as_str().to_string())
                      self.emit("\n")
                      # Do nothing for extern
                  else:
@@ -151,7 +161,7 @@ class Codegen:
                          self.emit("pub enum ")
                      else:
                          self.emit("pub struct ")
-                     self.emit(c.name.to_string())
+                     self.emit(c.name.as_str().to_string())
                      self.emit(" {\n")
                      
                      # Fields
@@ -162,7 +172,7 @@ class Codegen:
                                  case ast.Stmt.AnnAssign(a):
                                      match as_ref(deref(a.target)):
                                          case ast.Expr.Name(n):
-                                             self.emit(n.id.to_string())
+                                             self.emit(n.id.as_str().to_string())
                                              self.emit("(")
                                              # Annotation should be List of types?
                                              # Shape.Circle: [f64] -> annotation is List[f64].
@@ -186,7 +196,7 @@ class Codegen:
                                      match as_ref(deref(a.target)):
                                          case ast.Expr.Name(n):
                                               self.emit("pub ")
-                                              self.emit(n.id.to_string())
+                                              self.emit(n.id.as_str().to_string())
                                               self.emit(": ")
                                               ann_str = self.type_to_string(ast.Expr.clone(as_ref(a.annotation)))
                                               self.emit(ann_str)
@@ -200,7 +210,7 @@ class Codegen:
                          pass
                      else:
                          self.emit("impl ")
-                         self.emit(c.name.to_string())
+                         self.emit(c.name.as_str().to_string())
                          self.emit(" {\n")
                          for s in c.body.clone():
                              s_clone = s.clone()
@@ -233,7 +243,7 @@ class Codegen:
                  # import a.b as c -> use a::b as c;
                  for alias in i.names:
                      self.emit("use ")
-                     name_str_imp = alias.name.to_string()
+                     name_str_imp = alias.name.as_str().to_string()
                      # Fix: literals and variables unique
                      dot_sep_imp = "."
                      col_sep_imp = "::"
@@ -242,26 +252,25 @@ class Codegen:
                      match alias.asname:
                          case Some(a):
                              self.emit(" as ")
-                             self.emit(a.to_string())
+                             self.emit(a.as_str().to_string())
                          case None: pass
                      self.emit(";\n")
 
             case ast.Stmt.ImportFrom(i):
                  # from .a import b -> use super::a::b;
                  self.emit("use ")
-                 match i.level:
-                     case Some(l):
-                         # l.to_u32 seems to return u32 directly in transpiler context?
-                         lvl_from = l.to_u32()
-                         k_from: u32 = 0
-                         while k_from < lvl_from:
-                             self.emit("super::")
-                             k_from = k_from + 1
-                     case None: pass
+                 # from .a import b -> use super::a::b;
+                 self.emit("use ")
+                 
+                 lvl_from = i.level
+                 k_from: u32 = 0
+                 while k_from < lvl_from:
+                     self.emit("super::")
+                     k_from = k_from + 1
                  
                  match i.module:
                      case Some(m):
-                         mod_str_from = m.to_string()
+                         mod_str_from = m.as_str().to_string()
                          dot_sep_from_mod = "."
                          col_sep_from_mod = "::"
                          mod_path_from = mod_str_from.replace(dot_sep_from_mod.as_str(), col_sep_from_mod.as_str())
@@ -278,7 +287,7 @@ class Codegen:
                  j: usize = 0
                  for alias in i.names:
                      if j > 0: self.emit(", ")
-                     name_str_from_alias = alias.name.to_string()
+                     name_str_from_alias = alias.name.as_str().to_string()
                      dot_sep_from_alias = "."
                      col_sep_from_alias = "::"
                      path_str_from_alias = name_str_from_alias.replace(dot_sep_from_alias.as_str(), col_sep_from_alias.as_str())
@@ -286,7 +295,7 @@ class Codegen:
                      match alias.asname:
                          case Some(a):
                              self.emit(" as ")
-                             self.emit(a.to_string())
+                             self.emit(a.as_str().to_string())
                          case None: pass
                      j = j + 1
                  
@@ -299,22 +308,33 @@ class Codegen:
 
     def generate_expr(self, expr: ast.Expr):
         match expr:
-            case ast.Expr.Constant(c):
-                match c.value:
-                    case ast.Constant.Int(i):
+            case ast.Expr.NumberLiteral(n):
+                match n.value:
+                    case ast.Number.Int(i):
                         self.emit(i.to_string())
-                    case ast.Constant.Str(s):
-                         self.emit("\"")
-                         self.emit(s)
-                         self.emit("\"")
                     case _:
-                        self.emit("/* const */")
+                        self.emit("0")
+
+            case ast.Expr.StringLiteral(s):
+                self.emit("String::from(\"")
+                self.emit(s.value.to_string())
+                self.emit("\")")
+
+            case ast.Expr.BooleanLiteral(b):
+                if b.value:
+                    self.emit("true")
+                else:
+                    self.emit("false")
+
+            case ast.Expr.NoneLiteral(n):
+                self.emit("None")
+                
             case ast.Expr.Name(n):
-                self.emit(n.id.to_string())
+                self.emit(n.id.as_str().to_string())
             case ast.Expr.Call(c):
                 self.emit("quiche_runtime::call!(")
                 self.generate_expr(deref(c.func))
-                for arg in c.args:
+                for arg in c.arguments.args:
                     self.emit(", ")
                     self.generate_expr(arg)
                 self.emit(")")
@@ -335,7 +355,7 @@ class Codegen:
                 self.emit(" + ")
                 self.generate_expr(deref(b.right))
             
-            case ast.Expr.IfExp(i):
+            case ast.Expr.If(i):
                  self.emit("if ")
                  self.generate_expr(deref(i.test))
                  self.emit(" { ")
@@ -382,12 +402,12 @@ class Codegen:
                      self.generate_expr(deref(s.value))
                      self.emit(".")
                      match deref(s.slice):
-                         case ast.Expr.Constant(c):
-                             match c.value:
-                                 case ast.Constant.Int(i):
+                         case ast.Expr.NumberLiteral(n):
+                             match n.value:
+                                 case ast.Number.Int(i):
                                      self.emit(i.to_string())
                                  case _:
-                                     self.emit("0") 
+                                     self.emit("0")
                          case _:
                              self.emit("0") 
                 else:
@@ -399,24 +419,23 @@ class Codegen:
             case ast.Expr.Attribute(a):
                 self.generate_expr(deref(a.value))
                 self.emit(".")
-                self.emit(a.attr.to_string())
+                self.emit(a.attr.as_str().to_string())
 
             case _:
                 self.emit("/* expr */")
 
     def infer_expr_type(self, expr: ast.Expr) -> String:
         match expr:
-            case ast.Expr.Constant(c):
-                match c.value:
-                    case ast.Constant.Int(_): return "i32" # assume i32 for simplicity
-                    case ast.Constant.Str(_): return "String"
-                    case _: return "unknown"
+            case ast.Expr.NumberLiteral(_): return "i32"
+            case ast.Expr.StringLiteral(_): return "String"
+            case ast.Expr.BooleanLiteral(_): return "bool"
+            case ast.Expr.NoneLiteral(_): return "None"
             case ast.Expr.Name(n):
-                match self.symbols.lookup(n.id.to_string()):
+                match self.symbols.lookup(n.id.as_str().to_string()):
                     case Some(s): return s.type_name
                     case None: 
                         # Fallback for testing until SymbolTable is fixed
-                        name = n.id.to_string()
+                        name = n.id.as_str().to_string()
                         if name == "t": return "Tuple"
                         if name == "nested": return "Tuple"
                         return "unknown"
@@ -428,6 +447,8 @@ class Codegen:
                 self.emit("/* type_to_string unknown */")
                 return "unknown"
 
+
+
     def generate_pattern(self, pat: ast.Pattern):
         match pat:
             case ast.Pattern.MatchValue(v):
@@ -435,44 +456,32 @@ class Codegen:
             case ast.Pattern.MatchAs(a):
                 match a.name:
                     case Some(n):
-                         self.emit(n.to_string())
+                         self.emit(n.as_str().to_string())
                     case None:
                          self.emit("_")
             case ast.Pattern.MatchClass(c):
                 # Class or Enum match
-                # cls(args) or cls(kwargs)
-                # cls is Expr (Name or Attribute)
                 self.generate_expr(deref(c.cls))
                 
-                if c.kwd_patterns.len() > 0:
-                    # Struct style: Name { k: v, .. }
-                    self.emit(" { ")
-                    i: usize = 0
-                    for attr in c.kwd_attrs:
-                         idx = i
-                         self.emit(attr.to_string())
-                         self.emit(": ")
-                         self.generate_pattern(ast.Pattern.clone(as_ref(c.kwd_patterns[idx])))
-                         self.emit(", ")
-                         i = i + 1
-                    self.emit(".. }")
+                if c.arguments.keywords.len() > 0:
+                     self.emit("/* kwd patterns not supported yet */")
+                
+                for kw in c.arguments.keywords:
+                    self.emit(kw.attr.as_str().to_string())
+                    self.emit(": _, ")
+                
+                # Positional
+                if c.arguments.patterns.len() > 0:
+                    self.emit("(")
+                    first = True
+                    for p in c.arguments.patterns:
+                        if not first:
+                            self.emit(", ")
+                        self.generate_pattern(p)
+                        first = False
+                    self.emit(")")
                 else:
-                    if c.patterns.len() > 0:
-                        # Tuple style: Name(p1, p2)
-                        self.emit("(")
-                        i: usize = 0
-                        for p in c.patterns:
-                             if i > 0: self.emit(", ")
-                             self.generate_pattern(p)
-                             i = i + 1
-                        self.emit(")")
-                    else:
-                        # Unit style or Struct empty?
-                        # Rust allows Name { .. } or Name
-                        # If empty parens in Python: Class() -> Name { .. } usually safer?
-                        # Or Name if Unit Enum.
-                        # Try empty braces with ..
-                        self.emit(" { .. }")
+                    self.emit(" { .. }")
             case ast.Pattern.MatchOr(o):
                  i: usize = 0
                  for p in o.patterns:
@@ -491,7 +500,7 @@ class Codegen:
     def type_to_string(self, expr: ast.Expr) -> String:
         match expr:
             case ast.Expr.Name(n):
-                return n.id.to_string()
+                return n.id.as_str().to_string()
             case ast.Expr.Subscript(s):
                 # e.g. Tuple[i32, i32]
                 id = self.type_to_string(deref(s.value))

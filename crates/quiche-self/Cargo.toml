@@ -9,7 +9,8 @@ edition = "2024"
 quiche_compiler = { path = "/Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/crates/compiler" }
 
 [dependencies]
-rustpython-parser = "0.4.0"
+ruff_python_parser = { git = "https://github.com/astral-sh/ruff" }
+ruff_python_ast = { git = "https://github.com/astral-sh/ruff" }
 quiche_runtime = { path = "../runtime" }
 num-bigint = "0.4"
 

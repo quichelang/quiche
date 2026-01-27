@@ -1,5 +1,5 @@
 use crate::Codegen;
-use rustpython_parser::ast;
+use ruff_python_ast as ast;
 
 impl Codegen {
     pub(crate) fn generate_expr(&mut self, expr: ast::Expr) {
@@ -15,6 +15,16 @@ impl Codegen {
                 };
                 self.output.push_str(&format!(" {} ", op_str));
                 self.generate_expr(*b.right);
+            }
+            ast::Expr::UnaryOp(u) => {
+                let op_str = match u.op {
+                    ast::UnaryOp::Invert => "!",
+                    ast::UnaryOp::Not => "!",
+                    ast::UnaryOp::UAdd => "+",
+                    ast::UnaryOp::USub => "-",
+                };
+                self.output.push_str(op_str);
+                self.generate_expr(*u.operand);
             }
             ast::Expr::Compare(c) => {
                 self.generate_expr(*c.left);
@@ -32,7 +42,7 @@ impl Codegen {
                     self.generate_expr(right.clone());
                 }
             }
-            ast::Expr::IfExp(i) => {
+            ast::Expr::If(i) => {
                 self.output.push_str("if ");
                 self.generate_expr(*i.test);
                 self.output.push_str(" { ");
@@ -49,7 +59,7 @@ impl Codegen {
                 if let ast::Expr::Lambda(_) = &*c.func {
                     self.generate_expr(*c.func);
                     self.output.push_str("(");
-                    for (i, arg) in c.args.iter().enumerate() {
+                    for (i, arg) in c.arguments.args.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
@@ -81,7 +91,7 @@ impl Codegen {
                     self.output.push_str("crate::quiche::check!((");
                     self.output.push_str(&path);
                     self.output.push_str(")(");
-                    for (i, arg) in c.args.iter().enumerate() {
+                    for (i, arg) in c.arguments.args.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
@@ -102,7 +112,7 @@ impl Codegen {
                         self.output.push_str(".");
                         self.output.push_str(rust_method);
                         self.output.push_str("(");
-                        for (i, arg) in c.args.iter().enumerate() {
+                        for (i, arg) in c.arguments.args.iter().enumerate() {
                             if i > 0 {
                                 self.output.push_str(", ");
                             }
@@ -121,7 +131,7 @@ impl Codegen {
                         self.output.push_str(".");
                         self.output.push_str(rust_method);
                         self.output.push_str("(");
-                        for (i, arg) in c.args.iter().enumerate() {
+                        for (i, arg) in c.arguments.args.iter().enumerate() {
                             if i > 0 {
                                 self.output.push_str(", ");
                             }
@@ -148,7 +158,7 @@ impl Codegen {
 
                 // Handle as_ref and deref without check! wrapper to preserve ref/deref semantics
                 if func_name == "as_ref" {
-                    if let Some(arg) = c.args.first() {
+                    if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("&");
                         self.generate_expr(arg.clone());
                     }
@@ -156,7 +166,7 @@ impl Codegen {
                 }
 
                 if func_name == "deref" {
-                    if let Some(arg) = c.args.first() {
+                    if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("*");
                         self.generate_expr(arg.clone());
                     }
@@ -165,7 +175,7 @@ impl Codegen {
 
                 if func_name == "parse_program" {
                     self.output.push_str("parse_program(");
-                    for (i, arg) in c.args.iter().enumerate() {
+                    for (i, arg) in c.arguments.args.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
@@ -179,7 +189,7 @@ impl Codegen {
 
                 if func_name == "print" {
                     self.output.push_str("println!(\"{:?}\", ");
-                    for (i, arg) in c.args.iter().enumerate() {
+                    for (i, arg) in c.arguments.args.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
@@ -188,61 +198,74 @@ impl Codegen {
                     self.output.push_str(")");
                 } else if func_name == "assert" {
                     self.output.push_str("assert!(");
-                    if let Some(arg) = c.args.first() {
+                    if let Some(arg) = c.arguments.args.first() {
                         self.generate_expr(arg.clone());
                     }
-                    if c.args.len() > 1 {
+                    if c.arguments.args.len() > 1 {
                         self.output.push_str(", \"{}\", ");
-                        self.generate_expr(c.args[1].clone());
+                        self.generate_expr(c.arguments.args[1].clone());
                     }
                     self.output.push_str(")");
                 } else if func_name == "assert_eq" || func_name == "assert_str_eq" {
                     self.output.push_str("assert_eq!(");
-                    if c.args.len() >= 2 {
-                        self.generate_expr(c.args[0].clone());
+                    if c.arguments.args.len() >= 2 {
+                        self.generate_expr(c.arguments.args[0].clone());
                         self.output.push_str(", ");
-                        self.generate_expr(c.args[1].clone());
-                        if c.args.len() > 2 {
+                        self.generate_expr(c.arguments.args[1].clone());
+                        if c.arguments.args.len() > 2 {
                             self.output.push_str(", \"{}\", ");
-                            self.generate_expr(c.args[2].clone());
+                            self.generate_expr(c.arguments.args[2].clone());
                         }
                     }
                     self.output.push_str(")");
                 } else if func_name == "assert_true" {
                     self.output.push_str("assert!(");
-                    if let Some(arg) = c.args.first() {
+                    if let Some(arg) = c.arguments.args.first() {
                         self.generate_expr(arg.clone());
                     }
-                    if c.args.len() > 1 {
+                    if c.arguments.args.len() > 1 {
                         self.output.push_str(", \"{}\", ");
-                        self.generate_expr(c.args[1].clone());
+                        self.generate_expr(c.arguments.args[1].clone());
                     }
                     self.output.push_str(")");
+                } else if func_name == "range" {
+                    if c.arguments.args.len() == 1 {
+                        self.output.push_str("0..");
+                        self.generate_expr(c.arguments.args[0].clone());
+                    } else if c.arguments.args.len() >= 2 {
+                        self.generate_expr(c.arguments.args[0].clone());
+                        self.output.push_str("..");
+                        self.generate_expr(c.arguments.args[1].clone());
+                    }
                 } else if func_name == "len" {
-                    if let Some(arg) = c.args.first() {
+                    if let Some(arg) = c.arguments.args.first() {
                         self.generate_expr(arg.clone());
                         self.output.push_str(".len()");
                     }
                 } else if func_name == "deref" {
-                    if let Some(arg) = c.args.first() {
+                    if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("*");
                         self.generate_expr(arg.clone());
                     }
                 } else if func_name == "as_ref" {
-                    if let Some(arg) = c.args.first() {
+                    if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("&");
                         self.generate_expr(arg.clone());
                     }
                 } else if func_name == "as_mut" {
-                    if let Some(arg) = c.args.first() {
+                    if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("&mut ");
                         self.generate_expr(arg.clone());
                     }
-                } else if !c.keywords.is_empty() {
+                } else if !c.arguments.keywords.is_empty() {
                     // Struct Init
-                    self.output.push_str(&self.map_type_expr(c.func.as_ref()));
+                    if matches!(&*c.func, ast::Expr::Subscript(_)) {
+                        self.output.push_str(&self.map_type_expr(c.func.as_ref()));
+                    } else {
+                        self.generate_expr(*c.func.clone());
+                    }
                     self.output.push_str(" { ");
-                    for (i, kw) in c.keywords.iter().enumerate() {
+                    for (i, kw) in c.arguments.keywords.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
@@ -255,9 +278,13 @@ impl Codegen {
                     self.output.push_str(" }");
                 } else {
                     // Generic Function Call
-                    self.output.push_str(&self.map_type_expr(c.func.as_ref()));
+                    if matches!(&*c.func, ast::Expr::Subscript(_)) {
+                        self.output.push_str(&self.map_type_expr(c.func.as_ref()));
+                    } else {
+                        self.generate_expr(*c.func.clone());
+                    }
                     self.output.push_str("(");
-                    for (i, arg) in c.args.iter().enumerate() {
+                    for (i, arg) in c.arguments.args.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
@@ -287,24 +314,26 @@ impl Codegen {
             ast::Expr::Name(n) => {
                 self.output.push_str(&n.id);
             }
-            ast::Expr::Constant(c) => match c.value {
-                ast::Constant::None => self.output.push_str("None"),
-                ast::Constant::Int(i) => self.output.push_str(&i.to_string()),
-                ast::Constant::Float(f) => {
+            ast::Expr::NoneLiteral(_) => self.output.push_str("None"),
+            ast::Expr::NumberLiteral(n) => match n.value {
+                ast::Number::Int(i) => self.output.push_str(&i.to_string()),
+                ast::Number::Float(f) => {
                     let s = f.to_string();
-                    if s.contains('.') {
+                    if s.contains('.') || s.contains('e') || s.contains('E') {
                         self.output.push_str(&s);
                     } else {
                         self.output.push_str(&format!("{}.0", s));
                     }
                 }
-                ast::Constant::Str(s) => self.output.push_str(&format!(
-                    "std::string::String::from(\"{}\")",
-                    s.replace("\"", "\\\"")
-                )),
-                ast::Constant::Bool(b) => self.output.push_str(if b { "true" } else { "false" }),
-                _ => self.output.push_str("/* unhandled constant */"),
+                ast::Number::Complex { .. } => self.output.push_str("/* complex number */"),
             },
+            ast::Expr::StringLiteral(s) => self.output.push_str(&format!(
+                "std::string::String::from(\"{}\")",
+                s.value.to_str().replace("\"", "\\\"")
+            )),
+            ast::Expr::BooleanLiteral(b) => {
+                self.output.push_str(if b.value { "true" } else { "false" })
+            }
             ast::Expr::List(l) => {
                 self.output.push_str("vec![");
                 for (i, elt) in l.elts.iter().enumerate() {
@@ -317,19 +346,20 @@ impl Codegen {
             }
             ast::Expr::Dict(d) => {
                 self.output.push_str("std::collections::HashMap::from([");
-                for (i, (k, v)) in d.keys.iter().zip(d.values.iter()).enumerate() {
-                    if i > 0 {
-                        self.output.push_str(", ");
-                    }
-                    self.output.push_str("(");
-                    if let Some(key) = k {
+                for (i, item) in d.items.iter().enumerate() {
+                    if let Some(key) = &item.key {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.output.push_str("(");
                         self.generate_expr(key.clone());
+                        self.output.push_str(", ");
+                        self.generate_expr(item.value.clone());
+                        self.output.push_str(")");
                     } else {
+                        // **kwargs
                         self.output.push_str("/* **kwargs not supported */");
                     }
-                    self.output.push_str(", ");
-                    self.generate_expr(v.clone());
-                    self.output.push_str(")");
                 }
                 self.output.push_str("])");
             }
@@ -346,10 +376,12 @@ impl Codegen {
                     .unwrap_or(false);
 
                 if is_tuple {
-                    if let ast::Expr::Constant(c) = &*s.slice {
-                        if let ast::Constant::Int(idx) = &c.value {
+                    if let ast::Expr::NumberLiteral(n) = &*s.slice {
+                        // Need integer value. n.value is Number which is Int or Float or BigInt.
+                        // For now assume simple int
+                        if let ast::Number::Int(i) = &n.value {
                             self.generate_expr(*s.value.clone());
-                            self.output.push_str(&format!(".{}", idx));
+                            self.output.push_str(&format!(".{}", i));
                             return;
                         }
                     }
@@ -397,33 +429,49 @@ impl Codegen {
             }
             ast::Expr::Lambda(l) => {
                 self.output.push_str("(|");
-                for (i, arg) in l.args.args.iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str(", ");
+                // Ruff uses parameters? Or just args?
+                // Error says: available fields are: `node_index`, `range`, `parameters`, `body`.
+                // Parameters has posonlyargs, args, vararg, kwonlyargs, kw_defaults, kwarg, defaults.
+                // We likely only care about `args` (positional args) for simple lambdas.
+                let params = &l.parameters;
+                // Since parameter structure is complex, let's iterate generic 'args'. (ArgWithDefault?)
+                // Actually Parameters struct has fields posonlyargs, args, etc.
+                if let Some(params) = params.as_deref() {
+                    for (i, param_with_default) in params.args.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.output.push_str(&param_with_default.parameter.name);
                     }
-                    self.output.push_str(&arg.def.arg);
                 }
+
                 self.output.push_str("| ");
                 self.generate_expr(*l.body);
                 self.output.push_str(")");
             }
-            ast::Expr::JoinedStr(j) => {
+            ast::Expr::FString(f) => {
                 // f-string: f"Hello {name}" -> format!("Hello {}", name)
                 self.output.push_str("format!(\"");
                 let mut args: Vec<ast::Expr> = Vec::new();
 
-                for value in &j.values {
-                    match value {
-                        ast::Expr::Constant(c) => {
-                            if let ast::Constant::Str(s) = &c.value {
-                                self.output.push_str(s);
+                for part in &f.value {
+                    match part {
+                        ast::FStringPart::Literal(l) => {
+                            self.output.push_str(&l.value);
+                        }
+                        ast::FStringPart::FString(f) => {
+                            for element in &f.elements {
+                                match element {
+                                    ast::InterpolatedStringElement::Literal(l) => {
+                                        self.output.push_str(&l.value)
+                                    }
+                                    ast::InterpolatedStringElement::Interpolation(i) => {
+                                        self.output.push_str("{}");
+                                        args.push(*i.expression.clone());
+                                    }
+                                }
                             }
                         }
-                        ast::Expr::FormattedValue(f) => {
-                            self.output.push_str("{}");
-                            args.push(*f.value.clone());
-                        }
-                        _ => {}
                     }
                 }
 
@@ -434,7 +482,9 @@ impl Codegen {
                 }
                 self.output.push_str(")");
             }
-            _ => self.output.push_str("/* unhandled expression */"),
+            _ => self
+                .output
+                .push_str(&format!("/* unhandled expression: {:?} */", expr)),
         }
     }
 }

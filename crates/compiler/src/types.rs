@@ -1,5 +1,5 @@
 use crate::Codegen;
-use rustpython_parser::ast;
+use ruff_python_ast as ast;
 
 impl Codegen {
     pub(crate) fn map_type(&self, expr: &ast::Expr) -> String {
@@ -41,6 +41,10 @@ impl Codegen {
                     &inner
                 };
 
+                if base == "Tuple" {
+                    return format!("({})", final_inner);
+                }
+
                 let rust_base = match base.as_str() {
                     "Dict" | "HashMap" => "std::collections::HashMap",
                     "List" | "Vec" => "Vec",
@@ -80,7 +84,7 @@ impl Codegen {
                 format!("{}{}{}", base_str, sep, a.attr)
             }
             ast::Expr::Subscript(_) => self.map_type_expr(expr), // Use turbo-fish for expressions
-            _ => "unknown".to_string(),
+            _ => format!("/* unknown: {:?} */", expr),
         }
     }
 
@@ -94,36 +98,40 @@ impl Codegen {
                     // It's a tuple type: (A, B, C)
                     // We need to extract the Nth element type.
                     // Slice must be an integer constant.
-                    if let ast::Expr::Constant(c) = &*s.slice {
-                        if let ast::Constant::Int(idx) = &c.value {
-                            // Parse tuple string to find Nth element
-                            let content = &base_type[1..base_type.len() - 1]; // Strip parens
-                                                                              // Split by comma respecting parens (< and (
-                            let mut depth = 0;
-                            let mut start = 0;
-                            let mut current_idx = 0;
-                            let target_idx = idx.to_string().parse::<usize>().ok()?;
+                    if let ast::Expr::NumberLiteral(n) = &*s.slice {
+                        // n.value is Number.
+                        let idx_str = match &n.value {
+                            ast::Number::Int(i) => i.to_string(),
+                            ast::Number::Float(f) => f.to_string(),
+                            _ => "0".to_string(),
+                        };
+                        // Parse tuple string to find Nth element
+                        let content = &base_type[1..base_type.len() - 1]; // Strip parens
+                                                                          // Split by comma respecting parens (< and (
+                        let mut depth = 0;
+                        let mut start = 0;
+                        let mut current_idx = 0;
+                        let target_idx = idx_str.parse::<usize>().ok()?;
 
-                            for (i, c) in content.char_indices() {
-                                match c {
-                                    '(' | '<' => depth += 1,
-                                    ')' | '>' => depth -= 1,
-                                    ',' => {
-                                        if depth == 0 {
-                                            if current_idx == target_idx {
-                                                return Some(content[start..i].trim().to_string());
-                                            }
-                                            start = i + 1;
-                                            current_idx += 1;
+                        for (i, c) in content.char_indices() {
+                            match c {
+                                '(' | '<' => depth += 1,
+                                ')' | '>' => depth -= 1,
+                                ',' => {
+                                    if depth == 0 {
+                                        if current_idx == target_idx {
+                                            return Some(content[start..i].trim().to_string());
                                         }
+                                        start = i + 1;
+                                        current_idx += 1;
                                     }
-                                    _ => {}
                                 }
+                                _ => {}
                             }
-                            // Last element
-                            if current_idx == target_idx {
-                                return Some(content[start..].trim().to_string());
-                            }
+                        }
+                        // Last element
+                        if current_idx == target_idx {
+                            return Some(content[start..].trim().to_string());
                         }
                     }
                 }

@@ -9,12 +9,12 @@ class RustString:
     def push_str(self, s: StrRef): pass
     def clone(self) -> RustString: pass
 
-@extern(path="rustpython_parser::ParseError", no_generic=True)
+@extern(path="ruff_python_parser::ParseError", no_generic=True)
 class ParseError:
     pass
 
-@extern(path="rustpython_parser::parse_program")
-def parse_program(source: StrRef, filename: StrRef) -> Result[List[ast.Stmt], ParseError]:
+@extern(path="ruff_python_parser::parse_module")
+def parse_module(source: StrRef) -> Result[ast.Parsed, ParseError]:
     pass
 
 @extern(path="crate::quiche::env_args_helper")
@@ -30,32 +30,29 @@ def exit(code: i32): pass
 # --- Main ---
 
 def compile_source(source: String, filename: String):
-    match parse_program(as_ref(source), as_ref(filename)):
-        case Ok(stmts):
-              # Type Check
-            checker = types.TypeChecker.new()
-            for stmt in as_ref(stmts):
-                checker.check_stmt(stmt)
+    # Ruff parse_module does not take filename in simple API
+    # check! macro unwraps Result automatically for us in host compiler
+    parsed = parse_module(as_ref(source))
+    module = parsed.into_syntax()
+    stmts = module.body
+    
+    # Type Check
+    checker = types.TypeChecker.new()
+    for stmt in as_ref(stmts):
+        checker.check_stmt(stmt)
+    
+    if checker.errors.len() > 0:
+        print("Type Errors found:")
+        for err in checker.errors:
+            print(err)
+        exit(1)
+    else:
+        # Codegen
+        codegen = compiler.Codegen.new()
+        for stmt in stmts:
+            codegen.generate_stmt(stmt)
             
-            if checker.errors.len() > 0:
-                print("Type Errors found:")
-                for err in checker.errors:
-                    print(err)
-                exit(1)
-            else:
-                # Codegen
-                codegen = compiler.Codegen.new()
-                for stmt in stmts:
-                    codegen.generate_stmt(stmt)
-                    
-                print(codegen.output) 
-            
-        case Err(e):
-            # print("Parse Error")
-            # ParseError might be opaque or hard to print if not Debug?
-            # Rust usually prints it.
-            print("Parse Error encountered")
-            exit(1)
+        print(codegen.output)
 
 def main():
     cli_args = env_args()

@@ -1,5 +1,5 @@
 use crate::Codegen;
-use rustpython_parser::ast;
+use ruff_python_ast as ast;
 
 impl Codegen {
     pub(crate) fn generate_stmt(&mut self, stmt: ast::Stmt) {
@@ -19,10 +19,16 @@ impl Codegen {
                 self.indent_level -= 1;
                 self.push_indent();
                 self.output.push_str("}");
-                if !i.orelse.is_empty() {
-                    self.output.push_str(" else {\n");
+                for clause in i.elif_else_clauses {
+                    if let Some(test) = clause.test {
+                        self.output.push_str(" else if ");
+                        self.generate_expr(test.clone());
+                        self.output.push_str(" {\n");
+                    } else {
+                        self.output.push_str(" else {\n");
+                    }
                     self.indent_level += 1;
-                    for stmt in i.orelse {
+                    for stmt in clause.body {
                         self.generate_stmt(stmt);
                     }
                     self.indent_level -= 1;
@@ -160,23 +166,19 @@ impl Codegen {
                 let mut no_generic = false;
 
                 for decorator in &c.decorator_list {
-                    if let ast::Expr::Call(call) = decorator {
+                    if let ast::Expr::Call(call) = &decorator.expression {
                         if let ast::Expr::Name(n) = &*call.func {
                             if n.id.as_str() == "extern" {
-                                for keyword in &call.keywords {
+                                for keyword in &call.arguments.keywords {
                                     if let Some(arg) = &keyword.arg {
                                         if arg == "path" {
-                                            if let ast::Expr::Constant(c) = &keyword.value {
-                                                if let ast::Constant::Str(s) = &c.value {
-                                                    extern_path = Some(s.clone());
-                                                }
+                                            if let ast::Expr::StringLiteral(s) = &keyword.value {
+                                                extern_path = Some(s.value.to_string());
                                             }
                                         } else if arg == "no_generic" {
                                             match &keyword.value {
-                                                ast::Expr::Constant(c) => {
-                                                    if let ast::Constant::Bool(b) = c.value {
-                                                        no_generic = b;
-                                                    }
+                                                ast::Expr::BooleanLiteral(b) => {
+                                                    no_generic = b.value;
                                                 }
                                                 ast::Expr::Name(n) => {
                                                     if n.id.as_str() == "true" {
@@ -207,7 +209,7 @@ impl Codegen {
 
                 // Check for @enum decorator
                 let is_enum = c.decorator_list.iter().any(|d| {
-                    if let ast::Expr::Name(n) = d {
+                    if let ast::Expr::Name(n) = &d.expression {
                         n.id.as_str() == "enum"
                     } else {
                         false
@@ -439,9 +441,12 @@ impl Codegen {
             }
             ast::Pattern::MatchAs(a) => {
                 if let Some(name) = &a.name {
-                    self.output.push_str(name);
+                    self.output.push_str(&name.id);
                     // Add symbol to scope for inference? Pattern bindings imply new variables.
-                    self.add_symbol(name.to_string(), "/* inferred pattern bind */".to_string());
+                    self.add_symbol(
+                        name.id.to_string(),
+                        "/* inferred pattern bind */".to_string(),
+                    );
                 } else {
                     self.output.push_str("_"); // Anonymous bind? or wildcard
                 }
@@ -465,27 +470,26 @@ impl Codegen {
                     _ => self.output.push_str("/* unknown match class */"),
                 }
 
-                if !c.patterns.is_empty() {
+                if !c.arguments.patterns.is_empty() {
                     // Tuple style: (p1, p2)
                     self.output.push_str("(");
-                    for (i, p) in c.patterns.iter().enumerate() {
+                    for (i, p) in c.arguments.patterns.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
                         self.generate_pattern(p);
                     }
                     self.output.push_str(")");
-                } else if !c.kwd_attrs.is_empty() {
+                } else if !c.arguments.keywords.is_empty() {
                     // Struct style: { k: p, .. }
                     self.output.push_str(" { ");
-                    for (i, (attr, p)) in c.kwd_attrs.iter().zip(c.kwd_patterns.iter()).enumerate()
-                    {
+                    for (i, kw) in c.arguments.keywords.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
-                        self.output.push_str(attr);
+                        self.output.push_str(&kw.attr);
                         self.output.push_str(": ");
-                        self.generate_pattern(p);
+                        self.generate_pattern(&kw.pattern);
                     }
                     self.output.push_str(", .. }");
                 }
@@ -518,7 +522,7 @@ impl Codegen {
             return;
         }
 
-        let is_main_with_args = f.name.as_str() == "main" && !f.args.args.is_empty();
+        let is_main_with_args = f.name.as_str() == "main" && !f.parameters.args.is_empty();
 
         if is_main_with_args {
             self.output.push_str("fn main() {\n");
@@ -531,12 +535,14 @@ impl Codegen {
             self.output.push_str(&format!("pub fn {}(", f.name));
 
             // Generate arguments
-            for (i, arg_with_default) in f.args.args.iter().enumerate() {
+            // Ruff parameters.args returns Vec<ParameterWithDefault> ? No, check AST
+            // ParameterWithDefault { parameter: Parameter, default: Option<Box<Expr>>, .. }
+            for (i, param_with_default) in f.parameters.args.iter().enumerate() {
                 if i > 0 {
                     self.output.push_str(", ");
                 }
-                let arg = &arg_with_default.def;
-                if arg.arg.as_str() == "self" {
+                let arg = &param_with_default.parameter; // Ruff renaming from def to parameter
+                if arg.name.as_str() == "self" {
                     self.output.push_str("&mut self");
                 } else {
                     let type_ann = if let Some(annotation) = &arg.annotation {
@@ -544,7 +550,7 @@ impl Codegen {
                     } else {
                         "/* untyped */".to_string()
                     };
-                    self.output.push_str(&format!("{}: {}", arg.arg, type_ann));
+                    self.output.push_str(&format!("{}: {}", arg.name, type_ann));
                 }
             }
 
@@ -564,12 +570,12 @@ impl Codegen {
 
         // Register arguments in new scope
         if !is_main_with_args {
-            for arg_with_default in f.args.args.iter() {
-                let arg = &arg_with_default.def;
-                if arg.arg.as_str() != "self" {
+            for param_with_default in f.parameters.args.iter() {
+                let arg = &param_with_default.parameter;
+                if arg.name.as_str() != "self" {
                     if let Some(annotation) = &arg.annotation {
                         let type_ann = self.map_type(annotation);
-                        self.add_symbol(arg.arg.to_string(), type_ann);
+                        self.add_symbol(arg.name.to_string(), type_ann);
                     }
                 }
             }
@@ -579,12 +585,12 @@ impl Codegen {
         if is_main_with_args {
             self.push_indent();
             // Assuming first arg is 'args'
-            if let Some(arg) = f.args.args.first() {
+            if let Some(param) = f.parameters.args.first() {
                 self.output.push_str(&format!(
                     "let {}: Vec<String> = std::env::args().collect();\n",
-                    arg.def.arg
+                    param.parameter.name
                 ));
-                self.add_symbol(arg.def.arg.to_string(), "Vec<String>".to_string());
+                self.add_symbol(param.parameter.name.to_string(), "Vec<String>".to_string());
             }
         }
 
@@ -598,27 +604,23 @@ impl Codegen {
         self.output.push_str("}\n\n");
     }
 
-    fn extract_extern_path(&self, decorators: &[ast::Expr]) -> Option<(String, bool)> {
+    fn extract_extern_path(&self, decorators: &[ast::Decorator]) -> Option<(String, bool)> {
         for d in decorators {
-            if let ast::Expr::Call(c) = d {
+            if let ast::Expr::Call(c) = &d.expression {
                 if let ast::Expr::Name(n) = &*c.func {
                     if n.id.as_str() == "extern" {
                         let mut path = None;
                         let mut no_generic = false;
-                        for kw in &c.keywords {
+                        for kw in &c.arguments.keywords {
                             if let Some(arg) = &kw.arg {
                                 if arg == "path" {
-                                    if let ast::Expr::Constant(const_val) = &kw.value {
-                                        if let ast::Constant::Str(s) = &const_val.value {
-                                            path = Some(s.clone());
-                                        }
+                                    if let ast::Expr::StringLiteral(s) = &kw.value {
+                                        path = Some(s.value.to_string());
                                     }
                                 } else if arg == "no_generic" {
                                     match &kw.value {
-                                        ast::Expr::Constant(c) => {
-                                            if let ast::Constant::Bool(b) = c.value {
-                                                no_generic = b;
-                                            }
+                                        ast::Expr::BooleanLiteral(b) => {
+                                            no_generic = b.value;
                                         }
                                         ast::Expr::Name(n) => {
                                             if n.id.as_str() == "true" {

@@ -60,15 +60,16 @@ class TypeChecker:
     def check_stmt(self, stmt: ast.Stmt):
         match stmt:
             case ast.Stmt.FunctionDef(f):
-                self.symbols.insert(f.name.to_string(), Symbol.new(f.name.to_string(), "function", True))
+                self.symbols.insert(f.name.as_str().to_string(), Symbol.new(f.name.as_str().to_string(), "function", True))
                 self.symbols.enter_scope()
                 # Register args
-                for arg_with_default in f.args.args:
-                    arg = arg_with_default.def_
+                # Register args
+                for arg_with_default in f.parameters.args:
+                    arg = arg_with_default.parameter
                     match arg.annotation:
                         case Some(ann):
                             type_name = self.get_type_name(deref(ann))
-                            self.symbols.insert(arg.arg.to_string(), Symbol.new(arg.arg.to_string(), type_name, False))
+                            self.symbols.insert(arg.name.as_str().to_string(), Symbol.new(arg.name.as_str().to_string(), type_name, False))
                         case None:
                             self.errors.push("Missing type annotation for argument")
                 
@@ -81,7 +82,7 @@ class TypeChecker:
                 match as_ref(a.targets[0]):
                     case ast.Expr.Name(n):
                         val_type = self.check_expr(deref(a.value))
-                        self.symbols.insert(n.id.to_string(), Symbol.new(n.id.to_string(), val_type, False))
+                        self.symbols.insert(n.id.as_str().to_string(), Symbol.new(n.id.as_str().to_string(), val_type, False))
                     case _:
                         pass
             
@@ -93,22 +94,18 @@ class TypeChecker:
 
     def check_expr(self, expr: ast.Expr) -> String:
         match expr:
-            case ast.Expr.Constant(c):
-                match c.value:
-                    case ast.Constant.Int(_):
-                        return "int"
-                    case ast.Constant.Str(_):
-                        return "String"
-                    case ast.Constant.Bool(_):
-                        return "bool"
-                    case _:
-                        return "unknown"
+            case ast.Expr.NumberLiteral(_):
+                return "int"
+            case ast.Expr.StringLiteral(_):
+                return "String"
+            case ast.Expr.BooleanLiteral(_):
+                return "bool"
             case ast.Expr.Name(n):
-                match self.symbols.lookup(n.id.to_string()):
+                match self.symbols.lookup(n.id.as_str().to_string()):
                     case Some(s):
                         return s.type_name
                     case None:
-                        self.errors.push("Undefined variable: " + as_ref(n.id.to_string()))
+                        self.errors.push("Undefined variable: " + as_ref(n.id.as_str().to_string()))
                         return "error"
             case _:
                 return "unknown"
@@ -116,6 +113,6 @@ class TypeChecker:
     def get_type_name(self, expr: ast.Expr) -> String:
         match expr:
             case ast.Expr.Name(n):
-                return n.id.to_string()
+                return n.id.as_str().to_string()
             case _:
                 return "complex"
