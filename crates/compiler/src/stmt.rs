@@ -46,13 +46,14 @@ impl Codegen {
             }
             ast::Stmt::For(f) => {
                 self.push_indent();
-                self.output.push_str("for ");
-                self.generate_expr(*f.target);
-                self.output.push_str(" in (");
+                self.output.push_str("for __q in (");
                 self.generate_expr(*f.iter);
-                self.output
-                    .push_str(").into_iter().map(|__q| crate::quiche::check!(__q)) {\n");
+                self.output.push_str(").into_iter() {\n");
                 self.indent_level += 1;
+                self.push_indent();
+                self.output.push_str("let ");
+                self.generate_expr(*f.target.clone());
+                self.output.push_str(" = crate::quiche::check!(__q);\n");
                 for stmt in f.body {
                     self.generate_stmt(stmt);
                 }
@@ -377,6 +378,9 @@ impl Codegen {
                         && name != "rustpython_parser";
 
                     let use_path = if is_likely_local {
+                        if self.linked_modules.contains(name) {
+                            continue;
+                        }
                         format!("crate::{}", name)
                     } else {
                         name.replace(".", "::")

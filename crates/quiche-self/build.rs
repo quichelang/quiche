@@ -41,10 +41,18 @@ fn main() {
 
         // HACK: Replace struct keyword for now (if needed) - moved to simple replace
         // Note: Real compiler should handle this.
-        let source = source.replace("struct ", "class ");
+        let mut source = source.replace("struct ", "class ");
+
+        // If this is the root file, inject hint for the compiler
+        if let Some((_, root_stem)) = root_file {
+            if stem == root_stem {
+                let link_hint = format!("\"quiche:link={}\"\n", modules.join(","));
+                source = format!("{}\n{}", link_hint, source);
+            }
+        }
 
         if let Some(mut rust_code) = compile(&source) {
-            // If this is the root file, inject `mod` declarations for other modules
+            // If this is the root file, also inject `mod` declarations for linking
             if let Some((_, root_stem)) = root_file {
                 if stem == root_stem {
                     let mod_decls: String = modules

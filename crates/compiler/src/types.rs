@@ -3,70 +3,53 @@ use rustpython_parser::ast;
 
 impl Codegen {
     pub(crate) fn map_type(&self, expr: &ast::Expr) -> String {
+        self.map_type_internal(expr, false)
+    }
+
+    pub(crate) fn map_type_expr(&self, expr: &ast::Expr) -> String {
+        self.map_type_internal(expr, true)
+    }
+
+    fn map_type_internal(&self, expr: &ast::Expr, is_expr: bool) -> String {
+        let sep = if is_expr { "::" } else { "" };
         match expr {
             ast::Expr::Name(n) => match n.id.as_str() {
                 // Signed Integers
-                "i8" => "i8".to_string(),
-                "i16" => "i16".to_string(),
-                "i32" => "i32".to_string(),
-                "i64" => "i64".to_string(),
-                "i128" => "i128".to_string(),
-                "isize" => "isize".to_string(),
-
+                "i8" | "i16" | "i32" | "i64" | "i128" | "isize" => n.id.to_string(),
                 // Unsigned Integers
-                "u8" => "u8".to_string(),
-                "u16" => "u16".to_string(),
-                "u32" => "u32".to_string(),
-                "u64" => "u64".to_string(),
-                "u128" => "u128".to_string(),
-                "usize" => "usize".to_string(),
-
+                "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => n.id.to_string(),
                 // Floats
-                "f32" => "f32".to_string(),
-                "f64" => "f64".to_string(),
-
+                "f32" | "f64" => n.id.to_string(),
                 // Bool/String
+                "Dict" | "HashMap" => "std::collections::HashMap".to_string(),
+                "List" | "Vec" => "Vec".to_string(),
+                "Option" => "Option".to_string(),
+                "Result" => "Result".to_string(),
+                "String" | "str" => "String".to_string(),
                 "bool" => "bool".to_string(),
-                "str" => "String".to_string(),
                 "StrRef" => "&str".to_string(),
-
-                // Pass through others
                 _ => n.id.to_string(),
             },
             ast::Expr::Subscript(s) => {
-                let base = self.map_type(&s.value);
-                let inner = self.map_type(&s.slice);
+                let base = self.map_type_internal(&s.value, false);
+                let inner = self.map_type_internal(&s.slice, false);
 
-                // Handle Vec[T] -> Vec<T>
-                if base == "Vec" || base == "List" {
-                    format!("Vec<{}>", inner)
-                } else if base == "Option" {
-                    format!("Option<{}>", inner)
-                } else if base == "Result" || base == "HashMap" || base == "Dict" {
-                    // Result[A, B] -> inner is (A, B) -> Result<A, B>
-                    // We need to strip the parens from the tuple inner
-                    let final_inner = if inner.starts_with("(") && inner.ends_with(")") {
-                        &inner[1..inner.len() - 1]
-                    } else {
-                        &inner
-                    };
-                    let rust_base = if base == "Dict" || base == "HashMap" {
-                        "std::collections::HashMap"
-                    } else {
-                        &base
-                    };
-                    format!("{}<{}>", rust_base, final_inner)
-                } else if base == "Tuple" {
-                    // Tuple[T, U] -> inner is (T, U)
-                    // Tuple[T] -> inner is T -> (T,)
-                    if inner.starts_with("(") && inner.ends_with(")") {
-                        inner
-                    } else {
-                        format!("({},)", inner)
-                    }
+                // Strip parens from inner if it's a tuple
+                let final_inner = if inner.starts_with("(") && inner.ends_with(")") {
+                    &inner[1..inner.len() - 1]
                 } else {
-                    format!("{}<{}>", base, inner)
-                }
+                    &inner
+                };
+
+                let rust_base = match base.as_str() {
+                    "Dict" | "HashMap" => "std::collections::HashMap",
+                    "List" | "Vec" => "Vec",
+                    "Option" => "Option",
+                    "Result" => "Result",
+                    _ => &base,
+                };
+
+                format!("{}{}<{}>", rust_base, sep, final_inner)
             }
             ast::Expr::Tuple(t) => {
                 let mut output = String::from("(");
@@ -74,12 +57,12 @@ impl Codegen {
                     if i > 0 {
                         output.push_str(", ");
                     }
-                    output.push_str(&self.map_type(elt));
+                    output.push_str(&self.map_type_internal(elt, false));
                 }
                 output.push_str(")");
                 output
             }
-            ast::Expr::Attribute(_) => self.expr_to_string(expr).replace("::", "::"), // Already uses :: from expr_to_string
+            ast::Expr::Attribute(_) => self.expr_to_string(expr),
             _ => format!("/* complex type: {:?} */", expr),
         }
     }
@@ -87,7 +70,16 @@ impl Codegen {
     pub(crate) fn expr_to_string(&self, expr: &ast::Expr) -> String {
         match expr {
             ast::Expr::Name(n) => n.id.to_string(),
-            ast::Expr::Attribute(a) => format!("{}::{}", self.expr_to_string(&a.value), a.attr),
+            ast::Expr::Attribute(a) => {
+                let base_str = self.expr_to_string(&a.value);
+                let sep = if self.is_type_or_mod(&base_str) {
+                    "::"
+                } else {
+                    "."
+                };
+                format!("{}{}{}", base_str, sep, a.attr)
+            }
+            ast::Expr::Subscript(_) => self.map_type_expr(expr), // Use turbo-fish for expressions
             _ => "unknown".to_string(),
         }
     }

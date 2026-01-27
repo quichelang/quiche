@@ -1,71 +1,109 @@
 
 # Bindings for RustPython AST
 
-@extern(path="rustpython_parser::ast::ModModule", no_generic=true)
-class ModModule:
-    pass
+@extern(path="rustpython_parser::ast::Identifier", no_generic=True)
+class Identifier:
+    def to_string(self) -> String: pass
 
-@extern(path="rustpython_parser::ast::Mod", no_generic=true)
+@extern(path="rustpython_parser::ast::ModModule", no_generic=True)
+class ModModule:
+    body: List[Stmt]
+
+@extern(path="rustpython_parser::ast::Mod", no_generic=True)
 class Mod:
     pass
 
-@extern(path="rustpython_parser::ast::Stmt", no_generic=true)
+@extern(path="rustpython_parser::ast::Stmt", no_generic=True)
 class Stmt:
     pass
 
-@extern(path="rustpython_parser::ast::Expr", no_generic=true)
+@extern(path="rustpython_parser::ast::Expr", no_generic=True)
 class Expr:
     pass
 
-@extern(path="rustpython_parser::ast::Operator", no_generic=true)
+@extern(path="rustpython_parser::ast::Operator", no_generic=True)
 class Operator:
     pass
 
-@extern(path="rustpython_parser::ast::Constant", no_generic=true)
+@extern(path="rustpython_parser::ast::Constant", no_generic=True)
 class Constant:
     pass
 
-@extern(path="rustpython_parser::ast::Arguments", no_generic=true)
+@extern(path="rustpython_parser::ast::Arguments", no_generic=True)
 class Arguments:
-    pass
+    args: List[ArgWithDefault]
 
-@extern(path="rustpython_parser::ast::Arg", no_generic=true)
+@extern(path="rustpython_parser::ast::ArgWithDefault", no_generic=True)
+class ArgWithDefault:
+    def_: Arg
+    default: Option[Box[Expr]]
+
+@extern(path="rustpython_parser::ast::Arg", no_generic=True)
 class Arg:
-    pass
+    arg: Identifier
+    annotation: Option[Box[Expr]]
 
-@extern(path="rustpython_parser::ast::ExprName", no_generic=true)
+@extern(path="rustpython_parser::ast::ExprName", no_generic=True)
 class ExprName:
-    pass
+    id: Identifier
 
-@extern(path="rustpython_parser::ast::StmtFunctionDef", no_generic=true)
+@extern(path="rustpython_parser::ast::StmtFunctionDef", no_generic=True)
 class StmtFunctionDef:
-    pass
+    name: Identifier
+    args: Box[Arguments]
+    body: List[Stmt]
+    returns: Option[Box[Expr]]
 
-@extern(path="rustpython_parser::ast::StmtReturn", no_generic=true)
+@extern(path="rustpython_parser::ast::StmtReturn", no_generic=True)
 class StmtReturn:
-    pass
+    value: Option[Box[Expr]]
 
-@extern(path="rustpython_parser::ast::StmtAssign", no_generic=true)
+@extern(path="rustpython_parser::ast::StmtAssign", no_generic=True)
 class StmtAssign:
-    pass
+    targets: List[Expr]
+    value: Box[Expr]
 
-@extern(path="rustpython_parser::ast::StmtExpr", no_generic=true)
+@extern(path="rustpython_parser::ast::StmtExpr", no_generic=True)
 class StmtExpr:
-    pass
+    value: Box[Expr]
 
-@extern(path="rustpython_parser::ast::ExprConstant", no_generic=true)
+@extern(path="rustpython_parser::ast::ExprConstant", no_generic=True)
 class ExprConstant:
-    pass
+    value: Constant
 
 @extern(path="rustpython_parser::ast::ExprBinOp", no_generic=True)
 class ExprBinOp:
-    pass
+    left: Box[Expr]
+    op: Operator
+    right: Box[Expr]
+
+@extern(path="rustpython_parser::ast::ExprAttribute", no_generic=True)
+class ExprAttribute:
+    value: Box[Expr]
+    attr: Identifier
+
+@extern(path="rustpython_parser::ast::ExprCall", no_generic=True)
+class ExprCall:
+    func: Box[Expr]
+    args: List[Expr]
+
+@extern(path="rustpython_parser::ast::ExprSubscript", no_generic=True)
+class ExprSubscript:
+    value: Box[Expr]
+    slice: Box[Expr]
+
+@extern(path="rustpython_parser::ast::ExprTuple", no_generic=True)
+class ExprTuple:
+    elts: List[Expr]
+
+@extern(path="rustpython_parser::ast::ExprList", no_generic=True)
+class ExprList:
+    elts: List[Expr]
 
 @extern(path="rustpython_parser::ParseError", no_generic=True)
 class ParseError:
     pass
 
 @extern(path="rustpython_parser::parse_program")
-def parse_program(source: StrRef, filename: StrRef) -> Result[Mod, ParseError]:
+def parse_program(source: StrRef, filename: StrRef) -> Result[List[Stmt], ParseError]:
     pass
-

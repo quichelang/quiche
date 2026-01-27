@@ -67,12 +67,9 @@ impl Codegen {
                         None
                     }
                 } else if let ast::Expr::Attribute(attr) = &*c.func {
-                    if let ast::Expr::Name(n) = &*attr.value {
-                        if self.foreign_symbols.contains(n.id.as_str()) {
-                            Some(format!("{}::{}", n.id, attr.attr))
-                        } else {
-                            None
-                        }
+                    let base_str = self.expr_to_string(&attr.value);
+                    if self.foreign_symbols.contains(&base_str) || self.is_type_or_mod(&base_str) {
+                        Some(format!("{}::{}", base_str, attr.attr))
                     } else {
                         None
                     }
@@ -236,9 +233,14 @@ impl Codegen {
                         self.output.push_str("&");
                         self.generate_expr(arg.clone());
                     }
+                } else if func_name == "as_mut" {
+                    if let Some(arg) = c.args.first() {
+                        self.output.push_str("&mut ");
+                        self.generate_expr(arg.clone());
+                    }
                 } else if !c.keywords.is_empty() {
                     // Struct Init
-                    self.generate_expr(*c.func);
+                    self.output.push_str(&self.map_type_expr(c.func.as_ref()));
                     self.output.push_str(" { ");
                     for (i, kw) in c.keywords.iter().enumerate() {
                         if i > 0 {
@@ -253,7 +255,7 @@ impl Codegen {
                     self.output.push_str(" }");
                 } else {
                     // Generic Function Call
-                    self.generate_expr(*c.func);
+                    self.output.push_str(&self.map_type_expr(c.func.as_ref()));
                     self.output.push_str("(");
                     for (i, arg) in c.args.iter().enumerate() {
                         if i > 0 {
@@ -269,20 +271,18 @@ impl Codegen {
             ast::Expr::Attribute(a) => {
                 let base_str = self.expr_to_string(&a.value);
                 self.generate_expr(*a.value.clone());
-                // Heuristic: Capitalized base -> Type/Enum static access (::)
-                // Lowercase base -> Instance access (.)
-                let sep = if base_str
-                    .chars()
-                    .next()
-                    .map(|c| c.is_uppercase())
-                    .unwrap_or(false)
-                {
+
+                let sep = if self.is_type_or_mod(&base_str) {
                     "::"
                 } else {
                     "."
                 };
-                self.output.push_str(sep);
-                self.output.push_str(&a.attr);
+                let attr_name = if a.attr.as_str() == "def_" {
+                    "def"
+                } else {
+                    a.attr.as_str()
+                };
+                self.output.push_str(&format!("{}{}", sep, attr_name));
             }
             ast::Expr::Name(n) => {
                 self.output.push_str(&n.id);
@@ -298,9 +298,10 @@ impl Codegen {
                         self.output.push_str(&format!("{}.0", s));
                     }
                 }
-                ast::Constant::Str(s) => self
-                    .output
-                    .push_str(&format!("String::from(\"{}\")", s.replace("\"", "\\\""))),
+                ast::Constant::Str(s) => self.output.push_str(&format!(
+                    "std::string::String::from(\"{}\")",
+                    s.replace("\"", "\\\"")
+                )),
                 ast::Constant::Bool(b) => self.output.push_str(if b { "true" } else { "false" }),
                 _ => self.output.push_str("/* unhandled constant */"),
             },

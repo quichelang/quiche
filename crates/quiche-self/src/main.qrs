@@ -1,3 +1,8 @@
+
+import ast
+import types
+from compiler import Codegen
+
 @extern(path="std::string::String", no_generic=True)
 class RustString:
     def new() -> RustString: pass
@@ -6,8 +11,6 @@ class RustString:
 @extern(path="rustpython_parser::ParseError", no_generic=True)
 class ParseError:
     pass
-
-from compiler import Codegen
 
 @extern(path="rustpython_parser::parse_program")
 def parse_program(source: StrRef, filename: StrRef) -> Result[List[ast.Stmt], ParseError]:
@@ -28,14 +31,25 @@ def main():
     # Parse
     match parse_program(as_ref(source), as_ref("<embedded>")):
         case Ok(stmts):
-            # Compile using modular Codegen
-            codegen = Codegen.new()
+              # Type Check
+            checker = types.TypeChecker.new()
+            for stmt in as_ref(stmts):
+                checker.check_stmt(stmt)
             
-            for stmt in stmts:
-                codegen.generate_stmt(stmt)
+            if checker.errors.len() > 0:
+                print("Type Errors found:")
+                for err in checker.errors:
+                    print(err)
+            else:
+                print("Type Check Passed")
+                
+                # Codegen
+                codegen = compiler.Codegen.new()
+                for stmt in stmts:
+                    codegen.generate_stmt(stmt)
                     
-            print("Generated Rust Code:")
-            print(codegen.output) 
+                print("Generated Rust Code:")
+                print(codegen.output) 
             
         case Err(e):
             print("Parse Error")

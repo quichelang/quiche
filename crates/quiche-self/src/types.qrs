@@ -1,0 +1,121 @@
+
+import ast
+
+# Dict is handled as a built-in mapping to HashMap in the host compiler.
+# No need for @extern class Dict because it and its methods (get, insert) are whitelisted.
+
+class Symbol:
+    name: String
+    type_name: String
+    is_const: bool
+
+    def new(name: String, type_name: String, is_const: bool) -> Symbol:
+        return Symbol(name=name, type_name=type_name, is_const=is_const)
+
+class SymbolTable:
+    scopes: List[Dict[String, Symbol]]
+
+    def new() -> SymbolTable:
+        # Host compiler maps Dict[K, V] to HashMap<K, V>
+        dict = Dict[String, Symbol].new()
+        scopes = [dict]
+        return SymbolTable(scopes=scopes)
+
+    def enter_scope(self):
+        self.scopes.push(Dict[String, Symbol].new())
+
+    def exit_scope(self):
+        sz = self.scopes.len()
+        if sz > 1:
+            self.scopes.pop()
+
+    def insert(self, name: String, symbol: Symbol):
+        # Insert into current (top) scope
+        # Extract index to a local to avoid borrow conflict in generated Rust code
+        sz = self.scopes.len()
+        idx = sz - 1
+        current_scope = as_mut(self.scopes[idx])
+        current_scope.insert(name, symbol)
+
+    def lookup(self, name: String) -> Option[Symbol]:
+        # Search from inner to outer
+        i = self.scopes.len() - 1
+        while i >= 0:
+            scope = as_ref(self.scopes[i])
+            match scope.get(name):
+                case Some(s):
+                    return Some(s)
+                case None:
+                    pass
+            i = i - 1
+        return None
+
+class TypeChecker:
+    symbols: SymbolTable
+    errors: List[String]
+
+    def new() -> TypeChecker:
+        return TypeChecker(symbols=SymbolTable.new(), errors=[])
+
+    def check_stmt(self, stmt: ast.Stmt):
+        match stmt:
+            case ast.Stmt.FunctionDef(f):
+                self.symbols.insert(f.name.to_string(), Symbol.new(f.name.to_string(), "function", True))
+                self.symbols.enter_scope()
+                # Register args
+                for arg_with_default in f.args.args:
+                    arg = arg_with_default.def_
+                    match arg.annotation:
+                        case Some(ann):
+                            type_name = self.get_type_name(deref(ann))
+                            self.symbols.insert(arg.arg.to_string(), Symbol.new(arg.arg.to_string(), type_name, False))
+                        case None:
+                            self.errors.push("Missing type annotation for argument")
+                
+                for s in f.body:
+                    self.check_stmt(s)
+                self.symbols.exit_scope()
+
+            case ast.Stmt.Assign(a):
+                # Simple single target
+                match as_ref(a.targets[0]):
+                    case ast.Expr.Name(n):
+                        val_type = self.check_expr(deref(a.value))
+                        self.symbols.insert(n.id.to_string(), Symbol.new(n.id.to_string(), val_type, False))
+                    case _:
+                        pass
+            
+            case ast.Stmt.Expr(e):
+                self.check_expr(deref(e.value))
+            
+            case _:
+                pass
+
+    def check_expr(self, expr: ast.Expr) -> String:
+        match expr:
+            case ast.Expr.Constant(c):
+                match c.value:
+                    case ast.Constant.Int(_):
+                        return "int"
+                    case ast.Constant.Str(_):
+                        return "String"
+                    case ast.Constant.Bool(_):
+                        return "bool"
+                    case _:
+                        return "unknown"
+            case ast.Expr.Name(n):
+                match self.symbols.lookup(n.id.to_string()):
+                    case Some(s):
+                        return s.type_name
+                    case None:
+                        self.errors.push("Undefined variable: " + as_ref(n.id.to_string()))
+                        return "error"
+            case _:
+                return "unknown"
+
+    def get_type_name(self, expr: ast.Expr) -> String:
+        match expr:
+            case ast.Expr.Name(n):
+                return n.id.to_string()
+            case _:
+                return "complex"
