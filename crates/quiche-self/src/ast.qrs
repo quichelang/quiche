@@ -138,6 +138,11 @@ class ExprSubscript:
     value: Box[Expr]
     slice: Box[Expr]
 
+@extern(path="ruff_python_ast::ExprLambda", no_generic=True)
+class ExprLambda:
+    parameters: Option[Box[Parameters]]
+    body: Box[Expr]
+
 @extern(path="ruff_python_ast::ExprTuple", no_generic=True)
 class ExprTuple:
     elts: List[Expr]

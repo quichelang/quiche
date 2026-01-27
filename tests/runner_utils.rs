@@ -122,7 +122,7 @@ mod quiche {
 "#
 }
 
-pub fn run_transpilation_test(binary: &Path, spec_path: &Path) -> bool {
+pub fn run_transpilation_test(binary: &Path, spec_path: &Path, project_root: &Path) -> bool {
     let test_name = spec_path.file_name().unwrap().to_string_lossy();
     println!("Running spec (transpilation): {}", test_name);
 
@@ -158,11 +158,11 @@ pub fn run_transpilation_test(binary: &Path, spec_path: &Path) -> bool {
     );
     full_code.push_str(&wrapped_user_code);
 
-    // 3. Create Temp Cargo Project
-    let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
-    let proj_dir = temp_dir.path();
-    let src_dir = proj_dir.join("src");
-    fs::create_dir(&src_dir).expect("Failed to create src dir");
+    // 3. Prepare sources
+    let src_dir = project_root.join("src");
+    if !src_dir.exists() {
+        fs::create_dir(&src_dir).expect("Failed to create src dir");
+    }
 
     // Resolve path to runtime relative to CWD (runner context)
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -188,7 +188,7 @@ quiche_runtime = {{ path = "{}" }}
         runtime_path_str
     );
 
-    fs::write(proj_dir.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
+    fs::write(project_root.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::write(src_dir.join("main.rs"), full_code).expect("Failed to write main.rs");
 
     // 4. Run `cargo run`
@@ -196,7 +196,7 @@ quiche_runtime = {{ path = "{}" }}
     let run_output = Command::new("cargo")
         .arg("run")
         .arg("--quiet")
-        .current_dir(proj_dir)
+        .current_dir(project_root)
         .output()
         .expect("Failed to run cargo run");
 
@@ -224,12 +224,16 @@ pub fn run_self_hosted_tests(package: &str, binary: &str) {
     let mut failed = false;
     let entries = fs::read_dir(tests_dir).expect("Failed to read tests dir");
 
+    // Use a single temp dir for all tests to reuse build cache
+    let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+    let proj_root = temp_dir.path();
+
     for entry in entries {
         let entry = entry.unwrap();
         let path = entry.path();
         if path.extension().unwrap_or_default() == "qrs" {
             // Use transpilation runner
-            if !run_transpilation_test(&binary_path, &path) {
+            if !run_transpilation_test(&binary_path, &path, proj_root) {
                 failed = true;
             }
         }

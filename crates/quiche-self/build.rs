@@ -39,9 +39,8 @@ fn main() {
         let stem = path.file_stem().unwrap().to_str().unwrap();
         let source = fs::read_to_string(path).expect("Read source failed");
 
-        // HACK: Replace struct keyword for now (if needed) - moved to simple replace
-        // Note: Real compiler should handle this.
-        let mut source = source.replace("struct ", "class ");
+        // HACK: Removed obsolete struct-to-class replacement.
+        let mut source = source.to_string();
 
         // If this is the root file, inject hint for the compiler
         if let Some((_, root_stem)) = root_file {
