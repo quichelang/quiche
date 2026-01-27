@@ -8,9 +8,11 @@ class Symbol:
     name: String
     type_name: String
     is_const: bool
+    is_class: bool
+    is_extern: bool
 
-    def new(name: String, type_name: String, is_const: bool) -> Symbol:
-        return Symbol(name=name, type_name=type_name, is_const=is_const)
+    def new(name: String, type_name: String, is_const: bool, is_class: bool, is_extern: bool) -> Symbol:
+        return Symbol(name=name, type_name=type_name, is_const=is_const, is_class=is_class, is_extern=is_extern)
 
 class SymbolTable:
     scopes: List[Dict[String, Symbol]]
@@ -60,7 +62,7 @@ class TypeChecker:
     def check_stmt(self, stmt: ast.Stmt):
         match stmt:
             case ast.Stmt.FunctionDef(f):
-                self.symbols.insert(f.name.as_str().to_string(), Symbol.new(f.name.as_str().to_string(), "function", True))
+                self.symbols.insert(f.name.as_str().to_string(), Symbol.new(f.name.as_str().to_string(), "function", True, False, False))
                 self.symbols.enter_scope()
                 # Register args
                 # Register args
@@ -69,7 +71,7 @@ class TypeChecker:
                     match arg.annotation:
                         case Some(ann):
                             type_name = self.get_type_name(deref(ann))
-                            self.symbols.insert(arg.name.as_str().to_string(), Symbol.new(arg.name.as_str().to_string(), type_name, False))
+                            self.symbols.insert(arg.name.as_str().to_string(), Symbol.new(arg.name.as_str().to_string(), type_name, False, False, False))
                         case None:
                             self.errors.push("Missing type annotation for argument")
                 
@@ -82,7 +84,7 @@ class TypeChecker:
                 match as_ref(a.targets[0]):
                     case ast.Expr.Name(n):
                         val_type = self.check_expr(deref(a.value))
-                        self.symbols.insert(n.id.as_str().to_string(), Symbol.new(n.id.as_str().to_string(), val_type, False))
+                        self.symbols.insert(n.id.as_str().to_string(), Symbol.new(n.id.as_str().to_string(), val_type, False, False, False))
                     case _:
                         pass
             
