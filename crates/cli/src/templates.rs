@@ -85,6 +85,7 @@ pub fn get_lib_rs() -> &'static str {
 mod quiche {
     #![allow(unused_macros, unused_imports)]
     
+    // High Priority: Consumes Self (Result/Option)
     pub trait QuicheResult {
         type Output;
         fn quiche_handle(self) -> Self::Output;
@@ -97,13 +98,9 @@ mod quiche {
         }
     }
     
-    impl<T> QuicheResult for Option<T> {
-        type Output = T;
-        fn quiche_handle(self) -> T {
-            self.expect("Quiche Exception: Unexpected None")
-        }
-    }
+
     
+    // Low Priority: Takes &Self (Clone fallback)
     pub trait QuicheGeneric {
         fn quiche_handle(&self) -> Self;
     }
@@ -114,15 +111,16 @@ mod quiche {
         }
     }
 
-    macro_rules! call {
-        ($func:path, $($arg:expr),*) => {
+    macro_rules! check {
+        ($val:expr) => {
             {
                 use crate::quiche::{QuicheResult, QuicheGeneric};
-                $func( $($arg),* ).quiche_handle()
+                ($val).quiche_handle()
             }
         };
     }
-    pub(crate) use call;
+    pub(crate) use check;
+    pub(crate) use check as call;
 }
 
 // Re-export everything from the transpiled module
@@ -144,6 +142,7 @@ pub fn get_main_rs() -> &'static str {
 mod quiche {
     #![allow(unused_macros, unused_imports)]
     
+    // High Priority: Consumes Self (Result/Option)
     pub trait QuicheResult {
         type Output;
         fn quiche_handle(self) -> Self::Output;
@@ -156,13 +155,9 @@ mod quiche {
         }
     }
     
-    impl<T> QuicheResult for Option<T> {
-        type Output = T;
-        fn quiche_handle(self) -> T {
-            self.expect("Quiche Exception: Unexpected None")
-        }
-    }
+
     
+    // Low Priority: Takes &Self (Clone fallback)
     pub trait QuicheGeneric {
         fn quiche_handle(&self) -> Self;
     }
@@ -173,15 +168,16 @@ mod quiche {
         }
     }
 
-    macro_rules! call {
-        ($func:path, $($arg:expr),*) => {
+    macro_rules! check {
+        ($val:expr) => {
             {
                 use crate::quiche::{QuicheResult, QuicheGeneric};
-                $func( $($arg),* ).quiche_handle()
+                ($val).quiche_handle()
             }
         };
     }
-    pub(crate) use call;
+    pub(crate) use check;
+    pub(crate) use check as call;
 }
 
 include!(concat!(env!("OUT_DIR"), "/main.rs"));

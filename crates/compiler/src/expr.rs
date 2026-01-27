@@ -42,7 +42,24 @@ impl Codegen {
                 self.output.push_str(" }");
             }
             ast::Expr::Call(c) => {
-                // Check foreign symbols (rust.* imports)
+                // 0. Special Case: Direct Lambda Calls
+                // (lambda x: ...)(...)
+                // We SKIP check! wrapping for lambdas because Rust type inference
+                // struggles with autoref traits on closure return types without explicit hints.
+                if let ast::Expr::Lambda(_) = &*c.func {
+                    self.generate_expr(*c.func);
+                    self.output.push_str("(");
+                    for (i, arg) in c.args.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.generate_expr(arg.clone());
+                    }
+                    self.output.push_str(")");
+                    return;
+                }
+
+                // 1. Check foreign symbols (rust.* imports)
                 let foreign_name = if let ast::Expr::Name(n) = &*c.func {
                     if self.foreign_symbols.contains(n.id.as_str()) {
                         Some(n.id.to_string())
@@ -64,22 +81,26 @@ impl Codegen {
                 };
 
                 if let Some(path) = foreign_name {
-                    self.output.push_str("quiche::call!(");
+                    self.output.push_str("quiche::check!((");
                     self.output.push_str(&path);
-                    for arg in &c.args {
-                        self.output.push_str(", ");
+                    self.output.push_str(")(");
+                    for (i, arg) in c.args.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
                         self.generate_expr(arg.clone());
                     }
-                    self.output.push_str(")");
+                    self.output.push_str("))");
                     return;
                 }
 
-                // Check for method call: obj.method(args)
+                // 2. Check for Method Aliasing (List/Dict)
                 if let ast::Expr::Attribute(attr) = &*c.func {
                     let method_name = attr.attr.as_str();
 
-                    // Check for list method aliasing
+                    // List
                     if let Some((rust_method, _)) = crate::list::map_list_method(method_name) {
+                        self.output.push_str("quiche::check!(");
                         self.generate_expr(*attr.value.clone());
                         self.output.push_str(".");
                         self.output.push_str(rust_method);
@@ -90,14 +111,15 @@ impl Codegen {
                             }
                             self.generate_expr(arg.clone());
                         }
-                        self.output.push_str(")");
+                        self.output.push_str("))");
                         return;
                     }
 
-                    // Check for dict method aliasing
+                    // Dict
                     if let Some((rust_method, key_needs_ref)) =
                         crate::dict::map_dict_method(method_name)
                     {
+                        self.output.push_str("quiche::check!(");
                         self.generate_expr(*attr.value.clone());
                         self.output.push_str(".");
                         self.output.push_str(rust_method);
@@ -115,9 +137,13 @@ impl Codegen {
                         if method_name == "get" {
                             self.output.push_str(".cloned()");
                         }
+                        self.output.push_str(")");
                         return;
                     }
                 }
+
+                // 3. Builtins & Generic Calls (Wrap ALL)
+                self.output.push_str("quiche::check!(");
 
                 let func_name = if let ast::Expr::Name(n) = &*c.func {
                     n.id.as_str()
@@ -146,12 +172,10 @@ impl Codegen {
                     self.output.push_str(")");
                 } else if func_name == "assert_eq" || func_name == "assert_str_eq" {
                     self.output.push_str("assert_eq!(");
-                    // assert_eq(left, right, [msg])
                     if c.args.len() >= 2 {
                         self.generate_expr(c.args[0].clone());
                         self.output.push_str(", ");
                         self.generate_expr(c.args[1].clone());
-
                         if c.args.len() > 2 {
                             self.output.push_str(", \"{}\", ");
                             self.generate_expr(c.args[2].clone());
@@ -163,20 +187,18 @@ impl Codegen {
                     if let Some(arg) = c.args.first() {
                         self.generate_expr(arg.clone());
                     }
-                    // Skip message for now or pass as second arg
                     if c.args.len() > 1 {
                         self.output.push_str(", \"{}\", ");
                         self.generate_expr(c.args[1].clone());
                     }
                     self.output.push_str(")");
                 } else if func_name == "len" {
-                    // len(x) -> x.len()
                     if let Some(arg) = c.args.first() {
                         self.generate_expr(arg.clone());
                         self.output.push_str(".len()");
                     }
                 } else if !c.keywords.is_empty() {
-                    // Assume Struct Init: Name(key=val) -> Name { key: val }
+                    // Struct Init
                     self.generate_expr(*c.func);
                     self.output.push_str(" { ");
                     for (i, kw) in c.keywords.iter().enumerate() {
@@ -191,7 +213,7 @@ impl Codegen {
                     }
                     self.output.push_str(" }");
                 } else {
-                    // Regular Function Call
+                    // Generic Function Call
                     self.generate_expr(*c.func);
                     self.output.push_str("(");
                     for (i, arg) in c.args.iter().enumerate() {
@@ -202,6 +224,8 @@ impl Codegen {
                     }
                     self.output.push_str(")");
                 }
+
+                self.output.push_str(")"); // End check!
             }
             ast::Expr::Attribute(a) => {
                 let base_str = self.expr_to_string(&a.value);

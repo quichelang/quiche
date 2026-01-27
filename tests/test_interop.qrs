@@ -10,13 +10,16 @@ def test_dynamic_macro():
     entries = read_dir(".")
     
     for entry in entries:
-        entry = entry.unwrap()
         if entry.path().is_dir():
             print(entry.file_name())
     
 def test_extern_binding():
     # Should use std::vec::Vec
-    pass
+    v = Vector.new()
+    v.push(10)
+    v.push(20)
+    print(v.len())
+    assert(v.len() == 2)
 
 test_dynamic_macro()
 test_extern_binding() 

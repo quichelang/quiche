@@ -48,9 +48,10 @@ impl Codegen {
                 self.push_indent();
                 self.output.push_str("for ");
                 self.generate_expr(*f.target);
-                self.output.push_str(" in ");
+                self.output.push_str(" in (");
                 self.generate_expr(*f.iter);
-                self.output.push_str(" {\n");
+                self.output
+                    .push_str(").into_iter().map(|__q| quiche::check!(__q)) {\n");
                 self.indent_level += 1;
                 for stmt in f.body {
                     self.generate_stmt(stmt);
@@ -153,9 +154,34 @@ impl Codegen {
             ast::Stmt::ClassDef(c) => {
                 self.push_indent();
 
-                if let Some(path) = self.extract_extern_path(&c.decorator_list) {
+                // Check for @extern(path="...")
+                // We need to implement extract_extern_path helper or inline it here
+                let mut extern_path = None;
+                for decorator in &c.decorator_list {
+                    if let ast::Expr::Call(call) = decorator {
+                        if let ast::Expr::Name(n) = &*call.func {
+                            if n.id.as_str() == "extern" {
+                                for keyword in &call.keywords {
+                                    if let Some(arg) = &keyword.arg {
+                                        if arg == "path" {
+                                            if let ast::Expr::Constant(c) = &keyword.value {
+                                                if let ast::Constant::Str(s) = &c.value {
+                                                    extern_path = Some(s.clone());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(path) = extern_path {
+                    // type Vector<T> = std::vec::Vec<T>;
+                    // Minimal generic support for now
                     self.output
-                        .push_str(&format!("pub use {} as {};\n", path, c.name));
+                        .push_str(&format!("type {}<T> = {}<T>;\n", c.name, path));
                     return;
                 }
 
