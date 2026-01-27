@@ -1,0 +1,71 @@
+
+# Bindings for RustPython AST
+
+@extern(path="rustpython_parser::ast::ModModule", no_generic=true)
+class ModModule:
+    pass
+
+@extern(path="rustpython_parser::ast::Mod", no_generic=true)
+class Mod:
+    pass
+
+@extern(path="rustpython_parser::ast::Stmt", no_generic=true)
+class Stmt:
+    pass
+
+@extern(path="rustpython_parser::ast::Expr", no_generic=true)
+class Expr:
+    pass
+
+@extern(path="rustpython_parser::ast::Operator", no_generic=true)
+class Operator:
+    pass
+
+@extern(path="rustpython_parser::ast::Constant", no_generic=true)
+class Constant:
+    pass
+
+@extern(path="rustpython_parser::ast::Arguments", no_generic=true)
+class Arguments:
+    pass
+
+@extern(path="rustpython_parser::ast::Arg", no_generic=true)
+class Arg:
+    pass
+
+@extern(path="rustpython_parser::ast::ExprName", no_generic=true)
+class ExprName:
+    pass
+
+@extern(path="rustpython_parser::ast::StmtFunctionDef", no_generic=true)
+class StmtFunctionDef:
+    pass
+
+@extern(path="rustpython_parser::ast::StmtReturn", no_generic=true)
+class StmtReturn:
+    pass
+
+@extern(path="rustpython_parser::ast::StmtAssign", no_generic=true)
+class StmtAssign:
+    pass
+
+@extern(path="rustpython_parser::ast::StmtExpr", no_generic=true)
+class StmtExpr:
+    pass
+
+@extern(path="rustpython_parser::ast::ExprConstant", no_generic=true)
+class ExprConstant:
+    pass
+
+@extern(path="rustpython_parser::ast::ExprBinOp", no_generic=true)
+class ExprBinOp:
+    pass
+
+@extern(path="rustpython_parser::parser::ParseError", no_generic=true)
+class ParseError:
+    pass
+
+@extern(path="rustpython_parser::parser::parse_program")
+def parse_program(source: str, filename: str) -> Result[Mod, ParseError]:
+    pass
+

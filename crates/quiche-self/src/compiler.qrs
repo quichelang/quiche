@@ -1,0 +1,72 @@
+import ast
+
+@extern(path="std::string::String", no_generic=true)
+class RustString:
+    def new() -> RustString: pass
+    def push_str(self, s: str): pass
+
+class Codegen:
+    output: RustString
+
+    def __init__(self):
+        self.output = RustString.new()
+
+    def generate_stmt(self, stmt: ast.Stmt):
+        match stmt:
+            case ast.Stmt.FunctionDef(f):
+                self.output.push_str("fn ")
+                self.output.push_str(f.name)
+                self.output.push_str("() {\n")
+                for s in f.body:
+                    self.generate_stmt(s)
+                self.output.push_str("}\n")
+            case ast.Stmt.Expr(e):
+                self.generate_expr(e.value)
+                self.output.push_str(";\n")
+            case ast.Stmt.Return(r):
+                self.output.push_str("return ")
+                match r.value:
+                    case Some(v):
+                        self.generate_expr(v)
+                    case None:
+                        pass
+                self.output.push_str(";\n")
+            case ast.Stmt.Assign(a):
+                # Simple single target assignment
+                match a.targets[0]:
+                    case ast.Expr.Name(n):
+                         self.output.push_str("let ")
+                         self.output.push_str(n.id)
+                         self.output.push_str(" = ")
+                    case _:
+                         pass
+                self.generate_expr(a.value)
+                self.output.push_str(";\n")
+            case _:
+                self.output.push_str("// Unimplemented stmt\n")
+
+    def generate_expr(self, expr: ast.Expr):
+        match expr:
+            case ast.Expr.Constant(c):
+                match c.value:
+                    case ast.Constant.Int(i):
+                        # Need to_string on BigInt
+                        # Quiche doesn't support method call on extern enum variant payload easily unless implied?
+                        # i.to_string() should work if BigInt has to_string
+                        # self.output.push_str(i.to_string())
+                        self.output.push_str("42") # Placeholder until BigInt binding
+                    case ast.Constant.Str(s):
+                         self.output.push_str("\"")
+                         self.output.push_str(s)
+                         self.output.push_str("\"")
+                    case _:
+                        self.output.push_str("/* const */")
+            case ast.Expr.Name(n):
+                self.output.push_str(n.id)
+            case ast.Expr.BinOp(b):
+                self.generate_expr(b.left)
+                # Operator mapping is needed, assume Add (+)
+                self.output.push_str(" + ")
+                self.generate_expr(b.right)
+            case _:
+                self.output.push_str("/* expr */")

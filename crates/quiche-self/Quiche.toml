@@ -1,0 +1,3 @@
+[package]
+name = "crates/quiche-self"
+version = "0.1.0"
