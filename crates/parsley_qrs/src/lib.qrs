@@ -1,0 +1,145 @@
+class FlagSpec:
+    name: String
+    aliases: List[String]
+    takes_value: bool
+    default_bool: bool
+    default_value: String
+    has_default: bool
+
+    def new_flag(name: String, aliases: List[String], default_bool: bool) -> FlagSpec:
+        return FlagSpec(
+            name=name,
+            aliases=aliases,
+            takes_value=False,
+            default_bool=default_bool,
+            default_value="",
+            has_default=True,
+        )
+
+    def new_option(name: String, aliases: List[String], default_value: String, has_default: bool) -> FlagSpec:
+        return FlagSpec(
+            name=name,
+            aliases=aliases,
+            takes_value=True,
+            default_bool=False,
+            default_value=default_value,
+            has_default=has_default,
+        )
+
+class ParseResult:
+    flags: Dict[String, bool]
+    options: Dict[String, String]
+    positionals: List[String]
+    command: String
+    subargs: List[String]
+    errors: List[String]
+
+    def new() -> ParseResult:
+        return ParseResult(
+            flags=Dict[String, bool].new(),
+            options=Dict[String, String].new(),
+            positionals=[],
+            command="",
+            subargs=[],
+            errors=[],
+        )
+
+class Parsley:
+    specs: List[FlagSpec]
+    by_name: Dict[String, FlagSpec]
+    alias_map: Dict[String, String]
+    commands: List[String]
+
+    def new() -> Parsley:
+        return Parsley(
+            specs=[],
+            by_name=Dict[String, FlagSpec].new(),
+            alias_map=Dict[String, String].new(),
+            commands=[],
+        )
+
+    def add_flag(self, name: String, aliases: List[String], default_bool: bool):
+        spec = FlagSpec.new_flag(name.clone(), aliases.clone(), default_bool)
+        self.specs.append(spec)
+        self.by_name.insert(name.clone(), spec)
+        self.register_aliases(name, aliases)
+
+    def add_option(self, name: String, aliases: List[String], default_value: String, has_default: bool):
+        spec = FlagSpec.new_option(name.clone(), aliases.clone(), default_value.clone(), has_default)
+        self.specs.append(spec)
+        self.by_name.insert(name.clone(), spec)
+        self.register_aliases(name, aliases)
+
+    def add_command(self, name: String):
+        self.commands.append(name)
+
+    def register_aliases(self, name: String, aliases: List[String]):
+        self.alias_map.insert(name.clone(), name.clone())
+        self.alias_map.insert("--".to_string() + as_ref(name.clone()), name.clone())
+        if len(name.clone()) == 1:
+            self.alias_map.insert("-".to_string() + as_ref(name.clone()), name.clone())
+        for a in aliases:
+            self.alias_map.insert(a.clone(), name.clone())
+
+    def parse(self, args: List[String]) -> ParseResult:
+        result = ParseResult.new()
+
+        # defaults
+        for spec in self.specs:
+            if spec.takes_value:
+                if spec.has_default:
+                    result.options.insert(spec.name.clone(), spec.default_value.clone())
+            else:
+                result.flags.insert(spec.name.clone(), spec.default_bool)
+
+        i: usize = 0
+        while i < len(args):
+            arg = args[i].clone()
+
+            if arg == "--":
+                j = i + 1
+                while j < len(args):
+                    result.positionals.append(args[j].clone())
+                    j = j + 1
+                break
+
+            is_flag = arg.starts_with(as_ref("-"))
+            if not is_flag:
+                if result.command == "" and self.is_command(arg.clone()):
+                    result.command = arg.clone()
+                    j2 = i + 1
+                    while j2 < len(args):
+                        result.subargs.append(args[j2].clone())
+                        j2 = j2 + 1
+                    break
+                result.positionals.append(arg.clone())
+                i = i + 1
+                continue
+
+            match self.alias_map.get(arg.clone()):
+                case Some(name):
+                    match self.by_name.get(name.clone()):
+                        case Some(spec):
+                            if spec.takes_value:
+                                if i + 1 < len(args):
+                                    value = args[i + 1].clone()
+                                    result.options.insert(spec.name.clone(), value)
+                                    i = i + 2
+                                    continue
+                                else:
+                                    result.errors.append("Missing value for option: " + as_ref(arg))
+                            else:
+                                result.flags.insert(spec.name.clone(), True)
+                        case None:
+                            result.errors.append("Unknown option: " + as_ref(arg))
+                case None:
+                    result.errors.append("Unknown option: " + as_ref(arg))
+
+            i = i + 1
+
+        return result
+
+    def is_command(self, name: String) -> bool:
+        for c in self.commands:
+            if c == name: return True
+        return False

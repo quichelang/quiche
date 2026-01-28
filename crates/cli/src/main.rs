@@ -33,11 +33,13 @@ fn main() {
             }
         }
         "build" => {
-            run_cargo_command("build", &args[2..]);
+            let (_warn, _strict, _warn_all, _warn_quiche, rest) = parse_flags(&args[2..]);
+            run_cargo_command("build", &rest);
         }
         "run" => {
+            let (_warn, _strict, _warn_all, _warn_quiche, rest) = parse_flags(&args[2..]);
             if Path::new("Cargo.toml").exists() {
-                run_cargo_command("run", &args[2..]);
+                run_cargo_command("run", &rest);
             } else {
                 eprintln!("Error: No Cargo.toml found in current directory.");
                 eprintln!("To run a single script, use: quiche <file.qrs>");
@@ -45,15 +47,22 @@ fn main() {
             }
         }
         "test" => {
+            let (warn, strict, warn_all, warn_quiche, rest) = parse_flags(&args[2..]);
             if Path::new("tests/runner.qrs").exists() {
                 if let Ok(exe) = env::current_exe() {
                     if let Some(exe_str) = exe.to_str() {
                         env::set_var("QUICHE_TEST_BIN", exe_str);
                     }
                 }
-                run_single_file_with_options("tests/runner.qrs", &args[2..], true, false, true);
+                if warn_all {
+                    env::set_var("QUICHE_WARN_ALL", "1");
+                }
+                if warn_quiche {
+                    env::set_var("QUICHE_WARN_QUICHE", "1");
+                }
+                run_single_file_with_options("tests/runner.qrs", &rest, true, false, true, warn, strict);
             } else if Path::new("Cargo.toml").exists() {
-                run_cargo_command("test", &args[2..]);
+                run_cargo_command("test", &rest);
             } else {
                 eprintln!("Error: No tests/runner.qrs or Cargo.toml found.");
                 std::process::exit(1);
@@ -65,7 +74,14 @@ fn main() {
                     eprintln!("Error: File '{}' not found.", arg);
                     std::process::exit(1);
                 }
-                run_single_file(arg, &args[2..]);
+                let (warn, strict, warn_all, warn_quiche, rest) = parse_flags(&args[2..]);
+                if warn_all {
+                    env::set_var("QUICHE_WARN_ALL", "1");
+                }
+                if warn_quiche {
+                    env::set_var("QUICHE_WARN_QUICHE", "1");
+                }
+                run_single_file_with_options(arg, &rest, false, false, false, warn, strict);
             } else {
                 eprintln!("Error: Unrecognized command or file '{}'", arg);
                 if Path::new(arg).exists() {
@@ -96,6 +112,12 @@ fn print_usage() {
     println!("  quiche run           Run the current project");
     println!("  quiche test          Run project tests");
     println!("  quiche <file.qrs>    Run a single file script");
+    println!();
+    println!("Flags:");
+    println!("  --warn               Show compiler warnings");
+    println!("  --strict             Treat warnings as errors");
+    println!("  --warn-all           Show all warnings (Quiche + Rust)");
+    println!("  --warn-quiche        Show only Quiche warnings");
 }
 
 fn create_new_project(name: &str, is_lib: bool) {
@@ -159,7 +181,7 @@ fn run_single_file(filename: &str, script_args: &[String]) {
     let quiet = env::var("QUICHE_QUIET").ok().as_deref() == Some("1");
     let suppress_output = env::var("QUICHE_SUPPRESS_OUTPUT").ok().as_deref() == Some("1");
     let raw_output = env::var("QUICHE_RAW_OUTPUT").ok().as_deref() == Some("1");
-    run_single_file_with_options(filename, script_args, quiet, suppress_output, raw_output);
+    run_single_file_with_options(filename, script_args, quiet, suppress_output, raw_output, false, false);
 }
 
 fn run_single_file_with_options(
@@ -168,6 +190,8 @@ fn run_single_file_with_options(
     quiet: bool,
     suppress_output: bool,
     raw_output: bool,
+    warn: bool,
+    strict: bool,
 ) {
     let source_raw = match fs::read_to_string(filename) {
         Ok(s) => s,
@@ -288,7 +312,10 @@ mod quiche {
             .arg("-o")
             .arg("target/tmp_bin");
 
-        if quiet {
+        if strict {
+            rustc.arg("-D").arg("warnings");
+        }
+        if quiet && !warn && !strict {
             rustc.arg("-Awarnings")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null());
@@ -332,4 +359,25 @@ mod quiche {
             std::process::exit(output.status.code().unwrap_or(1));
         }
     }
+}
+
+fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, Vec<String>) {
+    let mut warn = false;
+    let mut strict = false;
+    let mut warn_all = false;
+    let mut warn_quiche = false;
+    let mut rest = Vec::new();
+    for a in args {
+        match a.as_str() {
+            "--warn" => warn = true,
+            "--strict" => strict = true,
+            "--warn-all" => warn_all = true,
+            "--warn-quiche" => warn_quiche = true,
+            _ => rest.push(a.clone()),
+        }
+    }
+    if warn_all {
+        warn = true;
+    }
+    (warn, strict, warn_all, warn_quiche, rest)
 }

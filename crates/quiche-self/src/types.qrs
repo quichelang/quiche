@@ -71,9 +71,10 @@ class SymbolTable:
 class TypeChecker:
     symbols: SymbolTable
     errors: List[String]
+    warnings: List[String]
 
     def new() -> TypeChecker:
-        return TypeChecker(symbols=SymbolTable.new(), errors=[])
+        return TypeChecker(symbols=SymbolTable.new(), errors=[], warnings=[])
 
     def check_stmt(self, stmt: ast.Stmt):
         match stmt:
