@@ -20,3 +20,6 @@ path = "src/main.rs"
 
 [dev-dependencies]
 tempfile = "3.24.0"
+
+[features]
+bootstrap = []

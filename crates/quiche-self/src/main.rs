@@ -1,4 +1,13 @@
-#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+#![allow(
+    dead_code,
+    unreachable_code,
+    unreachable_patterns,
+    unused_assignments,
+    unused_imports,
+    unused_mut,
+    unused_parens,
+    unused_variables
+)]
 
 mod quiche {
     #![allow(unused_macros, unused_imports)]
