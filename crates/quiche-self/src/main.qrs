@@ -26,6 +26,141 @@ def read_to_string(path: String) -> String: pass
 @extern(path="std::process::exit")
 def exit(code: i32): pass
 
+@extern(path="crate::quiche::path_dirname")
+def path_dirname(path: String) -> String: pass
+
+@extern(path="crate::quiche::build_module_index")
+def build_module_index(root: String) -> Dict[String, String]: pass
+
+@extern(path="crate::quiche::module_path_for_file")
+def module_path_for_file(root: String, filename: String) -> String: pass
+
+@extern(path="crate::quiche::module_parent")
+def module_parent(path: String, levels: u32) -> String: pass
+
+@extern(path="crate::quiche::module_join")
+def module_join(base: String, sub: String) -> String: pass
+
+
+class ImportMaps:
+    paths: Dict[String, String]
+    kinds: Dict[String, String]
+
+    def new(paths: Dict[String, String], kinds: Dict[String, String]) -> ImportMaps:
+        return ImportMaps(paths=paths, kinds=kinds)
+
+
+def module_to_rust_path(module_path: String) -> String:
+    if module_path == "": return "crate"
+    is_external = False
+    res = module_path.clone()
+    if res.starts_with(as_ref("rust.")):
+        res = res.replace(as_ref("rust."), as_ref(""))
+        is_external = True
+    elif res.starts_with(as_ref("std.")):
+        is_external = True
+    if not is_external:
+        res = "crate.".to_string() + as_ref(res)
+    return res.replace(as_ref("."), as_ref("::"))
+
+
+def resolve_module_path(current_module_path: String, module_name: String, level: u32) -> String:
+    base = ""
+    if level > 0:
+        base = module_parent(current_module_path.clone(), level)
+    if module_name == "":
+        return base
+    if base != "":
+        return module_join(base, module_name)
+    return module_name
+
+
+def collect_module_exports(module_index: Dict[String, String], module_path: String) -> Dict[String, String]:
+    exports = Dict[String, String].new()
+    match module_index.get(module_path):
+        case Some(path):
+            source = read_to_string(path.clone())
+            parsed = parse_module(as_ref(source))
+            module = parsed.into_syntax()
+            for stmt in module.body:
+                match stmt:
+                    case ast.Stmt.ClassDef(c):
+                        exports.insert(c.name.as_str().to_string(), "class")
+                    case ast.Stmt.FunctionDef(f):
+                        exports.insert(f.name.as_str().to_string(), "func")
+                    case _: pass
+        case None: pass
+    return exports
+
+
+def build_import_maps(stmts: List[ast.Stmt], module_index: Dict[String, String], current_module_path: String) -> ImportMaps:
+    import_paths = Dict[String, String].new()
+    import_kinds = Dict[String, String].new()
+
+    for stmt in stmts:
+        match stmt:
+            case ast.Stmt.Import(i):
+                for alias in i.names:
+                    module_name = alias.name.as_str().to_string()
+                    alias_name = module_name.clone()
+                    match alias.asname.clone():
+                        case Some(a): alias_name = a.as_str().to_string()
+                        case None: pass
+                    module_path = resolve_module_path(current_module_path.clone(), module_name, 0)
+                    rust_path = module_to_rust_path(module_path)
+                    import_paths.insert(alias_name.clone(), rust_path)
+                    import_kinds.insert(alias_name.clone(), "module")
+            case ast.Stmt.ImportFrom(i):
+                base_module = ""
+                match i.module:
+                    case Some(m):
+                        base_module = resolve_module_path(current_module_path.clone(), m.as_str().to_string(), i.level)
+                    case None:
+                        base_module = resolve_module_path(current_module_path.clone(), "", i.level)
+
+                is_external = base_module.starts_with(as_ref("rust.")) or base_module.starts_with(as_ref("std."))
+                exports = Dict[String, String].new()
+                if not is_external:
+                    match module_index.get(base_module.clone()):
+                        case Some(_):
+                            exports = collect_module_exports(module_index, base_module.clone())
+                        case None: pass
+
+                for alias in i.names:
+                    name = alias.name.as_str().to_string()
+                    alias_name = name.clone()
+                    match alias.asname.clone():
+                        case Some(a): alias_name = a.as_str().to_string()
+                        case None: pass
+
+                    kind = "value"
+                    item_module = module_join(base_module.clone(), name.clone())
+                    rust_path = ""
+                    match module_index.get(item_module.clone()):
+                        case Some(_):
+                            kind = "module"
+                            rust_path = module_to_rust_path(item_module)
+                        case None:
+                            rust_path = module_to_rust_path(base_module.clone())
+                            rust_path = rust_path + as_ref("::")
+                            rust_path = rust_path + as_ref(name)
+                            if is_external:
+                                kind = "module"
+                            else:
+                                match exports.get(name.clone()):
+                                    case Some(k):
+                                        if k == "class": kind = "type"
+                                        elif k == "func": kind = "func"
+                                        else: kind = "value"
+                                    case None: kind = "value"
+
+                    import_paths.insert(alias_name.clone(), rust_path)
+                    import_kinds.insert(alias_name.clone(), kind)
+            case _:
+                pass
+
+    return ImportMaps.new(import_paths, import_kinds)
+
 
 # --- Main ---
 
@@ -35,6 +170,11 @@ def compile_source(source: String, filename: String):
     parsed = parse_module(as_ref(source))
     module = parsed.into_syntax()
     stmts = module.body
+
+    root_dir = path_dirname(filename.clone())
+    module_index = build_module_index(root_dir.clone())
+    current_module_path = module_path_for_file(root_dir, filename.clone())
+    import_maps = build_import_maps(stmts.clone(), module_index, current_module_path)
     
     # Type Check
     checker = types.TypeChecker.new()
@@ -48,7 +188,7 @@ def compile_source(source: String, filename: String):
         exit(1)
     else:
         # Codegen
-        codegen = compiler.Codegen.new()
+        codegen = compiler.Codegen.new_with_imports(import_maps.paths, import_maps.kinds)
         for stmt in stmts:
             codegen.generate_stmt(stmt)
             

@@ -14,14 +14,35 @@ class Codegen:
     output: RustString
     symbols: types.SymbolTable
     tuple_vars: Dict[String, bool]
+    import_paths: Dict[String, String]
+    import_kinds: Dict[String, String]
 
     def __init__(self):
         self.output = RustString.new()
         self.symbols = types.SymbolTable.new()
         self.tuple_vars = Dict[String, bool].new()
+        self.import_paths = Dict[String, String].new()
+        self.import_kinds = Dict[String, String].new()
 
     def new() -> Codegen:
-        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new())
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), import_paths=Dict[String, String].new(), import_kinds=Dict[String, String].new())
+
+    def new_with_imports(import_paths: Dict[String, String], import_kinds: Dict[String, String]) -> Codegen:
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), import_paths=import_paths, import_kinds=import_kinds)
+
+    def register_import_symbol(self, name: String):
+        match self.import_kinds.get(name.clone()):
+            case Some(kind):
+                if kind == "module":
+                    self.symbols.insert(name.clone(), types.Symbol.module(name.clone()))
+                elif kind == "type":
+                    self.symbols.insert(name.clone(), types.Symbol.clazz(name.clone(), False))
+                elif kind == "func":
+                    self.symbols.insert(name.clone(), types.Symbol.func(name.clone(), False))
+                else:
+                    self.symbols.insert(name.clone(), types.Symbol.var(name.clone(), "inferred"))
+            case None:
+                self.symbols.insert(name.clone(), types.Symbol.module(name.clone()))
 
     def emit(self, s: String):
         self.output = q_push(self.output.clone(), s)
@@ -426,71 +447,87 @@ class Codegen:
             alias_name_raw = alias.name.as_str().to_string()
             rust_p = "rust."
             std_p = "std."
-            if not alias_name_raw.starts_with(rust_p.as_str()) and not alias_name_raw.starts_with(std_p.as_str()):
-                self.emit("use crate::")
-            else:
-                self.emit("use ")
-            dot_v = "."
-            sep_v = "::"
-            self.emit(alias_name_raw.replace(dot_v.as_str(), sep_v.as_str()))
-            self.emit(";\n")
-            
             alias_name = alias.name.as_str().to_string()
             match alias.asname.clone():
                 case Some(a): alias_name = a.as_str().to_string()
                 case None: pass
-            self.symbols.insert(alias_name.clone(), types.Symbol.module(alias_name.clone()))
+
+            match self.import_paths.get(alias_name.clone()):
+                case Some(rust_path):
+                    self.emit("use ")
+                    self.emit(rust_path)
+                    match alias.asname.clone():
+                        case Some(_):
+                            self.emit(" as ")
+                            self.emit(alias_name.clone())
+                        case None: pass
+                    self.emit(";\n")
+                case None:
+                    if not alias_name_raw.starts_with(rust_p.as_str()) and not alias_name_raw.starts_with(std_p.as_str()):
+                        self.emit("use crate::")
+                    else:
+                        self.emit("use ")
+                    dot_v = "."
+                    sep_v = "::"
+                    self.emit(alias_name_raw.replace(dot_v.as_str(), sep_v.as_str()))
+                    self.emit(";\n")
+            
+            self.register_import_symbol(alias_name.clone())
 
     def emit_import_from(self, i: ast.StmtImportFrom):
         mod_sep = "."
         mod_col = "::"
-        match i.module.clone():
-            case Some(m):
-                m_str = m.as_str().to_string()
-                if m_str == "lib.test": return
-                r_p = "rust."
-                s_p = "std."
-                self.emit("use ")
-                if not m_str.starts_with(r_p.as_str()) and not m_str.starts_with(s_p.as_str()):
-                    if i.level == 0: self.emit("crate::")
-            case None: self.emit("use ")
-        l_lvl = i.level
-        k_lvl: u32 = 0
-        while k_lvl < l_lvl:
-            self.emit("super::")
-            k_lvl = k_lvl + 1
-        match i.module:
-            case Some(m):
-                mod_name = m.as_str().to_string()
-                if mod_name == "rust":
-                    mod_name = ""
-                elif mod_name.starts_with(as_ref("rust.")):
-                    mod_name = mod_name.replace(as_ref("rust."), as_ref(""))
-                if mod_name != "":
-                    self.emit(mod_name.replace(mod_sep.as_str(), mod_col.as_str()))
-                    self.emit("::")
-            case None: pass
-        num_from = i.names.len()
-        if num_from > 1: self.emit("{")
-        j_from: usize = 0
         for alias in i.names:
-            if j_from > 0: self.emit(", ")
-            self.emit(alias.name.as_str().to_string().replace(mod_sep.as_str(), mod_col.as_str()))
-            match alias.asname.as_ref():
-                case Some(a):
-                    self.emit(" as ")
-                    self.emit(a.as_str().to_string())
-                case None: pass
-            j_from = j_from + 1
-            
             alias_name = alias.name.as_str().to_string()
             match alias.asname.clone():
                 case Some(a): alias_name = a.as_str().to_string()
                 case None: pass
-            # Optimistically mark imports from modules as 'classes' or 'externs' for static access (::)
-            self.symbols.insert(alias_name.clone(), types.Symbol.imported(alias_name.clone()))
-        if num_from > 1: self.emit("}")
-        self.emit(";\n")
+
+            match self.import_paths.get(alias_name.clone()):
+                case Some(rust_path):
+                    self.emit("use ")
+                    self.emit(rust_path)
+                    match alias.asname.as_ref():
+                        case Some(_):
+                            self.emit(" as ")
+                            self.emit(alias_name.clone())
+                        case None: pass
+                    self.emit(";\n")
+                case None:
+                    self.emit("use ")
+                    match i.module.clone():
+                        case Some(m):
+                            m_str = m.as_str().to_string()
+                            if m_str == "lib.test": return
+                            r_p = "rust."
+                            s_p = "std."
+                            if not m_str.starts_with(r_p.as_str()) and not m_str.starts_with(s_p.as_str()):
+                                if i.level == 0: self.emit("crate::")
+                        case None: pass
+                    l_lvl = i.level
+                    k_lvl: u32 = 0
+                    while k_lvl < l_lvl:
+                        self.emit("super::")
+                        k_lvl = k_lvl + 1
+                    match i.module:
+                        case Some(m):
+                            mod_name = m.as_str().to_string()
+                            if mod_name == "rust":
+                                mod_name = ""
+                            elif mod_name.starts_with(as_ref("rust.")):
+                                mod_name = mod_name.replace(as_ref("rust."), as_ref(""))
+                            if mod_name != "":
+                                self.emit(mod_name.replace(mod_sep.as_str(), mod_col.as_str()))
+                                self.emit("::")
+                        case None: pass
+                    self.emit(alias.name.as_str().to_string().replace(mod_sep.as_str(), mod_col.as_str()))
+                    match alias.asname.as_ref():
+                        case Some(a):
+                            self.emit(" as ")
+                            self.emit(a.as_str().to_string())
+                        case None: pass
+                    self.emit(";\n")
+            self.register_import_symbol(alias_name.clone())
 
     def generate_expr(self, expr: ast.Expr):
         match expr:
@@ -984,6 +1021,12 @@ class Codegen:
 
     def is_type_or_mod(self, name: String) -> bool:
         if name == "self": return False
+        match self.symbols.lookup(name.clone()):
+            case Some(s):
+                if s.is_module: return True
+                if s.is_class: return True
+                if s.is_extern: return True
+            case None: pass
         if name == "ast": return True
         if name == "compiler": return True
         if name == "types": return True
