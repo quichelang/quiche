@@ -4,8 +4,11 @@ import types
 @extern(path="std::string::String", no_generic=True)
 class RustString:
     def new() -> RustString: pass
-    def push_str(self, s: StrRef): pass
     def len(self) -> usize: pass
+    def as_str(self) -> StrRef: pass
+
+@extern(path="crate::quiche::push_str_wrapper")
+def q_push(s: RustString, val: String) -> RustString: pass
 
 class Codegen:
     output: RustString
@@ -21,7 +24,7 @@ class Codegen:
         return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new())
 
     def emit(self, s: String):
-        self.output.push_str(as_ref(s))
+        self.output = q_push(self.output.clone(), s)
 
     def generate_stmt(self, stmt: ast.Stmt):
         match stmt:
@@ -420,13 +423,16 @@ class Codegen:
         dot_imp = "."
         sep_imp = "::"
         for alias in i.names:
-            self.emit("use ")
-            self.emit(alias.name.as_str().to_string().replace(dot_imp.as_str(), sep_imp.as_str()))
-            match alias.asname.as_ref():
-                case Some(a):
-                    self.emit(" as ")
-                    self.emit(a.as_str().to_string())
-                case None: pass
+            alias_name_raw = alias.name.as_str().to_string()
+            rust_p = "rust."
+            std_p = "std."
+            if not alias_name_raw.starts_with(rust_p.as_str()) and not alias_name_raw.starts_with(std_p.as_str()):
+                self.emit("use crate::")
+            else:
+                self.emit("use ")
+            dot_v = "."
+            sep_v = "::"
+            self.emit(alias_name_raw.replace(dot_v.as_str(), sep_v.as_str()))
             self.emit(";\n")
             
             alias_name = alias.name.as_str().to_string()
@@ -440,9 +446,14 @@ class Codegen:
         mod_col = "::"
         match i.module.clone():
             case Some(m):
-                if m.as_str().to_string() == "lib.test": return
-            case None: pass
-        self.emit("use ")
+                m_str = m.as_str().to_string()
+                if m_str == "lib.test": return
+                r_p = "rust."
+                s_p = "std."
+                self.emit("use ")
+                if not m_str.starts_with(r_p.as_str()) and not m_str.starts_with(s_p.as_str()):
+                    if i.level == 0: self.emit("crate::")
+            case None: self.emit("use ")
         l_lvl = i.level
         k_lvl: u32 = 0
         while k_lvl < l_lvl:
@@ -516,7 +527,7 @@ class Codegen:
 
     def emit_string_literal(self, s: ast.ExprStringLiteral):
         self.emit("String::from(\"")
-        self.emit(s.value.to_string())
+        self.emit(s.value.to_string().replace("\"", "\\\""))
         self.emit("\")")
 
     def emit_boolean_literal(self, b: ast.ExprBooleanLiteral):
@@ -907,14 +918,14 @@ class Codegen:
                     match deref(s.slice):
                         case ast.Expr.Tuple(t):
                             res = RustString.new()
-                            res.push_str(as_ref(base))
-                            res.push_str(as_ref("<"))
+                            res = q_push(res, base)
+                            res = q_push(res, "<")
                             idx_h: usize = 0
                             for e in t.elts:
-                                if idx_h > 0: res.push_str(as_ref(", "))
-                                res.push_str(as_ref(self.type_to_string(e)))
+                                if idx_h > 0: res = q_push(res, ", ")
+                                res = q_push(res, self.type_to_string(e))
                                 idx_h = idx_h + 1
-                            res.push_str(as_ref(">"))
+                            res = q_push(res, ">")
                             return res
                         case _:
                             pass
@@ -922,27 +933,34 @@ class Codegen:
                     match deref(s.slice):
                         case ast.Expr.Tuple(t):
                             res = RustString.new()
-                            res.push_str(as_ref("("))
+                            res = q_push(res, "(")
                             idx_t: usize = 0
                             for e in t.elts:
-                                if idx_t > 0: res.push_str(as_ref(", "))
-                                res.push_str(as_ref(self.type_to_string(e)))
+                                if idx_t > 0: res = q_push(res, ", ")
+                                res = q_push(res, self.type_to_string(e))
                                 idx_t = idx_t + 1
-                            res.push_str(as_ref(")"))
+                            res = q_push(res, ")")
                             return res
                         case _:
                             res = RustString.new()
-                            res.push_str(as_ref("("))
-                            res.push_str(as_ref(self.type_to_string(deref(s.slice))))
-                            res.push_str(as_ref(")"))
+                            res = q_push(res, "(")
+                            res = q_push(res, self.type_to_string(deref(s.slice)))
+                            res = q_push(res, ")")
                             return res
                 inner = self.type_to_string(deref(s.slice))
                 res = RustString.new()
-                res.push_str(as_ref(base))
-                res.push_str(as_ref("<"))
-                res.push_str(as_ref(inner))
-                res.push_str(as_ref(">"))
+                res = q_push(res, base)
+                res = q_push(res, "<")
+                res = q_push(res, inner)
+                res = q_push(res, ">")
                 return res
+            case ast.Expr.Attribute(a):
+                base_attr = self.type_to_string(deref(a.value))
+                res_attr = RustString.new()
+                res_attr = q_push(res_attr, base_attr)
+                res_attr = q_push(res_attr, "::")
+                res_attr = q_push(res_attr, a.attr.as_str().to_string())
+                return res_attr
             case _: return "Any"
 
     def is_tuple_expr(self, expr: ast.Expr) -> bool:

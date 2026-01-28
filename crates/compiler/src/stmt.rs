@@ -343,6 +343,15 @@ impl Codegen {
                             self.foreign_symbols.insert(target_name.to_string());
                         }
 
+                        let is_likely_local = !is_rust_interop
+                            && !mod_name.contains("std::")
+                            && !mod_name.contains("quiche_runtime");
+                        let final_mod_path = if is_likely_local && i.level == 0 {
+                            format!("crate::{}", mod_name)
+                        } else {
+                            mod_name.clone()
+                        };
+
                         if mod_name.is_empty() {
                             // Import: "from rust import crate" or "import module"
                             // If it's a simple name and not strict "rust" or "std", assume crate-local? (Or simple crate dependency)
@@ -368,11 +377,13 @@ impl Codegen {
                                 self.output.push_str(&format!("use {};\n", use_path));
                             }
                         } else if let Some(asname) = alias.asname {
-                            self.output
-                                .push_str(&format!("use {}::{} as {};\n", mod_name, name, asname));
+                            self.output.push_str(&format!(
+                                "use {}::{} as {};\n",
+                                final_mod_path, name, asname
+                            ));
                         } else {
                             self.output
-                                .push_str(&format!("use {}::{};\n", mod_name, name));
+                                .push_str(&format!("use {}::{};\n", final_mod_path, name));
                         }
                     }
                 }
@@ -391,7 +402,7 @@ impl Codegen {
                         if self.linked_modules.contains(name) {
                             continue;
                         }
-                        format!("crate::{}", name)
+                        format!("crate::{}", name.replace(".", "::"))
                     } else {
                         name.replace(".", "::")
                     };

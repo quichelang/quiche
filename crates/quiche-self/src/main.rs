@@ -39,6 +39,15 @@ mod quiche {
     pub fn env_args_helper() -> Vec<String> {
         std::env::args().collect()
     }
+
+    pub fn push_str_wrapper(mut s: String, val: String) -> String {
+        s.push_str(&val);
+        s
+    }
 }
 
+#[cfg(feature = "bootstrap")]
+include!("main_gen.rs");
+
+#[cfg(not(feature = "bootstrap"))]
 include!(concat!(env!("OUT_DIR"), "/main.rs"));
