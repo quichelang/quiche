@@ -227,13 +227,25 @@ def main():
     # 0. Initial Build (Host -> Stage 1 Output)
     print("Step 0: Building Stage 0 binary with Host compiler...")
     subprocess.run(["cargo", "build", "-p", "quiche_self"], check=True)
-    stage0_bin = os.path.join(TARGET_DIR, "debug", "quiche_self")
-    if os.name == 'nt': stage0_bin += ".exe"
-    
-    # 1. Stage 0 Binary -> Stage 1 Output
-    print("\nStep 1: Transpiling with Stage 0 binary -> Stage 1 Output...")
+    stage0_out = find_stage0_out()
+
+    # 1. Stage 0 Output (host compiler) -> Stage 1 Output
+    print("\nStep 1: Collecting Stage 0 output -> Stage 1 Output...")
     stage1_out = os.path.join(TARGET_DIR, "stage1_out")
-    run_transpile(stage0_bin, stage1_out)
+    if os.path.exists(stage1_out):
+        shutil.rmtree(stage1_out)
+    os.makedirs(stage1_out)
+    for root, _dirs, files in os.walk(stage0_out):
+        for name in files:
+            if not name.endswith(".rs"):
+                continue
+            src_path = os.path.join(root, name)
+            rel = os.path.relpath(src_path, stage0_out)
+            if rel == "main.rs":
+                rel = "main_gen.rs"
+            dest_path = os.path.join(stage1_out, rel)
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            shutil.copy(src_path, dest_path)
     check_shadowing(stage1_out)
     
     # 2. Compile Stage 1 Output -> Stage 1 Binary
