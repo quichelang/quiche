@@ -197,9 +197,6 @@ pub fn run_transpilation_test(binary: &Path, spec_path: &Path, project_root: &Pa
     } else {
         rust_code.to_string()
     };
-    if test_name == "test_exceptions.qrs" {
-        println!("Generated Rust for {}:\n{}", test_name, wrapped_user_code);
-    }
 
     let mut full_code = String::new();
     full_code.push_str(

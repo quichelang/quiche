@@ -205,9 +205,9 @@ class Codegen:
                         self.tuple_vars.insert(name_assign.clone(), True)
                     case _: pass
             case ast.Expr.Subscript(s):
-                self.generate_expr(deref(s.value))
+                self.generate_expr(ast.Expr.clone(as_ref(deref(s.value))))
                 self.emit("[")
-                self.generate_expr(deref(s.slice))
+                self.generate_expr(ast.Expr.clone(as_ref(deref(s.slice))))
                 self.emit("] = ")
             case _: pass
         self.generate_expr(deref(a.value))
@@ -984,12 +984,14 @@ class Codegen:
         return False
 
     def define_var(self, name: String):
-        sz = self.defined_vars.len()
-        idx = sz - 1
-        # Workaround via clone and re-assign (requires emit_assign subscript support)
-        scope = self.defined_vars[idx].clone()
-        scope.insert(name, True)
-        self.defined_vars[idx] = scope
+        # Use pop/push to modify the last scope (stack top)
+        # Bypasses get/index reference issues
+        match self.defined_vars.pop():
+            case Some(scope_immut):
+                scope = scope_immut
+                scope.insert(name, True)
+                self.defined_vars.push(scope) # Push back modified scope
+            case None: pass
 
     def expr_contains_name(self, expr: ast.Expr, name: String) -> bool:
         match expr:
