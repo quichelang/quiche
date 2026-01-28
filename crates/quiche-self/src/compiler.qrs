@@ -16,6 +16,7 @@ class Codegen:
     tuple_vars: Dict[String, bool]
     import_paths: Dict[String, String]
     import_kinds: Dict[String, String]
+    clone_names: bool
 
     def __init__(self):
         self.output = RustString.new()
@@ -23,12 +24,19 @@ class Codegen:
         self.tuple_vars = Dict[String, bool].new()
         self.import_paths = Dict[String, String].new()
         self.import_kinds = Dict[String, String].new()
+        self.clone_names = True
 
     def new() -> Codegen:
-        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), import_paths=Dict[String, String].new(), import_kinds=Dict[String, String].new())
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), import_paths=Dict[String, String].new(), import_kinds=Dict[String, String].new(), clone_names=True)
 
     def new_with_imports(import_paths: Dict[String, String], import_kinds: Dict[String, String]) -> Codegen:
-        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), import_paths=import_paths, import_kinds=import_kinds)
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), import_paths=import_paths, import_kinds=import_kinds, clone_names=True)
+
+    def generate_expr_no_clone(self, expr: ast.Expr):
+        prev = self.clone_names
+        self.clone_names = False
+        self.generate_expr(expr)
+        self.clone_names = prev
 
     def register_import_symbol(self, name: String):
         match self.import_kinds.get(name.clone()):
@@ -232,9 +240,9 @@ class Codegen:
                         self.tuple_vars.insert(name_assign.clone(), True)
                     case _: pass
             case ast.Expr.Subscript(s):
-                self.generate_expr(ast.Expr.clone(as_ref(deref(s.value))))
+                self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(s.value))))
                 self.emit("[")
-                self.generate_expr(ast.Expr.clone(as_ref(deref(s.slice))))
+                self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(s.slice))))
                 self.emit("] = ")
             case _: pass
         self.generate_expr(deref(a.value))
@@ -535,7 +543,13 @@ class Codegen:
             case ast.Expr.StringLiteral(s): self.emit_string_literal(s)
             case ast.Expr.BooleanLiteral(b): self.emit_boolean_literal(b)
             case ast.Expr.NoneLiteral(_): self.emit("None")
-            case ast.Expr.Name(n): self.emit(n.id.as_str().to_string())
+            case ast.Expr.Name(n):
+                name_str = n.id.as_str().to_string()
+                if self.clone_names and not self.is_type_or_mod(name_str.clone()):
+                    self.emit(name_str)
+                    self.emit(".clone()")
+                else:
+                    self.emit(name_str)
             case ast.Expr.Call(c): self.emit_call(c)
             case ast.Expr.List(l): self.emit_list(l)
             case ast.Expr.BinOp(b): self.emit_bin_op(b)

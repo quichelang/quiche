@@ -2,6 +2,12 @@ use crate::Codegen;
 use ruff_python_ast as ast;
 
 impl Codegen {
+    pub(crate) fn generate_expr_no_clone(&mut self, expr: ast::Expr) {
+        self.with_clone_names(false, |gen| {
+            gen.generate_expr(expr);
+        });
+    }
+
     pub(crate) fn generate_expr(&mut self, expr: ast::Expr) {
         match expr {
             ast::Expr::BinOp(b) => {
@@ -174,7 +180,7 @@ impl Codegen {
                 if func_name == "as_ref" {
                     if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("&");
-                        self.generate_expr(arg.clone());
+                        self.generate_expr_no_clone(arg.clone());
                     }
                     return;
                 }
@@ -182,7 +188,7 @@ impl Codegen {
                 if func_name == "deref" {
                     if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("*");
-                        self.generate_expr(arg.clone());
+                        self.generate_expr_no_clone(arg.clone());
                     }
                     return;
                 }
@@ -268,17 +274,17 @@ impl Codegen {
                 } else if func_name == "deref" {
                     if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("*");
-                        self.generate_expr(arg.clone());
+                        self.generate_expr_no_clone(arg.clone());
                     }
                 } else if func_name == "as_ref" {
                     if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("&");
-                        self.generate_expr(arg.clone());
+                        self.generate_expr_no_clone(arg.clone());
                     }
                 } else if func_name == "as_mut" {
                     if let Some(arg) = c.arguments.args.first() {
                         self.output.push_str("&mut ");
-                        self.generate_expr(arg.clone());
+                        self.generate_expr_no_clone(arg.clone());
                     }
                 } else if !c.arguments.keywords.is_empty() {
                     // Struct Init
@@ -347,7 +353,11 @@ impl Codegen {
                 self.output.push_str(&format!("{}{}", sep, attr_name));
             }
             ast::Expr::Name(n) => {
-                self.output.push_str(&n.id);
+                if self.clone_names && !self.is_type_or_mod(&n.id) {
+                    self.output.push_str(&format!("{}.clone()", n.id));
+                } else {
+                    self.output.push_str(&n.id);
+                }
             }
             ast::Expr::NoneLiteral(_) => self.output.push_str("None"),
             ast::Expr::NumberLiteral(n) => match n.value {

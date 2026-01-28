@@ -14,6 +14,7 @@ pub struct Codegen {
     pub(crate) scopes: Vec<HashMap<String, String>>,
     pub(crate) foreign_symbols: HashSet<String>,
     pub(crate) linked_modules: HashSet<String>,
+    pub(crate) clone_names: bool,
 }
 
 impl Codegen {
@@ -24,7 +25,18 @@ impl Codegen {
             scopes: vec![HashMap::new()],
             foreign_symbols: HashSet::new(),
             linked_modules: HashSet::new(),
+            clone_names: true,
         }
+    }
+
+    pub(crate) fn with_clone_names<F>(&mut self, clone_names: bool, f: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        let prev = self.clone_names;
+        self.clone_names = clone_names;
+        f(self);
+        self.clone_names = prev;
     }
 
     pub fn generate_module(&mut self, module: &ast::ModModule) -> String {

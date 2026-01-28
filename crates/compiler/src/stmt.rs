@@ -65,7 +65,7 @@ impl Codegen {
                 self.enter_scope();
                 self.push_indent();
                 self.output.push_str("let ");
-                self.generate_expr(*f.target.clone());
+                self.generate_expr_no_clone(*f.target.clone());
                 self.output.push_str(" = crate::quiche::check!(__q);\n");
                 for stmt in f.body {
                     self.generate_stmt(stmt);
@@ -93,7 +93,7 @@ impl Codegen {
                         }
                     }
 
-                    self.generate_expr(target.clone());
+                    self.generate_expr_no_clone(target.clone());
                 }
                 self.output.push_str(" = ");
                 self.generate_expr(*a.value);
