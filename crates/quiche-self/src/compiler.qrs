@@ -10,6 +10,9 @@ class RustString:
 @extern(path="crate::quiche::push_str_wrapper")
 def q_push(s: RustString, val: String) -> RustString: pass
 
+@extern(path="crate::quiche::escape_rust_string")
+def escape_rust_string(s: String) -> String: pass
+
 class Codegen:
     output: RustString
     symbols: types.SymbolTable
@@ -272,7 +275,7 @@ class Codegen:
 
     def emit_for(self, f: ast.StmtFor):
         self.emit("for __q in (")
-        self.generate_expr(deref(f.iter))
+        self.generate_expr_no_clone(deref(f.iter))
         self.emit(").into_iter() {\n")
         self.emit("let ")
         match as_ref(deref(f.target)):
@@ -486,6 +489,10 @@ class Codegen:
         mod_sep = "."
         mod_col = "::"
         for alias in i.names:
+            match i.module.clone():
+                case Some(m):
+                    if m.as_str().to_string() == "lib.test": return
+                case None: pass
             alias_name = alias.name.as_str().to_string()
             match alias.asname.clone():
                 case Some(a): alias_name = a.as_str().to_string()
@@ -517,7 +524,7 @@ class Codegen:
                     while k_lvl < l_lvl:
                         self.emit("super::")
                         k_lvl = k_lvl + 1
-                    match i.module:
+                    match i.module.clone():
                         case Some(m):
                             mod_name = m.as_str().to_string()
                             if mod_name == "rust":
@@ -578,7 +585,8 @@ class Codegen:
 
     def emit_string_literal(self, s: ast.ExprStringLiteral):
         self.emit("String::from(\"")
-        self.emit(s.value.to_string().replace("\"", "\\\""))
+        esc = escape_rust_string(s.value.to_string())
+        self.emit(esc)
         self.emit("\")")
 
     def emit_boolean_literal(self, b: ast.ExprBooleanLiteral):
@@ -692,7 +700,7 @@ class Codegen:
                     else:
                         # Method call on an instance
                         self.emit("quiche_runtime::check!(")
-                        self.generate_expr(ast.Expr.clone(as_ref(deref(at.value))))
+                        self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(at.value))))
                         attr_name_inner = at.attr.as_str().to_string()
                         key_needs_ref = False
                         if attr_name_inner == "get": key_needs_ref = True
@@ -817,7 +825,7 @@ class Codegen:
             case None: pass
         if a.attr.as_str().to_string() == "new": is_static_attr = True
         
-        self.generate_expr(ast.Expr.clone(as_ref(target_attr)))
+        self.generate_expr_no_clone(ast.Expr.clone(as_ref(target_attr)))
         if is_static_attr: self.emit("::")
         else: self.emit(".")
         self.emit(a.attr.as_str().to_string())
@@ -898,7 +906,7 @@ class Codegen:
                     idx_lam = idx_lam + 1
             case None: pass
         self.emit("| ")
-        self.generate_expr(deref(l.body))
+        self.generate_expr_no_clone(deref(l.body))
         self.emit(")")
 
     def emit_fstring(self, f: ast.ExprFString):
@@ -932,7 +940,7 @@ class Codegen:
             match key_val:
                 case Some(k):
                     self.emit("(")
-                    self.generate_expr(ast.Expr.clone(as_ref(deref(k))))
+                    self.generate_expr(ast.Expr.clone(as_ref(k)))
                     self.emit(", ")
                     self.generate_expr(ast.Expr.clone(as_ref(val_val)))
                     self.emit(")")

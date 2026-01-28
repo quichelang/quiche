@@ -114,6 +114,7 @@ def build_import_maps(stmts: List[ast.Stmt], module_index: Dict[String, String],
                 base_module = ""
                 match i.module:
                     case Some(m):
+                        if m.as_str().to_string() == "lib.test": continue
                         base_module = resolve_module_path(current_module_path.clone(), m.as_str().to_string(), i.level)
                     case None:
                         base_module = resolve_module_path(current_module_path.clone(), "", i.level)
@@ -123,7 +124,7 @@ def build_import_maps(stmts: List[ast.Stmt], module_index: Dict[String, String],
                 if not is_external:
                     match module_index.get(base_module.clone()):
                         case Some(_):
-                            exports = collect_module_exports(module_index, base_module.clone())
+                            exports = collect_module_exports(module_index.clone(), base_module.clone())
                         case None: pass
 
                 for alias in i.names:

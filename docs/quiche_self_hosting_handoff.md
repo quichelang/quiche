@@ -83,3 +83,7 @@ pub fn push_str_wrapper(mut s: String, val: String) -> String {
 
 - **Heuristic Import Resolution**: Improving `is_type_or_mod` in `compiler.qrs` to better distinguish between local modules and external types for `::` vs `.` emission.
 - **Escape Helpers**: Adding a dedicated `escape_rust_string` function to the runtime/shim to handle the complex backslash escaping needed for the compiler-to-compiler transpilation.
+
+## Notes
+
+- The self-hosted compiler now clones names in value positions by default to avoid move issues; this behavior is intentionally **not** mirrored in the host compiler for now.

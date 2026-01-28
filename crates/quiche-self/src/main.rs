@@ -48,6 +48,10 @@ mod quiche {
         s
     }
 
+    pub fn escape_rust_string(s: String) -> String {
+        s.replace('\\', "\\\\").replace('\"', "\\\"")
+    }
+
     pub fn path_dirname(path: String) -> String {
         let p = Path::new(&path);
         match p.parent() {
