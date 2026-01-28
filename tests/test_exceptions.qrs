@@ -1,10 +1,11 @@
 def test_manual_panic():
     caught = False
     try:
-        assert(False, "Manual panic")
+        assert False, "Manual panic"
     except:
+        print("In Except Block")
         caught = True
-    assert(caught, "Should catch manual panic")
+    assert caught, "Should catch manual panic"
 
 def test_dynamic_exception():
     from rust.std.fs import read_dir
@@ -19,7 +20,7 @@ def test_dynamic_exception():
         # But e is String.
         caught = True
     
-    assert(caught, "Should catch native exception")
+    assert caught, "Should catch native exception"
 
 def main():
     test_manual_panic()

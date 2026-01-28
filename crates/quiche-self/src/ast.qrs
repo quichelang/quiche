@@ -299,3 +299,21 @@ class StmtTry:
 @extern(path="ruff_python_ast::ExceptHandler", no_generic=True)
 class ExceptHandler:
     pass
+
+@extern(path="ruff_python_ast::StmtFor", no_generic=True)
+class StmtFor:
+    target: Box[Expr]
+    iter: Box[Expr]
+    body: List[Stmt]
+    orelse: List[Stmt]
+
+@extern(path="ruff_python_ast::StmtWhile", no_generic=True)
+class StmtWhile:
+    test: Box[Expr]
+    body: List[Stmt]
+    orelse: List[Stmt]
+
+@extern(path="ruff_python_ast::StmtAssert", no_generic=True)
+class StmtAssert:
+    test: Box[Expr]
+    msg: Option[Box[Expr]]
