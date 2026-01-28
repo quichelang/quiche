@@ -55,7 +55,6 @@ edition = "2024"
 quiche_runtime = {{ path = "{RUNTIME_PATH.replace('\\', '/')}" }}
 ruff_python_parser = {{ git = "https://github.com/astral-sh/ruff" }}
 ruff_python_ast = {{ git = "https://github.com/astral-sh/ruff" }}
-num-bigint = "0.4"
 
 [features]
 bootstrap = []
