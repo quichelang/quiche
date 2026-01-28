@@ -2,6 +2,7 @@
 from ast import Stmt, Parsed
 from types import TypeChecker
 from compiler.codegen import Codegen
+from rust.parsley_qrs import Parsley
 
 @extern(path="std::string::String", no_generic=True)
 class RustString:
@@ -43,6 +44,30 @@ def dedup_shadowed_let_mut(code: String) -> String: pass
 
 @extern(path="crate::quiche::module_join")
 def module_join(base: String, sub: String) -> String: pass
+
+@extern(path="crate::quiche::path_exists")
+def path_exists(path: String) -> bool: pass
+
+@extern(path="crate::quiche::create_dir_all")
+def create_dir_all(path: String): pass
+
+@extern(path="crate::quiche::write_string")
+def write_string(path: String, contents: String): pass
+
+@extern(path="crate::quiche::set_env_var")
+def set_env_var(key: String, value: String): pass
+
+@extern(path="crate::quiche::current_exe_path")
+def current_exe_path() -> String: pass
+
+@extern(path="crate::quiche::run_cargo_command")
+def run_cargo_command(cmd: String, args: List[String]) -> i32: pass
+
+@extern(path="crate::quiche::run_rust_code")
+def run_rust_code(user_code: String, script_args: List[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool) -> i32: pass
+
+@extern(path="crate::quiche::compiler_path_for_new")
+def compiler_path_for_new() -> String: pass
 
 
 class ImportMaps:
@@ -173,7 +198,7 @@ def normalize_module_path(module_path: String) -> String:
 
 # --- Main ---
 
-def compile_source(source: String, filename: String, warn_quiche: bool, strict: bool):
+def compile_source_to_string(source: String, filename: String, warn_quiche: bool, strict: bool) -> String:
     # Ruff parse_module does not take filename in simple API
     # check! macro unwraps Result automatically for us in host compiler
     parsed = parse_module(source.as_str())
@@ -209,31 +234,231 @@ def compile_source(source: String, filename: String, warn_quiche: bool, strict: 
             codegen.generate_stmt(stmt)
         
         cleaned = dedup_shadowed_let_mut(codegen.output)
-        print_str(cleaned)
+        return cleaned
+
+    return ""
+
+def compile_source(source: String, filename: String, warn_quiche: bool, strict: bool):
+    code = compile_source_to_string(source, filename, warn_quiche, strict)
+    print_str(code)
+
+def print_usage():
+    print("Usage:")
+    print("  quiche-self new <name>    Create a new Quiche project")
+    print("  quiche-self build         Build the current project")
+    print("  quiche-self run           Run the current project")
+    print("  quiche-self test          Run project tests")
+    print("  quiche-self <file.qrs>    Transpile a single file")
+    print("")
+    print("Flags:")
+    print("  --warn               Show compiler warnings")
+    print("  --strict             Treat warnings as errors")
+    print("  --warn-all           Show all warnings (Quiche + Rust)")
+    print("  --warn-quiche        Show only Quiche warnings")
+
+def flag_value(flags: Dict[String, bool], name: String) -> bool:
+    match flags.get(name):
+        case Some(v): return v
+        case None: return False
+
+def build_flag_parser(include_lib: bool) -> Parsley:
+    parser = Parsley.new()
+    parser.add_flag("warn-all", ["--warn"], False)
+    parser.add_flag("warn-quiche", [], False)
+    parser.add_flag("strict", [], False)
+    if include_lib:
+        parser.add_flag("lib", [], False)
+    return parser
+
+def parse_warn_flags(result) -> (bool, bool, bool, bool):
+    warn_all = flag_value(result.flags, "warn-all")
+    warn_quiche = flag_value(result.flags, "warn-quiche")
+    strict = flag_value(result.flags, "strict")
+    warn = warn_all
+    if warn_all:
+        warn = True
+    return (warn, strict, warn_all, warn_quiche)
+
+def template_quiche_toml(name: String) -> String:
+    return "[package]\nname = \"" + as_ref(name) + "\"\nversion = \"0.1.0\"\n"
+
+def template_cargo_toml(name: String, is_lib: bool, compiler_path: String) -> String:
+    s = "[package]\nname = \"" + as_ref(name) + "\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n"
+    s = s + "# Break out of any parent workspace\n[workspace]\n\n"
+    s = s + "[build-dependencies]\nquiche_compiler = { path = \"" + as_ref(compiler_path) + "\" }\n\n"
+    s = s + "[dependencies]\n"
+    if is_lib:
+        s = s + "\n[lib]\npath = \"src/lib.rs\"\n"
+    else:
+        s = s + "\n[[bin]]\nname = \"" + as_ref(name) + "\"\npath = \"src/main.rs\"\n"
+    return s
+
+def template_build_rs() -> String:
+    return "\nuse std::env;\nuse std::fs;\nuse std::path::Path;\nuse quiche_compiler::compile;\n\nfn main() {\n    println!(\"cargo:rerun-if-changed=src\");\n    let out_dir = env::var(\"OUT_DIR\").unwrap();\n    \n    // Check for lib.qrs or main.qrs\n    let is_lib = Path::new(\"src/lib.qrs\").exists();\n    let source_path = if is_lib { \"src/lib.qrs\" } else { \"src/main.qrs\" };\n    let dest_name = if is_lib { \"lib.rs\" } else { \"main.rs\" };\n    let dest_path = Path::new(&out_dir).join(dest_name);\n\n    if Path::new(source_path).exists() {\n        let source = fs::read_to_string(source_path).expect(\"Read source failed\");\n        let source = source.replace(\"struct \", \"class \");\n        \n        if let Some(rust_code) = compile(&source) {\n            fs::write(&dest_path, rust_code).expect(\"Write output failed\");\n        } else {\n            panic!(\"Compilation failed\");\n        }\n    } else {\n        fs::write(&dest_path, \"\").unwrap();\n    }\n}\n"
+
+def template_lib_qrs() -> String:
+    return "\ndef hello():\n    print(\"Hello from Lib!\")\n"
+
+def template_lib_rs() -> String:
+    return "\n#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n\nmod quiche {\n    #![allow(unused_macros, unused_imports)]\n    \n    // High Priority: Consumes Self (Result/Option)\n    pub trait QuicheResult {\n        type Output;\n        fn quiche_handle(self) -> Self::Output;\n    }\n    \n    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {\n        type Output = T;\n        fn quiche_handle(self) -> T {\n            self.expect(\"Quiche Exception\")\n        }\n    }\n    \n\n    \n    // Low Priority: Takes &Self (Clone fallback)\n    pub trait QuicheGeneric {\n        fn quiche_handle(&self) -> Self;\n    }\n    \n    impl<T: Clone> QuicheGeneric for T {\n        fn quiche_handle(&self) -> Self {\n            self.clone()\n        }\n    }\n\n    macro_rules! check {\n        ($val:expr) => {\n            {\n                use crate::quiche::{QuicheResult, QuicheGeneric};\n                ($val).quiche_handle()\n            }\n        };\n    }\n    pub(crate) use check;\n    pub(crate) use check as call;\n}\n\n// Re-export everything from the transpiled module\ninclude!(concat!(env!(\"OUT_DIR\"), \"/lib.rs\"));\n"
+
+def template_main_qrs() -> String:
+    return "\ndef main():\n    print(\"Hello, Quiche!\")\n"
+
+def template_main_rs() -> String:
+    return "\n#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n\nmod quiche {\n    #![allow(unused_macros, unused_imports)]\n    \n    // High Priority: Consumes Self (Result/Option)\n    pub trait QuicheResult {\n        type Output;\n        fn quiche_handle(self) -> Self::Output;\n    }\n    \n    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {\n        type Output = T;\n        fn quiche_handle(self) -> T {\n            self.expect(\"Quiche Exception\")\n        }\n    }\n    \n\n    \n    // Low Priority: Takes &Self (Clone fallback)\n    pub trait QuicheGeneric {\n        fn quiche_handle(&self) -> Self;\n    }\n    \n    impl<T: Clone> QuicheGeneric for T {\n        fn quiche_handle(&self) -> Self {\n            self.clone()\n        }\n    }\n\n    macro_rules! check {\n        ($val:expr) => {\n            {\n                use crate::quiche::{QuicheResult, QuicheGeneric};\n                ($val).quiche_handle()\n            }\n        };\n    }\n    pub(crate) use check;\n    pub(crate) use check as call;\n}\n\ninclude!(concat!(env!(\"OUT_DIR\"), \"/main.rs\"));\n"
+
+def create_new_project(name: String, is_lib: bool):
+    if path_exists(name.clone()):
+        print("Error: Directory '" + as_ref(name) + "' already exists")
+        return
+
+    create_dir_all(name.clone() + as_ref("/src"))
+    write_string(name.clone() + as_ref("/Quiche.toml"), template_quiche_toml(name.clone()))
+    compiler_path = compiler_path_for_new()
+    write_string(name.clone() + as_ref("/Cargo.toml"), template_cargo_toml(name.clone(), is_lib, compiler_path))
+    write_string(name.clone() + as_ref("/build.rs"), template_build_rs())
+
+    if is_lib:
+        write_string(name.clone() + as_ref("/src/lib.qrs"), template_lib_qrs())
+        write_string(name.clone() + as_ref("/src/lib.rs"), template_lib_rs())
+    else:
+        write_string(name.clone() + as_ref("/src/main.qrs"), template_main_qrs())
+        write_string(name.clone() + as_ref("/src/main.rs"), template_main_rs())
+
+    print("Created new project: " + as_ref(name))
+
+def run_transpiled_file(filename: String, script_args: List[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool):
+    source = read_to_string(filename.clone())
+    rust_code = compile_source_to_string(source, filename.clone(), warn_quiche, strict)
+    exit_code = run_rust_code(rust_code, script_args, quiet, suppress_output, raw_output, warn, strict)
+    if exit_code != 0:
+        exit(exit_code)
 
 def main():
     cli_args = env_args()
-
-    warn_quiche = False
-    strict = False
-    filtered_args = []
+    args = []
+    i = 0
     for arg in cli_args:
-        if arg == "--warn-all" or arg == "--warn-quiche":
+        if i > 0:
+            args.append(arg)
+        i = i + 1
+
+    if len(args) == 0:
+        print("Error: No command specified.")
+        print_usage()
+        exit(1)
+
+    commands = ["new", "build", "run", "test"]
+    cmd = args[0].clone()
+    has_command = False
+    for c in commands:
+        if c == cmd:
+            has_command = True
+
+    if has_command:
+        subargs = []
+        j = 1
+        while j < len(args):
+            subargs.append(args[j].clone())
+            j = j + 1
+
+        if cmd == "new":
+            parser = build_flag_parser(True)
+            result = parser.parse(subargs)
+            if result.errors.len() > 0:
+                for e in result.errors:
+                    print(e)
+                print_usage()
+                exit(1)
+            if len(result.positionals) < 1:
+                print("Error: Missing project name.")
+                print("Usage: quiche-self new [--lib] <project_name>")
+                exit(1)
+            name = result.positionals[0].clone()
+            is_lib = flag_value(result.flags, "lib")
+            create_new_project(name, is_lib)
+            return
+
+        if cmd == "build":
+            parser = build_flag_parser(False)
+            result = parser.parse(subargs)
+            if result.errors.len() > 0:
+                for e in result.errors:
+                    print(e)
+                print_usage()
+                exit(1)
+            exit_code = run_cargo_command("build".to_string(), result.positionals)
+            if exit_code != 0:
+                exit(exit_code)
+            return
+
+        if cmd == "run":
+            parser = build_flag_parser(False)
+            result = parser.parse(subargs)
+            if result.errors.len() > 0:
+                for e in result.errors:
+                    print(e)
+                print_usage()
+                exit(1)
+            if path_exists("Cargo.toml".to_string()):
+                exit_code = run_cargo_command("run".to_string(), result.positionals)
+                if exit_code != 0:
+                    exit(exit_code)
+            else:
+                print("Error: No Cargo.toml found in current directory.")
+                print("To run a single script, use: quiche-self <file.qrs>")
+                exit(1)
+            return
+
+        if cmd == "test":
+            parser = build_flag_parser(False)
+            result = parser.parse(subargs)
+            if result.errors.len() > 0:
+                for e in result.errors:
+                    print(e)
+                print_usage()
+                exit(1)
+            (warn, strict, warn_all, warn_quiche) = parse_warn_flags(result)
+            if warn_all:
+                warn_quiche = True
+            if path_exists("tests/runner.qrs".to_string()):
+                exe = current_exe_path()
+                if exe != "":
+                    set_env_var("QUICHE_TEST_BIN".to_string(), exe)
+                if warn_all:
+                    set_env_var("QUICHE_WARN_ALL".to_string(), "1".to_string())
+                if warn_quiche:
+                    set_env_var("QUICHE_WARN_QUICHE".to_string(), "1".to_string())
+                run_transpiled_file("tests/runner.qrs".to_string(), result.positionals, True, False, True, warn, strict, warn_quiche)
+            elif path_exists("Cargo.toml".to_string()):
+                exit_code = run_cargo_command("test".to_string(), result.positionals)
+                if exit_code != 0:
+                    exit(exit_code)
+            else:
+                print("Error: No tests/runner.qrs or Cargo.toml found.")
+                exit(1)
+            return
+
+    if cmd.ends_with(as_ref(".qrs")):
+        if not path_exists(cmd.clone()):
+            print("Error: File '" + as_ref(cmd) + "' not found.")
+            exit(1)
+        parser = build_flag_parser(False)
+        result = parser.parse(args[1:])
+        if result.errors.len() > 0:
+            for e in result.errors:
+                print(e)
+            print_usage()
+            exit(1)
+        (_warn, strict, warn_all, warn_quiche) = parse_warn_flags(result)
+        if warn_all:
             warn_quiche = True
-        elif arg == "--strict":
-            strict = True
-        else:
-            filtered_args.append(arg)
+        source = read_to_string(cmd.clone())
+        compile_source(source, cmd.clone(), warn_quiche, strict)
+        return
 
-    if filtered_args.len() > 1:
-        # Clone manually to avoid Host Compiler confusion on cli_args[1].clone()
-        filename = RustString.clone(as_ref(filtered_args[1]))
-
-        # auto-unwraps (panics) on error due to Host Compiler check! macro
-        source = read_to_string(filename.clone())
-        compile_source(source, filename, warn_quiche, strict)
-    else:
-        print("Usage: quiche_self <file.qrs>")
-        print("Running default demo...")
-        demo_source = "def foo():\n    x = 42\n    return x\n"
-        compile_source(demo_source, "<demo>", warn_quiche, strict)
+    print("Error: Unrecognized command or file '" + as_ref(cmd) + "'")
+    print("")
+    print_usage()
+    exit(1)

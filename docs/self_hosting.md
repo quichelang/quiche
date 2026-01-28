@@ -6,6 +6,9 @@ Transition `quiche` from a Rust-hosted compiler to a self-hosted compiler (`quic
 > [!NOTE]
 > **Honesty Check**: We currently rely on `ruff_python_parser` (Rust) for parsing. We are creating a "Logic Self-Hosted" compiler, not a "Purist Self-Hosted" compiler (yet).
 
+## Status: Host Compiler Frozen
+The Rust-based host compiler is now considered stable enough to bootstrap the self-hosted compiler with full fidelity (Stage 1 output == Stage 2 output and binary equivalence). We will freeze host compiler development and focus exclusively on the self-hosted compiler from this point forward.
+
 ## Strategy: The Bootstrapping Levels
 
 ### Level 0: Logic Self-Hosting (Current Goal)

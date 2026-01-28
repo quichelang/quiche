@@ -12,6 +12,7 @@ quiche_compiler = { path = "/Users/jagtesh/.gemini/antigravity/playground/exo-ku
 ruff_python_parser = { git = "https://github.com/astral-sh/ruff" }
 ruff_python_ast = { git = "https://github.com/astral-sh/ruff" }
 quiche_runtime = { path = "../runtime" }
+parsley-qrs = { path = "../parsley-qrs" }
 
 [[bin]]
 name = "quiche_self"

@@ -403,6 +403,7 @@ version = "0.1.0"
 name = "quiche_self"
 version = "0.1.0"
 dependencies = [
+ "parsley-qrs",
  "quiche_compiler",
  "quiche_runtime",
  "ruff_python_ast",

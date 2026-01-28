@@ -14,6 +14,7 @@ mod quiche {
 
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
 
     // High Priority: Consumes Self (Result/Option)
     pub trait QuicheResult {
@@ -88,6 +89,210 @@ mod quiche {
         }
         tests.sort();
         tests
+    }
+
+    pub fn path_exists(path: String) -> bool {
+        Path::new(&path).exists()
+    }
+
+    pub fn create_dir_all(path: String) {
+        let _ = std::fs::create_dir_all(path);
+    }
+
+    pub fn write_string(path: String, contents: String) {
+        std::fs::write(path, contents).expect("Failed to write file");
+    }
+
+    pub fn set_env_var(key: String, value: String) {
+        std::env::set_var(key, value);
+    }
+
+    pub fn current_exe_path() -> String {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "".to_string())
+    }
+
+    pub fn compiler_path_for_new() -> String {
+        let compiler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("compiler")
+            .canonicalize()
+            .unwrap_or_else(|_| Path::new("../crates/compiler").to_path_buf());
+        compiler_path.to_str().unwrap_or("").replace("\\", "/")
+    }
+
+    pub fn run_cargo_command(cmd: String, args: Vec<String>) -> i32 {
+        let status = Command::new("cargo")
+            .arg(cmd)
+            .args(args)
+            .status()
+            .expect("Failed to run cargo");
+        if status.success() {
+            0
+        } else {
+            status.code().unwrap_or(1)
+        }
+    }
+
+    pub fn run_rust_code(
+        user_code: String,
+        script_args: Vec<String>,
+        quiet: bool,
+        suppress_output: bool,
+        raw_output: bool,
+        warn: bool,
+        strict: bool,
+    ) -> i32 {
+        let rust_code = user_code.replace("#[test]", "");
+
+        let quiche_module = r#"
+mod quiche {
+    #![allow(unused_macros, unused_imports)]
+    
+    // High Priority: Consumes Self (Result/Option)
+    pub trait QuicheResult {
+        type Output;
+        fn quiche_handle(self) -> Self::Output;
+    }
+    
+    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {
+        type Output = T;
+        fn quiche_handle(self) -> T {
+            self.expect("Quiche Exception")
+        }
+    }
+    
+
+    
+    // Low Priority: Takes &Self (Clone fallback)
+    pub trait QuicheGeneric {
+        fn quiche_handle(&self) -> Self;
+    }
+    
+    impl<T: Clone> QuicheGeneric for T {
+        fn quiche_handle(&self) -> Self {
+            self.clone()
+        }
+    }
+    
+    macro_rules! check {
+        ($val:expr) => {
+            {
+                use crate::quiche::{QuicheResult, QuicheGeneric};
+                ($val).quiche_handle()
+            }
+        };
+    }
+    pub(crate) use check;
+    pub(crate) use check as call;
+
+    pub fn run_test_cmd(exe: String, test_path: String) -> bool {
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg(test_path);
+        cmd.env("QUICHE_QUIET", "1");
+        cmd.env("QUICHE_SUPPRESS_OUTPUT", "1");
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        match cmd.status() {
+            Ok(status) => status.success(),
+            Err(_) => false,
+        }
+    }
+
+    pub fn list_test_files() -> Vec<String> {
+        let mut tests = Vec::new();
+        if let Ok(entries) = std::fs::read_dir("tests") {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.ends_with(".qrs") || name == "runner.qrs" {
+                    continue;
+                }
+                tests.push(name);
+            }
+        }
+        tests.sort();
+        tests
+    }
+}
+"#;
+
+        let wrapped_user_code = if !rust_code.contains("fn main") {
+            format!("fn main() {{\n{}\n}}\n", rust_code)
+        } else {
+            rust_code
+        };
+
+        let mut full_code = String::new();
+        full_code.push_str(
+            "#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n",
+        );
+        full_code.push_str(quiche_module);
+        full_code.push_str("\n");
+        full_code.push_str(&wrapped_user_code);
+
+        if !Path::new("target").exists() {
+            std::fs::create_dir("target").ok();
+        }
+        let tmp_rs = "target/tmp.rs";
+        std::fs::write(tmp_rs, full_code).expect("Failed to write temp Rust file");
+
+        if !quiet {
+            println!("--- Compiling and Running ---");
+        }
+        let mut rustc = Command::new("rustc");
+        rustc
+            .arg(tmp_rs)
+            .arg("--edition")
+            .arg("2024")
+            .arg("-o")
+            .arg("target/tmp_bin");
+
+        if strict {
+            rustc.arg("-D").arg("warnings");
+        }
+        if quiet && !warn && !strict {
+            rustc.arg("-Awarnings").stdout(Stdio::null()).stderr(Stdio::null());
+        }
+
+        let status = rustc.status().expect("Failed to run rustc");
+        if !status.success() {
+            return status.code().unwrap_or(1);
+        }
+
+        if suppress_output {
+            let status = Command::new("./target/tmp_bin")
+                .args(script_args)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .expect("Failed to run binary");
+            if !status.success() {
+                return status.code().unwrap_or(1);
+            }
+            return 0;
+        }
+
+        let output = Command::new("./target/tmp_bin")
+            .args(script_args)
+            .output()
+            .expect("Failed to run binary");
+
+        if raw_output {
+            print!("{}", String::from_utf8_lossy(&output.stdout));
+        } else {
+            println!("Output:\n{}", String::from_utf8_lossy(&output.stdout));
+            if !output.stderr.is_empty() {
+                println!("Errors:\n{}", String::from_utf8_lossy(&output.stderr));
+            }
+        }
+
+        if !output.status.success() {
+            return output.status.code().unwrap_or(1);
+        }
+        0
     }
 
     pub fn dedup_shadowed_let_mut(code: String) -> String {
