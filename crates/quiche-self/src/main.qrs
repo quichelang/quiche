@@ -173,7 +173,7 @@ def normalize_module_path(module_path: String) -> String:
 
 # --- Main ---
 
-def compile_source(source: String, filename: String, warn_quiche: bool):
+def compile_source(source: String, filename: String, warn_quiche: bool, strict: bool):
     # Ruff parse_module does not take filename in simple API
     # check! macro unwraps Result automatically for us in host compiler
     parsed = parse_module(source.as_str())
@@ -194,6 +194,8 @@ def compile_source(source: String, filename: String, warn_quiche: bool):
         print("Warnings:")
         for w in checker.warnings:
             print(w)
+        if strict:
+            exit(1)
     
     if checker.errors.len() > 0:
         print("Type Errors found:")
@@ -213,10 +215,13 @@ def main():
     cli_args = env_args()
 
     warn_quiche = False
+    strict = False
     filtered_args = []
     for arg in cli_args:
         if arg == "--warn-all" or arg == "--warn-quiche":
             warn_quiche = True
+        elif arg == "--strict":
+            strict = True
         else:
             filtered_args.append(arg)
 
@@ -226,9 +231,9 @@ def main():
 
         # auto-unwraps (panics) on error due to Host Compiler check! macro
         source = read_to_string(filename.clone())
-        compile_source(source, filename, warn_quiche)
+        compile_source(source, filename, warn_quiche, strict)
     else:
         print("Usage: quiche_self <file.qrs>")
         print("Running default demo...")
         demo_source = "def foo():\n    x = 42\n    return x\n"
-        compile_source(demo_source, "<demo>", warn_quiche)
+        compile_source(demo_source, "<demo>", warn_quiche, strict)

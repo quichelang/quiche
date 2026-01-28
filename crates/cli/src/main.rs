@@ -376,6 +376,9 @@ fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, Vec<String>) {
             _ => rest.push(a.clone()),
         }
     }
+    if warn {
+        warn_all = true;
+    }
     if warn_all {
         warn = true;
     }

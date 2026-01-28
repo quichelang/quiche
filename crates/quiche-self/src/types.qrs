@@ -90,7 +90,7 @@ class TypeChecker:
                             type_name = self.get_type_name(deref(ann))
                             self.symbols.insert(arg.name.as_str().to_string(), Symbol.new(arg.name.as_str().to_string(), type_name, False, False, False, False))
                         case None:
-                            self.errors.push("Missing type annotation for argument")
+                            self.warnings.push("Missing type annotation for argument")
                 
                 for s in f.body:
                     self.check_stmt(s)
