@@ -1,6 +1,6 @@
 
-import ast
-import types
+from ast import Stmt, Parsed
+from types import TypeChecker
 from compiler.codegen import Codegen
 
 @extern(path="std::string::String", no_generic=True)
@@ -14,7 +14,7 @@ class ParseError:
     pass
 
 @extern(path="ruff_python_parser::parse_module")
-def parse_module(source: StrRef) -> Result[ast.Parsed, ParseError]:
+def parse_module(source: StrRef) -> Result[Parsed, ParseError]:
     pass
 
 @extern(path="crate::quiche::env_args_helper")
@@ -37,6 +37,9 @@ def module_path_for_file(root: String, filename: String) -> String: pass
 
 @extern(path="crate::quiche::module_parent")
 def module_parent(path: String, levels: u32) -> String: pass
+
+@extern(path="crate::quiche::dedup_shadowed_let_mut")
+def dedup_shadowed_let_mut(code: String) -> String: pass
 
 @extern(path="crate::quiche::module_join")
 def module_join(base: String, sub: String) -> String: pass
@@ -80,26 +83,26 @@ def collect_module_exports(module_index: Dict[String, String], module_path: Stri
     match module_index.get(module_path):
         case Some(path):
             source = read_to_string(path.clone())
-            parsed = parse_module(as_ref(source))
+            parsed = parse_module(source.as_str())
             module = parsed.into_syntax()
             for stmt in module.body:
                 match stmt:
-                    case ast.Stmt.ClassDef(c):
+                    case Stmt.ClassDef(c):
                         exports.insert(c.name.as_str().to_string(), "class")
-                    case ast.Stmt.FunctionDef(f):
+                    case Stmt.FunctionDef(f):
                         exports.insert(f.name.as_str().to_string(), "func")
                     case _: pass
         case None: pass
     return exports
 
 
-def build_import_maps(stmts: List[ast.Stmt], module_index: Dict[String, String], current_module_path: String) -> ImportMaps:
+def build_import_maps(stmts: List[Stmt], module_index: Dict[String, String], current_module_path: String) -> ImportMaps:
     import_paths = Dict[String, String].new()
     import_kinds = Dict[String, String].new()
 
     for stmt in stmts:
         match stmt:
-            case ast.Stmt.Import(i):
+            case Stmt.Import(i):
                 for alias in i.names:
                     module_name = alias.name.as_str().to_string()
                     alias_name = module_name.clone()
@@ -110,7 +113,7 @@ def build_import_maps(stmts: List[ast.Stmt], module_index: Dict[String, String],
                     rust_path = module_to_rust_path(module_path)
                     import_paths.insert(alias_name.clone(), rust_path)
                     import_kinds.insert(alias_name.clone(), "module")
-            case ast.Stmt.ImportFrom(i):
+            case Stmt.ImportFrom(i):
                 base_module = ""
                 match i.module:
                     case Some(m):
@@ -162,23 +165,28 @@ def build_import_maps(stmts: List[ast.Stmt], module_index: Dict[String, String],
 
     return ImportMaps.new(import_paths, import_kinds)
 
+def normalize_module_path(module_path: String) -> String:
+    if module_path == "main" or module_path == "lib":
+        return ""
+    return module_path
+
 
 # --- Main ---
 
 def compile_source(source: String, filename: String):
     # Ruff parse_module does not take filename in simple API
     # check! macro unwraps Result automatically for us in host compiler
-    parsed = parse_module(as_ref(source))
+    parsed = parse_module(source.as_str())
     module = parsed.into_syntax()
     stmts = module.body
 
     root_dir = path_dirname(filename.clone())
     module_index = build_module_index(root_dir.clone())
-    current_module_path = module_path_for_file(root_dir, filename.clone())
-    import_maps = build_import_maps(stmts.clone(), module_index, current_module_path)
+    current_module_path = normalize_module_path(module_path_for_file(root_dir, filename.clone()))
+    import_maps = build_import_maps(stmts.clone(), module_index, current_module_path.clone())
     
     # Type Check
-    checker = types.TypeChecker.new()
+    checker = TypeChecker.new()
     for stmt in as_ref(stmts):
         checker.check_stmt(stmt)
     
@@ -189,11 +197,12 @@ def compile_source(source: String, filename: String):
         exit(1)
     else:
         # Codegen
-        codegen = Codegen.new_with_imports(import_maps.paths, import_maps.kinds)
+        codegen = Codegen.new_with_imports_and_module(import_maps.paths, import_maps.kinds, current_module_path)
         for stmt in stmts:
             codegen.generate_stmt(stmt)
-            
-        print_str(codegen.output)
+        
+        cleaned = dedup_shadowed_let_mut(codegen.output)
+        print_str(cleaned)
 
 def main():
     cli_args = env_args()

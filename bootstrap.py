@@ -3,6 +3,7 @@ import subprocess
 import glob
 import sys
 import shutil
+import re
 
 # Configuration
 WORKSPACE_ROOT = os.getcwd()
@@ -26,10 +27,17 @@ def setup_compilation_dir(stage_name, rust_sources_dir):
         shutil.rmtree(project_dir)
     
     os.makedirs(os.path.join(project_dir, "src"))
-    
-    # Copy generated .rs files
-    for f in glob.glob(os.path.join(rust_sources_dir, "*.rs")):
-        shutil.copy(f, os.path.join(project_dir, "src"))
+
+    # Copy generated .rs files (recursive)
+    for root, _dirs, files in os.walk(rust_sources_dir):
+        for name in files:
+            if not name.endswith(".rs"):
+                continue
+            src_path = os.path.join(root, name)
+            rel = os.path.relpath(src_path, rust_sources_dir)
+            dest_path = os.path.join(project_dir, "src", rel)
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            shutil.copy(src_path, dest_path)
     
     # Copy the wrapper main.rs from quiche-self/src
     shutil.copy(os.path.join(SRC_DIR, "main.rs"), os.path.join(project_dir, "src", "main.rs"))
@@ -63,25 +71,80 @@ def compile_stage_binary(project_dir):
     if result.returncode != 0:
         print(f"Failed to build binary in {project_dir}")
         sys.exit(1)
-    
-    bin_path = os.path.join(project_dir, "target", "debug", os.path.basename(project_dir))
+
+    dir_name = os.path.basename(project_dir)
+    stage_name = dir_name
+    if dir_name.startswith("bootstrap_"):
+        stage_name = dir_name[len("bootstrap_"):]
+    bin_name = f"quiche_bootstrap_{stage_name}"
+    bin_path = os.path.join(project_dir, "target", "debug", bin_name)
     if os.name == 'nt': bin_path += ".exe"
     return bin_path
+
+def _collect_qrs_files():
+    qrs_files = []
+    for root, _dirs, files in os.walk(SRC_DIR):
+        for name in files:
+            if name.endswith(".qrs"):
+                qrs_files.append(os.path.join(root, name))
+    return qrs_files
+
+def _module_path_from_rel(rel_path):
+    rel_dir, rel_file = os.path.split(rel_path)
+    parts = []
+    if rel_dir:
+        parts.extend(rel_dir.split(os.sep))
+    if rel_file == "mod.qrs":
+        return ".".join(parts), True
+    stem, _ = os.path.splitext(rel_file)
+    parts.append(stem)
+    return ".".join(parts), False
+
+def _output_rel_from_rel(rel_path, is_mod):
+    if is_mod:
+        rel_dir = os.path.dirname(rel_path)
+        if rel_dir:
+            return os.path.join(rel_dir, "mod.rs")
+        return "mod.rs"
+    return os.path.splitext(rel_path)[0] + ".rs"
 
 def run_transpile(binary_path, output_dir):
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     os.makedirs(output_dir)
 
-    qrs_files = glob.glob(os.path.join(SRC_DIR, "*.qrs"))
-    modules = [os.path.splitext(os.path.basename(f))[0] for f in qrs_files if os.path.basename(f) not in ["main.qrs", "lib.qrs"]]
+    qrs_files = _collect_qrs_files()
+    module_children = {}
+    top_modules = set()
 
     for qrs_file in qrs_files:
+        rel = os.path.relpath(qrs_file, SRC_DIR)
+        module_path, _is_mod = _module_path_from_rel(rel)
+        stem = os.path.splitext(os.path.basename(qrs_file))[0]
+        if stem in ["main", "lib"]:
+            continue
+        if module_path:
+            if "." not in module_path:
+                top_modules.add(module_path)
+            if "." in module_path:
+                parent, child = module_path.rsplit(".", 1)
+                module_children.setdefault(parent, set()).add(child)
+            else:
+                module_children.setdefault(module_path, set())
+
+    for qrs_file in qrs_files:
+        rel = os.path.relpath(qrs_file, SRC_DIR)
         basename = os.path.basename(qrs_file)
         stem = os.path.splitext(basename)[0]
-        out_stem = stem
-        if stem == "main": out_stem = "main_gen"
-        output_file = os.path.join(output_dir, f"{out_stem}.rs")
+        module_path, is_mod = _module_path_from_rel(rel)
+
+        out_rel = _output_rel_from_rel(rel, is_mod)
+        if stem == "main":
+            out_rel = os.path.join(os.path.dirname(out_rel), "main_gen.rs")
+        output_file = os.path.join(output_dir, out_rel)
+        out_dirname = os.path.dirname(output_file)
+        if out_dirname:
+            os.makedirs(out_dirname, exist_ok=True)
         
         # Run binary
         result = subprocess.run([binary_path, qrs_file], capture_output=True, text=True)
@@ -95,9 +158,16 @@ def run_transpile(binary_path, output_dir):
 
         # Prepend mod decls to root
         if stem == "main":
-            mod_decls = "".join([f"pub mod {m};\n" for m in sorted(modules)])
+            mod_decls = "".join([f"pub mod {m};\n" for m in sorted(top_modules)])
             rust_code = mod_decls + "\n" + rust_code
-            
+
+        # Prepend child module decls to mod.rs
+        if is_mod and module_path in module_children:
+            children = sorted(module_children[module_path])
+            if children:
+                mod_decls = "".join([f"pub mod {m};\n" for m in children])
+                rust_code = mod_decls + "\n" + rust_code
+        
         with open(output_file, "w") as f:
             f.write(rust_code)
 
@@ -124,6 +194,36 @@ def compare_dirs(dir1, dir2):
 
     return diffs
 
+def check_shadowing(root_dir):
+    print("\nChecking for shadowed `let mut` declarations in Stage 1 output...")
+    shadowed = []
+    let_mut_re = re.compile(r"\blet\s+mut\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+    for path in glob.glob(os.path.join(root_dir, "**", "*.rs"), recursive=True):
+        with open(path, "r") as f:
+            text = f.read()
+        scope_stack = [set()]
+        line_no = 1
+        for line in text.splitlines():
+            for ch in line:
+                if ch == "{":
+                    scope_stack.append(set())
+                elif ch == "}":
+                    if len(scope_stack) > 1:
+                        scope_stack.pop()
+            m = let_mut_re.search(line)
+            if m:
+                name = m.group(1)
+                if any(name in s for s in scope_stack[:-1]):
+                    shadowed.append((path, line_no, name))
+                scope_stack[-1].add(name)
+            line_no += 1
+    if not shadowed:
+        print("  No shadowed `let mut` found.")
+        return
+    for path, line_no, name in shadowed:
+        rel = os.path.relpath(path, WORKSPACE_ROOT)
+        print(f"  Shadowed: {rel}:{line_no} -> {name}")
+
 def main():
     # 0. Initial Build (Host -> Stage 1 Output)
     print("Step 0: Building Stage 0 binary with Host compiler...")
@@ -135,6 +235,7 @@ def main():
     print("\nStep 1: Transpiling with Stage 0 binary -> Stage 1 Output...")
     stage1_out = os.path.join(TARGET_DIR, "stage1_out")
     run_transpile(stage0_bin, stage1_out)
+    check_shadowing(stage1_out)
     
     # 2. Compile Stage 1 Output -> Stage 1 Binary
     print("\nStep 2: Compiling Stage 1 Output into Stage 1 Binary...")

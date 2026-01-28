@@ -2,7 +2,7 @@ use quiche_compiler::compile;
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 mod templates;
 
@@ -45,22 +45,18 @@ fn main() {
             }
         }
         "test" => {
-            if Path::new("Cargo.toml").exists() {
+            if Path::new("tests/runner.qrs").exists() {
+                if let Ok(exe) = env::current_exe() {
+                    if let Some(exe_str) = exe.to_str() {
+                        env::set_var("QUICHE_TEST_BIN", exe_str);
+                    }
+                }
+                run_single_file_with_options("tests/runner.qrs", &args[2..], true, false, true);
+            } else if Path::new("Cargo.toml").exists() {
                 run_cargo_command("test", &args[2..]);
             } else {
-                // If we are in the quiche repository root (dev mode), run cargo test
-                // which triggers tests/runner.rs
-                // Use --test runner to avoid running empty lib tests
-                // Check if we are actually in the root by checking for tests/runner.rs presence maybe?
-                // Or just assume if no Cargo.toml, checking for tests dir
-                if Path::new("tests/runner.rs").exists() {
-                    let mut test_args = vec!["--test".to_string(), "runner".to_string()];
-                    test_args.extend_from_slice(&args[2..]);
-                    run_cargo_command("test", &test_args);
-                } else {
-                    eprintln!("Error: No Cargo.toml found.");
-                    std::process::exit(1);
-                }
+                eprintln!("Error: No tests/runner.qrs or Cargo.toml found.");
+                std::process::exit(1);
             }
         }
         arg => {
@@ -160,6 +156,19 @@ fn run_cargo_command(cmd: &str, args: &[String]) {
 }
 
 fn run_single_file(filename: &str, script_args: &[String]) {
+    let quiet = env::var("QUICHE_QUIET").ok().as_deref() == Some("1");
+    let suppress_output = env::var("QUICHE_SUPPRESS_OUTPUT").ok().as_deref() == Some("1");
+    let raw_output = env::var("QUICHE_RAW_OUTPUT").ok().as_deref() == Some("1");
+    run_single_file_with_options(filename, script_args, quiet, suppress_output, raw_output);
+}
+
+fn run_single_file_with_options(
+    filename: &str,
+    script_args: &[String],
+    quiet: bool,
+    suppress_output: bool,
+    raw_output: bool,
+) {
     let source_raw = match fs::read_to_string(filename) {
         Ok(s) => s,
         Err(e) => {
@@ -216,6 +225,34 @@ mod quiche {
     }
     pub(crate) use check;
     pub(crate) use check as call;
+
+    pub fn run_test_cmd(exe: String, test_path: String) -> bool {
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg(test_path);
+        cmd.env("QUICHE_QUIET", "1");
+        cmd.env("QUICHE_SUPPRESS_OUTPUT", "1");
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        match cmd.status() {
+            Ok(status) => status.success(),
+            Err(_) => false,
+        }
+    }
+
+    pub fn list_test_files() -> Vec<String> {
+        let mut tests = Vec::new();
+        if let Ok(entries) = std::fs::read_dir("tests") {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.ends_with(".qrs") || name == "runner.qrs" {
+                    continue;
+                }
+                tests.push(name);
+            }
+        }
+        tests.sort();
+        tests
+    }
 }
 "#;
 
@@ -241,28 +278,58 @@ mod quiche {
         let tmp_rs = "target/tmp.rs";
         fs::write(tmp_rs, full_code).expect("Failed to write temp Rust file");
 
-        println!("--- Compiling and Running ---");
-        let status = Command::new("rustc")
-            .arg(tmp_rs)
+        if !quiet {
+            println!("--- Compiling and Running ---");
+        }
+        let mut rustc = Command::new("rustc");
+        rustc.arg(tmp_rs)
             .arg("--edition")
             .arg("2024")
             .arg("-o")
-            .arg("target/tmp_bin")
-            .status()
-            .expect("Failed to run rustc");
+            .arg("target/tmp_bin");
 
-        if status.success() {
-            let output = Command::new("./target/tmp_bin")
+        if quiet {
+            rustc.arg("-Awarnings")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+        }
+
+        let status = rustc.status().expect("Failed to run rustc");
+
+        if !status.success() {
+            println!("Compilation failed: {}", filename);
+            std::process::exit(status.code().unwrap_or(1));
+        }
+
+        if suppress_output {
+            let status = Command::new("./target/tmp_bin")
                 .args(script_args)
-                .output()
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
                 .expect("Failed to run binary");
+            if !status.success() {
+                std::process::exit(status.code().unwrap_or(1));
+            }
+            return;
+        }
 
+        let output = Command::new("./target/tmp_bin")
+            .args(script_args)
+            .output()
+            .expect("Failed to run binary");
+
+        if raw_output {
+            print!("{}", String::from_utf8_lossy(&output.stdout));
+        } else {
             println!("Output:\n{}", String::from_utf8_lossy(&output.stdout));
             if !output.stderr.is_empty() {
                 println!("Errors:\n{}", String::from_utf8_lossy(&output.stderr));
             }
-        } else {
-            println!("Compilation failed.");
+        }
+
+        if !output.status.success() {
+            std::process::exit(output.status.code().unwrap_or(1));
         }
     }
 }

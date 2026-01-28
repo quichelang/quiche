@@ -1,0 +1,47 @@
+from rust.std.env import var
+
+@extern(path="std::process::exit")
+def exit(code: i32) -> i32: pass
+
+@extern(path="crate::quiche::run_test_cmd")
+def run_test_cmd(exe_path: String, test_path: String) -> bool: pass
+
+@extern(path="crate::quiche::list_test_files")
+def list_test_files() -> List[String]: pass
+
+def run_test(exe_path: String, test_name: String) -> bool:
+    path = f"tests/{test_name}"
+    return run_test_cmd(exe_path, path)
+
+def main():
+    tests = list_test_files()
+    total = len(tests)
+    if total == 0:
+        print("No tests found")
+        exit(1)
+
+    exe_path = var("QUICHE_TEST_BIN")
+    passed = 0
+    failed = 0
+    failures = []
+    i = 0
+
+    for name in tests:
+        i = i + 1
+        ok = run_test(exe_path.clone(), name.clone())
+        if ok:
+            passed = passed + 1
+            print_str(f"{name}: PASS ({i}/{total})")
+        else:
+            failed = failed + 1
+            print_str(f"{name}: FAIL ({i}/{total})")
+            failures.append(name)
+
+    if len(failures) > 0:
+        print_str("Failures:")
+        for name in failures:
+            print_str(name)
+
+    print_str(f"Summary: {passed} passed, {failed} failed, 0 errored")
+    if failed > 0:
+        exit(1)

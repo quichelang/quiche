@@ -52,6 +52,96 @@ mod quiche {
         s.replace('\\', "\\\\").replace('\"', "\\\"")
     }
 
+    pub fn run_test_cmd(exe: String, test_path: String) -> bool {
+        use std::process::Stdio;
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg(test_path);
+        cmd.env("QUICHE_QUIET", "1");
+        cmd.env("QUICHE_SUPPRESS_OUTPUT", "1");
+        cmd.stdout(Stdio::null());
+        cmd.stderr(Stdio::null());
+        match cmd.status() {
+            Ok(status) => status.success(),
+            Err(_) => false,
+        }
+    }
+
+    pub fn list_test_files() -> Vec<String> {
+        let mut tests = Vec::new();
+        if let Ok(entries) = std::fs::read_dir("tests") {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.ends_with(".qrs") || name == "runner.qrs" {
+                    continue;
+                }
+                tests.push(name);
+            }
+        }
+        tests.sort();
+        tests
+    }
+
+    pub fn dedup_shadowed_let_mut(code: String) -> String {
+        use std::collections::HashSet;
+        let mut out = String::new();
+        let mut scopes: Vec<HashSet<String>> = vec![HashSet::new()];
+
+        for line in code.lines() {
+            let mut line_out = line.to_string();
+
+            for ch in line.chars() {
+                if ch == '}' && scopes.len() > 1 {
+                    scopes.pop();
+                }
+            }
+
+            let mut search_start = 0;
+            loop {
+                if let Some(idx) = line_out[search_start..].find("let mut ") {
+                    let abs_idx = search_start + idx;
+                    let name_start = abs_idx + "let mut ".len();
+                    let mut name_end = name_start;
+                    for (i, c) in line_out[name_start..].char_indices() {
+                        if c.is_alphanumeric() || c == '_' {
+                            name_end = name_start + i + c.len_utf8();
+                        } else {
+                            break;
+                        }
+                    }
+                    if name_end == name_start {
+                        search_start = name_start;
+                        continue;
+                    }
+
+                    let name = line_out[name_start..name_end].to_string();
+                    let shadowed = scopes
+                        .iter()
+                        .take(scopes.len().saturating_sub(1))
+                        .any(|s| s.contains(&name));
+                    if shadowed {
+                        line_out.replace_range(abs_idx..name_start, "");
+                    } else if let Some(cur) = scopes.last_mut() {
+                        cur.insert(name);
+                    }
+                    search_start = name_end;
+                } else {
+                    break;
+                }
+            }
+
+            for ch in line.chars() {
+                if ch == '{' {
+                    scopes.push(HashSet::new());
+                }
+            }
+
+            out.push_str(&line_out);
+            out.push('\n');
+        }
+
+        out
+    }
+
     pub fn path_dirname(path: String) -> String {
         let p = Path::new(&path);
         match p.parent() {

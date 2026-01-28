@@ -7,13 +7,18 @@ use std::time::{Duration, Instant};
 
 #[allow(dead_code)]
 pub fn compile_binary(package: &str, binary: &str) -> PathBuf {
-    // Compile the binary once
-    let status = Command::new("cargo")
-        .args(&["build", "-p", package, "--bin", binary])
-        .status()
+    // Compile the binary once (quiet, warnings suppressed)
+    let output = Command::new("cargo")
+        .args(&["build", "-q", "-p", package, "--bin", binary])
+        .env("RUSTFLAGS", "-Awarnings")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
         .expect("Failed to build binary");
 
-    assert!(status.success(), "Failed to compile binary {}", binary);
+    if !output.status.success() {
+        panic!("Failed to compile binary {}", binary);
+    }
 
     // Located in target/debug/binary
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -49,11 +54,15 @@ fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Option<ExitStatus>
     }
 }
 
-#[allow(dead_code)]
-pub fn run_spec_test(binary: &Path, spec_path: &Path) -> bool {
-    let test_name = spec_path.file_name().unwrap().to_string_lossy();
-    println!("Running spec: {}", test_name);
+#[derive(Debug)]
+pub(crate) enum TestOutcome {
+    Pass,
+    Fail(String),
+    Error(String),
+}
 
+#[allow(dead_code)]
+pub fn run_spec_test(binary: &Path, spec_path: &Path) -> TestOutcome {
     let mut child = Command::new(binary)
         .arg(spec_path)
         .stdout(Stdio::piped())
@@ -65,18 +74,14 @@ pub fn run_spec_test(binary: &Path, spec_path: &Path) -> bool {
         Some(status) => {
             let output = child.wait_with_output().expect("Failed to read output");
             if !status.success() {
-                println!("FAILED: {}", test_name);
-                println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
-                println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
-                return false;
+                let _ = output;
+                return TestOutcome::Fail("execution failed".to_string());
             } else {
-                println!("PASSED: {}", test_name);
-                return true;
+                return TestOutcome::Pass;
             }
         }
         None => {
-            println!("TIMEOUT: {}", test_name);
-            return false;
+            return TestOutcome::Error("timeout".to_string());
         }
     }
 }
@@ -93,20 +98,59 @@ pub fn run_integration_tests(package: &str, binary: &str) {
         return;
     }
 
-    let mut failed = false;
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut errored = 0;
+    let mut failures: Vec<String> = Vec::new();
     let entries = fs::read_dir(tests_dir).expect("Failed to read tests dir");
 
-    for entry in entries {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().unwrap_or_default() == "qrs" {
-            if !run_spec_test(&binary_path, &path) {
-                failed = true;
+    let mut paths: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+    paths.sort();
+
+    let total = paths
+        .iter()
+        .filter(|p| p.extension().unwrap_or_default() == "qrs")
+        .count();
+    let mut index = 0;
+
+    for path in paths {
+        if path.extension().unwrap_or_default() != "qrs" {
+            continue;
+        }
+        if path.file_name().map(|n| n == "runner.qrs").unwrap_or(false) {
+            continue;
+        }
+        index += 1;
+        let test_name = path.file_name().unwrap().to_string_lossy();
+        match run_spec_test(&binary_path, &path) {
+            TestOutcome::Pass => {
+                passed += 1;
+                println!("{}: PASS ({}/{})", test_name, index, total);
+            }
+            TestOutcome::Fail(detail) => {
+                failed += 1;
+                println!("{}: FAIL ({}/{})", test_name, index, total);
+                failures.push(format!("{}: FAIL - {}", test_name, detail));
+            }
+            TestOutcome::Error(detail) => {
+                errored += 1;
+                println!("{}: ERROR ({}/{})", test_name, index, total);
+                failures.push(format!("{}: ERROR - {}", test_name, detail));
             }
         }
     }
 
-    if failed {
+    if !failures.is_empty() {
+        println!("Failures:");
+        for line in failures {
+            println!("{}", line);
+        }
+    }
+    println!(
+        "Summary: {} passed, {} failed, {} errored",
+        passed, failed, errored
+    );
+    if failed > 0 || errored > 0 {
         panic!("Some integration tests failed");
     }
 }
@@ -156,10 +200,7 @@ mod quiche {
 }
 
 #[allow(dead_code)]
-pub fn run_transpilation_test(binary: &Path, spec_path: &Path, project_root: &Path) -> bool {
-    let test_name = spec_path.file_name().unwrap().to_string_lossy();
-    println!("Running spec (transpilation): {}", test_name);
-
+pub fn run_transpilation_test(binary: &Path, spec_path: &Path, project_root: &Path) -> TestOutcome {
     // 1. Run Transpiler
     let mut child = Command::new(binary)
         .arg(spec_path)
@@ -172,23 +213,19 @@ pub fn run_transpilation_test(binary: &Path, spec_path: &Path, project_root: &Pa
         Some(status) => {
             let out = child.wait_with_output().expect("Failed to read output");
             if !status.success() {
-                println!("Transpilation FAILED: {}", test_name);
-                println!("Stderr: {}", String::from_utf8_lossy(&out.stderr));
-                return false;
+                let _ = out;
+                return TestOutcome::Fail("transpilation failed".to_string());
             }
             out
         }
         None => {
-            println!("Transpilation TIMEOUT: {}", test_name);
-            return false;
+            return TestOutcome::Error("transpilation timeout".to_string());
         }
     };
 
     let rust_code = String::from_utf8_lossy(&output.stdout);
     if rust_code.contains("Type Errors found") {
-        println!("Transpilation Type Errors: {}", test_name);
-        println!("{}", rust_code);
-        return false;
+        return TestOutcome::Fail("type errors".to_string());
     }
 
     // 2. Wrap if needed
@@ -248,6 +285,7 @@ quiche_runtime = {{ path = "{}" }}
         .arg("--quiet")
         .current_dir(project_root)
         .env("CARGO_TARGET_DIR", target_dir)
+        .env("RUSTFLAGS", "-Awarnings")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -257,18 +295,14 @@ quiche_runtime = {{ path = "{}" }}
         Some(status) => {
             let output = child.wait_with_output().expect("Failed to read output");
             if !status.success() {
-                println!("Execution FAILED: {}", test_name);
-                println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
-                println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
-                return false;
+                let _ = output;
+                return TestOutcome::Fail("execution failed".to_string());
             } else {
-                println!("PASSED: {}", test_name);
-                return true;
+                return TestOutcome::Pass;
             }
         }
         None => {
-            println!("Execution TIMEOUT: {}", test_name);
-            return false;
+            return TestOutcome::Error("execution timeout".to_string());
         }
     }
 }
@@ -284,25 +318,63 @@ pub fn run_self_hosted_tests(package: &str, binary: &str) {
         return;
     }
 
-    let mut failed = false;
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut errored = 0;
+    let mut failures: Vec<String> = Vec::new();
     let entries = fs::read_dir(tests_dir).expect("Failed to read tests dir");
 
     // Use a single temp dir for all tests to reuse build cache
     let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
     let proj_root = temp_dir.path();
 
-    for entry in entries {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().unwrap_or_default() == "qrs" {
-            // Use transpilation runner
-            if !run_transpilation_test(&binary_path, &path, proj_root) {
-                failed = true;
+    let mut paths: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+    paths.sort();
+
+    let total = paths
+        .iter()
+        .filter(|p| p.extension().unwrap_or_default() == "qrs")
+        .count();
+    let mut index = 0;
+
+    for path in paths {
+        if path.extension().unwrap_or_default() != "qrs" {
+            continue;
+        }
+        if path.file_name().map(|n| n == "runner.qrs").unwrap_or(false) {
+            continue;
+        }
+        index += 1;
+        let test_name = path.file_name().unwrap().to_string_lossy();
+        match run_transpilation_test(&binary_path, &path, proj_root) {
+            TestOutcome::Pass => {
+                passed += 1;
+                println!("{}: PASS ({}/{})", test_name, index, total);
+            }
+            TestOutcome::Fail(detail) => {
+                failed += 1;
+                println!("{}: FAIL ({}/{})", test_name, index, total);
+                failures.push(format!("{}: FAIL - {}", test_name, detail));
+            }
+            TestOutcome::Error(detail) => {
+                errored += 1;
+                println!("{}: ERROR ({}/{})", test_name, index, total);
+                failures.push(format!("{}: ERROR - {}", test_name, detail));
             }
         }
     }
 
-    if failed {
+    if !failures.is_empty() {
+        println!("Failures:");
+        for line in failures {
+            println!("{}", line);
+        }
+    }
+    println!(
+        "Summary: {} passed, {} failed, {} errored",
+        passed, failed, errored
+    );
+    if failed > 0 || errored > 0 {
         panic!("Some integration tests failed");
     }
 }

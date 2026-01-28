@@ -86,9 +86,12 @@ impl Codegen {
 
                     if i == 0 && a.targets.len() == 1 {
                         if let ast::Expr::Name(n) = target {
-                            if !self.has_symbol(&n.id) {
+                            let already_defined =
+                                self.is_defined(&n.id) || self.get_symbol(&n.id).is_some();
+                            if !already_defined {
                                 self.output.push_str("let mut ");
                                 self.add_symbol(n.id.to_string(), "/* inferred */".to_string());
+                                self.mark_defined(&n.id);
                             }
                         }
                     }
@@ -110,7 +113,8 @@ impl Codegen {
                 self.output.push_str(&type_ann);
 
                 // Register symbol
-                self.add_symbol(target_str, type_ann);
+                self.add_symbol(target_str.clone(), type_ann);
+                self.mark_defined(&target_str);
 
                 if let Some(value) = &a.value {
                     self.output.push_str(" = ");
@@ -597,6 +601,7 @@ impl Codegen {
                     if let Some(annotation) = &arg.annotation {
                         let type_ann = self.map_type(annotation);
                         self.add_symbol(arg.name.to_string(), type_ann);
+                        self.mark_defined(arg.name.as_str());
                     }
                 }
             }
@@ -612,6 +617,7 @@ impl Codegen {
                     param.parameter.name
                 ));
                 self.add_symbol(param.parameter.name.to_string(), "Vec<String>".to_string());
+                self.mark_defined(param.parameter.name.as_str());
             }
         }
 

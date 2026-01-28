@@ -12,6 +12,7 @@ pub struct Codegen {
     pub(crate) output: String,
     pub(crate) indent_level: usize,
     pub(crate) scopes: Vec<HashMap<String, String>>,
+    pub(crate) defined_vars: Vec<HashSet<String>>,
     pub(crate) foreign_symbols: HashSet<String>,
     pub(crate) linked_modules: HashSet<String>,
 }
@@ -22,6 +23,7 @@ impl Codegen {
             output: String::new(),
             indent_level: 0,
             scopes: vec![HashMap::new()],
+            defined_vars: vec![HashSet::new()],
             foreign_symbols: HashSet::new(),
             linked_modules: HashSet::new(),
         }
@@ -69,10 +71,22 @@ impl Codegen {
 
     pub(crate) fn enter_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.defined_vars.push(HashSet::new());
     }
 
     pub(crate) fn exit_scope(&mut self) {
         self.scopes.pop();
+        self.defined_vars.pop();
+    }
+
+    pub(crate) fn mark_defined(&mut self, name: &str) {
+        if let Some(scope) = self.defined_vars.last_mut() {
+            scope.insert(name.to_string());
+        }
+    }
+
+    pub(crate) fn is_defined(&self, name: &str) -> bool {
+        self.defined_vars.iter().rev().any(|s| s.contains(name))
     }
 
     pub(crate) fn add_symbol(&mut self, name: String, ty: String) {
@@ -81,6 +95,7 @@ impl Codegen {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn has_symbol(&self, name: &str) -> bool {
         self.get_symbol(name).is_some()
     }
@@ -124,11 +139,71 @@ pub fn compile(source: &str) -> Option<String> {
             let mut cg = Codegen::new();
             let rust_code = cg.generate_module(parsed.syntax());
             // println!("Successfully generated Rust code:\n{}", rust_code);
-            Some(rust_code)
+            Some(dedup_shadowed_let_mut(&rust_code))
         }
         Err(e) => {
             println!("Parse error: {:?}", e);
             None
         }
     }
+}
+
+fn dedup_shadowed_let_mut(code: &str) -> String {
+    let mut out = String::new();
+    let mut scopes: Vec<HashSet<String>> = vec![HashSet::new()];
+
+    for line in code.lines() {
+        let mut line_out = line.to_string();
+
+        for ch in line.chars() {
+            if ch == '}' && scopes.len() > 1 {
+                scopes.pop();
+            }
+        }
+
+        let mut search_start = 0;
+        loop {
+            if let Some(idx) = line_out[search_start..].find("let mut ") {
+                let abs_idx = search_start + idx;
+                let name_start = abs_idx + "let mut ".len();
+                let mut name_end = name_start;
+                for (i, c) in line_out[name_start..].char_indices() {
+                    if c.is_alphanumeric() || c == '_' {
+                        name_end = name_start + i + c.len_utf8();
+                    } else {
+                        break;
+                    }
+                }
+                if name_end == name_start {
+                    search_start = name_start;
+                    continue;
+                }
+
+                let name = line_out[name_start..name_end].to_string();
+                let shadowed = scopes
+                    .iter()
+                    .take(scopes.len().saturating_sub(1))
+                    .any(|s| s.contains(&name));
+                if shadowed {
+                    line_out.replace_range(abs_idx..name_start, "");
+                } else if let Some(cur) = scopes.last_mut() {
+                    cur.insert(name);
+                }
+                search_start = name_end;
+            } else {
+                break;
+            }
+        }
+
+        for ch in line.chars() {
+            if ch == '{' {
+                scopes.push(HashSet::new());
+            }
+        }
+
+        out.push_str(&line_out);
+        out.push('\n');
+    }
+
+    out
 }
