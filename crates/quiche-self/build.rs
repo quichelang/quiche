@@ -1,42 +1,121 @@
 use quiche_compiler::compile;
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+fn collect_qrs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_qrs_files(&path, out);
+            } else if path.extension().and_then(|s| s.to_str()) == Some("qrs") {
+                out.push(path);
+            }
+        }
+    }
+}
+
+fn module_path_from_rel(rel: &Path) -> (String, bool) {
+    let file_name = rel.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    let is_mod = file_name == "mod.qrs";
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(parent) = rel.parent() {
+        for comp in parent.iter() {
+            if let Some(seg) = comp.to_str() {
+                if !seg.is_empty() {
+                    parts.push(seg.to_string());
+                }
+            }
+        }
+    }
+    if !is_mod {
+        if let Some(stem) = Path::new(file_name).file_stem().and_then(|s| s.to_str()) {
+            parts.push(stem.to_string());
+        }
+    }
+    (parts.join("."), is_mod)
+}
+
+fn output_rel_from_rel(rel: &Path, is_mod: bool) -> PathBuf {
+    if is_mod {
+        if let Some(parent) = rel.parent() {
+            return parent.join("mod.rs");
+        }
+        PathBuf::from("mod.rs")
+    } else {
+        rel.with_extension("rs")
+    }
+}
+
+fn clean_generated_rs(dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                clean_generated_rs(&path);
+            } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+}
 
 fn main() {
     println!("cargo:rerun-if-changed=src");
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = Path::new(&out_dir);
+    clean_generated_rs(out_path);
 
-    // 1. Gather all .qrs files
+    // 1. Gather all .qrs files (recursive)
     let mut qrs_files = Vec::new();
     let src_dir = Path::new("src");
     if src_dir.exists() {
-        for entry in fs::read_dir(src_dir).expect("Failed to read src dir") {
-            let entry = entry.expect("Failed to read entry");
-            let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("qrs") {
-                qrs_files.push(path);
-            }
-        }
+        collect_qrs_files(src_dir, &mut qrs_files);
     }
 
-    // 2. Identify root (main.qrs or lib.qrs) and modules
+    // 2. Identify root (main.qrs or lib.qrs), modules, and children
     let mut root_file = None;
-    let mut modules = Vec::new();
+    let mut top_modules: Vec<String> = Vec::new();
+    let mut module_paths: Vec<String> = Vec::new();
+    let mut module_children: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
 
     for path in &qrs_files {
+        let rel = path.strip_prefix(src_dir).unwrap_or(path);
+        let (module_path, is_mod) = module_path_from_rel(rel);
         let stem = path.file_stem().unwrap().to_str().unwrap();
+
         if stem == "main" || stem == "lib" {
             root_file = Some((path, stem));
-        } else {
-            modules.push(stem.to_string());
+            continue;
+        }
+
+        if !module_path.is_empty() {
+            module_paths.push(module_path.clone());
+            if !module_path.contains('.') {
+                top_modules.push(module_path.clone());
+            }
+            if let Some((parent, _)) = module_path.rsplit_once('.') {
+                module_children
+                    .entry(parent.to_string())
+                    .or_default()
+                    .push(module_path.clone());
+            }
+
+            // If this is a mod.qrs, ensure it can list children later
+            if is_mod {
+                module_children.entry(module_path.clone()).or_default();
+            }
         }
     }
 
     // 3. Compile all files
     for path in &qrs_files {
         let stem = path.file_stem().unwrap().to_str().unwrap();
+        let rel = path.strip_prefix(src_dir).unwrap_or(path);
+        let (module_path, is_mod) = module_path_from_rel(rel);
+        let out_rel = output_rel_from_rel(rel, is_mod);
         let source = fs::read_to_string(path).expect("Read source failed");
 
         // HACK: Removed obsolete struct-to-class replacement.
@@ -45,7 +124,7 @@ fn main() {
         // If this is the root file, inject hint for the compiler
         if let Some((_, root_stem)) = root_file {
             if stem == root_stem {
-                let link_hint = format!("\"quiche:link={}\"\n", modules.join(","));
+                let link_hint = format!("\"quiche:link={}\"\n", top_modules.join(","));
                 source = format!("{}\n{}", link_hint, source);
             }
         }
@@ -54,7 +133,7 @@ fn main() {
             // If this is the root file, also inject `mod` declarations for linking
             if let Some((_, root_stem)) = root_file {
                 if stem == root_stem {
-                    let mod_decls: String = modules
+                    let mod_decls: String = top_modules
                         .iter()
                         .map(|m| format!("pub mod {};\n", m))
                         .collect();
@@ -62,8 +141,28 @@ fn main() {
                 }
             }
 
-            let dest_name = format!("{}.rs", stem);
-            let dest_path = out_path.join(dest_name);
+            if is_mod {
+                if let Some(children) = module_children.get(&module_path) {
+                    let mut child_mods: Vec<String> = children
+                        .iter()
+                        .filter_map(|child| child.rsplit_once('.').map(|(_, name)| name.to_string()))
+                        .collect();
+                    child_mods.sort();
+                    child_mods.dedup();
+                    if !child_mods.is_empty() {
+                        let mod_decls: String = child_mods
+                            .iter()
+                            .map(|m| format!("pub mod {};\n", m))
+                            .collect();
+                        rust_code = format!("{}\n{}", mod_decls, rust_code);
+                    }
+                }
+            }
+
+            let dest_path = out_path.join(out_rel);
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent).expect("Failed to create output dir");
+            }
             fs::write(&dest_path, rust_code).expect("Write output failed");
         } else {
             panic!("Compilation failed for {}", path.display());

@@ -1,7 +1,7 @@
 
 import ast
 import types
-from compiler import Codegen
+from compiler.codegen import Codegen
 
 @extern(path="std::string::String", no_generic=True)
 class RustString:
@@ -189,7 +189,7 @@ def compile_source(source: String, filename: String):
         exit(1)
     else:
         # Codegen
-        codegen = compiler.Codegen.new_with_imports(import_maps.paths, import_maps.kinds)
+        codegen = Codegen.new_with_imports(import_maps.paths, import_maps.kinds)
         for stmt in stmts:
             codegen.generate_stmt(stmt)
             
