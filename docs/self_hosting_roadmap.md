@@ -30,10 +30,10 @@ We currently verify `quiche-self` by compiling it with the *host* compiler (Rust
 
 ### Phase 2: Manual Bootstrapping
 We will manually perform a full compilation cycle to prove capability.
-1. **Stage 0 (Host)**: Use the existing Rust-based `quiche` compiler to transpile `crates/quiche-self/src/**/*.qrs` to `target/stage0/`.
-2. **Compile Stage 0**: Compile the Rust code in `target/stage0/` to a native binary: `stage0-quiche`.
-3. **Stage 1 (Self)**: Use `stage0-quiche` to transpile `crates/quiche-self/src/**/*.qrs` to `target/stage1/`.
-4. **Compare**: `diff -r target/stage0 target/stage1`.
+1. **Stage 1 Output (Host, implicit)**: Use the existing Rust-based `quiche` compiler to transpile `crates/quiche-self/src/**/*.qrs` to `target/stage1_out/`.
+2. **Stage 1 Binary**: Compile the Rust code in `target/stage1_out/` to a native binary: `stage1-quiche`.
+3. **Stage 2 Output (Self)**: Use `stage1-quiche` to transpile `crates/quiche-self/src/**/*.qrs` to `target/stage2_out/`.
+4. **Compare**: `diff -r target/stage1_out target/stage2_out`.
     - If they are identical, we have achieved deterministic self-reproduction.
     - If they differ, we debug the transpilation logic divergence.
 
@@ -46,8 +46,8 @@ Integrate the cycle into the build system.
 1. Move the original Rust implementation to `legacy/`.
 2. Promote `quiche-self` to the canonical implementation.
 3. The build process becomes:
-    - Download/Use a "stable" snapshot of `quiche` binary (Stage 0).
-    - Build current source (Stage 1).
+    - Download/Use a "stable" snapshot of the host compiler (implicit stage).
+    - Build current source (Stage 1 output + Stage 1 binary).
 
 ## Detailed Plan
 

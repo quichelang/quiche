@@ -9,14 +9,14 @@ import re
 WORKSPACE_ROOT = os.getcwd()
 QUICHE_SELF_DIR = os.path.join(WORKSPACE_ROOT, "crates", "quiche-self")
 SRC_DIR = os.path.join(QUICHE_SELF_DIR, "src")
-TARGET_DIR = os.path.join(WORKSPACE_ROOT, "target")
+TARGET_DIR = os.environ.get("CARGO_TARGET_DIR", os.path.join(WORKSPACE_ROOT, "target"))
 RUNTIME_PATH = os.path.join(WORKSPACE_ROOT, "crates", "runtime")
 
-def find_stage0_out():
+def find_stage1_out():
     pattern = os.path.join(TARGET_DIR, "debug", "build", "quiche_self-*", "out")
     candidates = glob.glob(pattern)
     if not candidates:
-        print("Error: Could not find Stage 0 output directory. Run 'cargo build -p quiche_self' first.")
+        print("Error: Could not find Stage 1 output directory. Run 'cargo build -p quiche_self' first.")
         sys.exit(1)
     return max(candidates, key=os.path.getmtime)
 
@@ -172,24 +172,24 @@ def run_transpile(binary_path, output_dir):
 
 def compare_dirs(dir1, dir2):
     print(f"\nComparing {dir1} vs {dir2}...")
-    files1 = glob.glob(os.path.join(dir1, "*.rs"))
+    files1 = glob.glob(os.path.join(dir1, "**", "*.rs"), recursive=True)
     diffs = []
     
     for f1 in files1:
-        basename = os.path.basename(f1)
-        f2 = os.path.join(dir2, basename)
+        rel = os.path.relpath(f1, dir1)
+        f2 = os.path.join(dir2, rel)
         
         if not os.path.exists(f2):
-            diffs.append(f"Missing in {dir2}: {basename}")
+            diffs.append(f"Missing in {dir2}: {rel}")
             continue
             
         with open(f1, "r") as f: c1 = f.read()
         with open(f2, "r") as f: c2 = f.read()
         
         if c1 != c2:
-            diffs.append(f"Content mismatch: {basename}")
+            diffs.append(f"Content mismatch: {rel}")
         else:
-            print(f"  MATCH: {basename}")
+            print(f"  MATCH: {rel}")
 
     return diffs
 
@@ -225,27 +225,15 @@ def check_shadowing(root_dir):
 
 def main():
     # 0. Initial Build (Host -> Stage 1 Output)
-    print("Step 0: Building Stage 0 binary with Host compiler...")
+    print("Step 0: Building host binary (implicit stage) with the Rust compiler...")
     subprocess.run(["cargo", "build", "-p", "quiche_self"], check=True)
-    stage0_out = find_stage0_out()
+    host_bin = os.path.join(TARGET_DIR, "debug", "quiche_self")
+    if os.name == 'nt': host_bin += ".exe"
 
-    # 1. Stage 0 Output (host compiler) -> Stage 1 Output
-    print("\nStep 1: Collecting Stage 0 output -> Stage 1 Output...")
+    # 1. Host Binary -> Stage 1 Output
+    print("\nStep 1: Transpiling with host binary -> Stage 1 Output...")
     stage1_out = os.path.join(TARGET_DIR, "stage1_out")
-    if os.path.exists(stage1_out):
-        shutil.rmtree(stage1_out)
-    os.makedirs(stage1_out)
-    for root, _dirs, files in os.walk(stage0_out):
-        for name in files:
-            if not name.endswith(".rs"):
-                continue
-            src_path = os.path.join(root, name)
-            rel = os.path.relpath(src_path, stage0_out)
-            if rel == "main.rs":
-                rel = "main_gen.rs"
-            dest_path = os.path.join(stage1_out, rel)
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            shutil.copy(src_path, dest_path)
+    run_transpile(host_bin, stage1_out)
     check_shadowing(stage1_out)
     
     # 2. Compile Stage 1 Output -> Stage 1 Binary
