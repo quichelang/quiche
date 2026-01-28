@@ -1,0 +1,12 @@
+@extern(path="std::string::String", no_generic=True)
+class String:
+    def to_string(self) -> String: pass
+
+def main():
+    name = "World"
+    greeting = f"Hello, {name}!"
+    print(greeting)
+
+    num = 42
+    info = f"Number: {num}"
+    print(info)

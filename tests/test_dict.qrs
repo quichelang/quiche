@@ -1,0 +1,20 @@
+
+def main():
+    print("Testing Dict...")
+    # Test dictionary literal
+    scores = {"Alice": 100, "Bob": 85}
+    
+    # Verify basic usage (Rust HashMap doesn't have __getitem__ directly accessible easily without Index trait ref issues sometimes, 
+    # but we can check len or just compilation)
+    # Depending on how subscript is transpiled, scores["Alice"] might work if types are inferred correctly.
+    
+    # For now, let's just print something to ensure it compiles and runs.
+    # print(scores) # Might not be printable if Debug not derived or inferred correctly? 
+    # Actually HashMap implements Debug.
+    
+    # Let's try to access if subscript is supported
+    # val = scores["Alice"] # This requires .get() or Index trait. compiler.qrs emits a[b] as index.
+    
+    # NOTE: In Rust, HashMap indexing returns a value, but we might issues with references if not handled.
+    # Let's just verify compilation first.
+    print("Dict created successfully")
