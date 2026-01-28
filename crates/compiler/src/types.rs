@@ -86,7 +86,11 @@ impl Codegen {
                 };
                 format!("{}{}{}", base_str, sep, a.attr)
             }
-            ast::Expr::Subscript(_) => self.map_type_expr(expr), // Use turbo-fish for expressions
+            ast::Expr::Subscript(s) => {
+                let base = self.expr_to_string(&s.value);
+                let idx = self.expr_to_string(&s.slice);
+                format!("{}[{}]", base, idx)
+            }
             ast::Expr::StringLiteral(s) => s.value.to_string(),
             ast::Expr::BooleanLiteral(b) => (if b.value { "true" } else { "false" }).to_string(),
             ast::Expr::NumberLiteral(n) => match &n.value {

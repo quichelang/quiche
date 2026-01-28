@@ -26,6 +26,16 @@ class FlagSpec:
             has_default=has_default,
         )
 
+    def clone(self) -> FlagSpec:
+        return FlagSpec(
+            name=self.name.clone(),
+            aliases=self.aliases.clone(),
+            takes_value=self.takes_value,
+            default_bool=self.default_bool,
+            default_value=self.default_value.clone(),
+            has_default=self.has_default,
+        )
+
 class ParseResult:
     flags: Dict[String, bool]
     options: Dict[String, String]
@@ -60,13 +70,13 @@ class Parsley:
 
     def add_flag(self, name: String, aliases: List[String], default_bool: bool):
         spec = FlagSpec.new_flag(name.clone(), aliases.clone(), default_bool)
-        self.specs.append(spec)
+        self.specs.append(spec.clone())
         self.by_name.insert(name.clone(), spec)
         self.register_aliases(name, aliases)
 
     def add_option(self, name: String, aliases: List[String], default_value: String, has_default: bool):
         spec = FlagSpec.new_option(name.clone(), aliases.clone(), default_value.clone(), has_default)
-        self.specs.append(spec)
+        self.specs.append(spec.clone())
         self.by_name.insert(name.clone(), spec)
         self.register_aliases(name, aliases)
 
@@ -85,12 +95,15 @@ class Parsley:
         result = ParseResult.new()
 
         # defaults
-        for spec in self.specs:
+        idx_spec: usize = 0
+        while idx_spec < len(self.specs):
+            spec = self.specs[idx_spec].clone()
             if spec.takes_value:
                 if spec.has_default:
                     result.options.insert(spec.name.clone(), spec.default_value.clone())
             else:
                 result.flags.insert(spec.name.clone(), spec.default_bool)
+            idx_spec = idx_spec + 1
 
         i: usize = 0
         while i < len(args):
@@ -140,6 +153,8 @@ class Parsley:
         return result
 
     def is_command(self, name: String) -> bool:
-        for c in self.commands:
-            if c == name: return True
+        i = 0
+        while i < len(self.commands):
+            if self.commands[i] == name: return True
+            i = i + 1
         return False

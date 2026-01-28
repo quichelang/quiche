@@ -1,0 +1,4 @@
+def main():
+    values = ["a", "b"]
+    val = values[0].clone()
+    print(val)

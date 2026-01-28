@@ -104,7 +104,9 @@ mod quiche {
     }
 
     pub fn set_env_var(key: String, value: String) {
-        std::env::set_var(key, value);
+        unsafe {
+            std::env::set_var(key, value);
+        }
     }
 
     pub fn current_exe_path() -> String {

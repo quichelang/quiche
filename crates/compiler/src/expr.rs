@@ -91,8 +91,19 @@ impl Codegen {
                         None
                     }
                 } else if let ast::Expr::Attribute(attr) = &*c.func {
-                    let base_str = self.expr_to_string(&attr.value);
-                    if self.foreign_symbols.contains(&base_str) || self.is_type_or_mod(&base_str) {
+                    let (base_str, base_is_type) = if let ast::Expr::Subscript(s) = &*attr.value {
+                        let base_name = self.expr_to_string(&s.value);
+                        if self.is_type_or_mod(&base_name) {
+                            (self.map_type_expr(&attr.value), true)
+                        } else {
+                            (self.expr_to_string(&attr.value), false)
+                        }
+                    } else {
+                        let base = self.expr_to_string(&attr.value);
+                        let is_type = self.is_type_or_mod(&base);
+                        (base, is_type)
+                    };
+                    if self.foreign_symbols.contains(&base_str) || base_is_type {
                         Some(format!("{}::{}", base_str, attr.attr))
                     } else {
                         None
@@ -319,8 +330,23 @@ impl Codegen {
                 self.output.push_str(")"); // End check!
             }
             ast::Expr::Attribute(a) => {
-                let base_str = self.expr_to_string(&a.value);
-                self.generate_expr(*a.value.clone());
+                let (base_str, base_is_type) = if let ast::Expr::Subscript(s) = &*a.value {
+                    let base_name = self.expr_to_string(&s.value);
+                    if self.is_type_or_mod(&base_name) {
+                        (self.map_type_expr(&a.value), true)
+                    } else {
+                        (self.expr_to_string(&a.value), false)
+                    }
+                } else {
+                    let base = self.expr_to_string(&a.value);
+                    let is_type = self.is_type_or_mod(&base);
+                    (base, is_type)
+                };
+                if base_is_type {
+                    self.output.push_str(&base_str);
+                } else {
+                    self.generate_expr(*a.value.clone());
+                }
 
                 let sep = if matches!(
                     &*a.value,
@@ -334,7 +360,7 @@ impl Codegen {
                         | ast::Expr::Lambda(_)
                 ) {
                     "."
-                } else if self.is_type_or_mod(&base_str) {
+                } else if base_is_type {
                     "::"
                 } else {
                     "."

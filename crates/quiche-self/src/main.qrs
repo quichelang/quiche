@@ -2,7 +2,7 @@
 from ast import Stmt, Parsed
 from types import TypeChecker
 from compiler.codegen import Codegen
-from rust.parsley_qrs import Parsley
+from rust.parsley_qrs import Parsley, ParseResult
 
 @extern(path="std::string::String", no_generic=True)
 class RustString:
@@ -68,6 +68,15 @@ def run_rust_code(user_code: String, script_args: List[String], quiet: bool, sup
 
 @extern(path="crate::quiche::compiler_path_for_new")
 def compiler_path_for_new() -> String: pass
+
+class WarnFlags:
+    warn: bool
+    strict: bool
+    warn_all: bool
+    warn_quiche: bool
+
+    def new(warn: bool, strict: bool, warn_all: bool, warn_quiche: bool) -> WarnFlags:
+        return WarnFlags(warn=warn, strict=strict, warn_all=warn_all, warn_quiche=warn_quiche)
 
 
 class ImportMaps:
@@ -256,11 +265,6 @@ def print_usage():
     print("  --warn-all           Show all warnings (Quiche + Rust)")
     print("  --warn-quiche        Show only Quiche warnings")
 
-def flag_value(flags: Dict[String, bool], name: String) -> bool:
-    match flags.get(name):
-        case Some(v): return v
-        case None: return False
-
 def build_flag_parser(include_lib: bool) -> Parsley:
     parser = Parsley.new()
     parser.add_flag("warn-all", ["--warn"], False)
@@ -270,27 +274,36 @@ def build_flag_parser(include_lib: bool) -> Parsley:
         parser.add_flag("lib", [], False)
     return parser
 
-def parse_warn_flags(result) -> (bool, bool, bool, bool):
-    warn_all = flag_value(result.flags, "warn-all")
-    warn_quiche = flag_value(result.flags, "warn-quiche")
-    strict = flag_value(result.flags, "strict")
+def parse_warn_flags(flags: Dict[String, bool]) -> WarnFlags:
+    warn_all = False
+    warn_quiche = False
+    strict = False
+    match flags.get("warn-all"):
+        case Some(v): warn_all = v
+        case None: pass
+    match flags.get("warn-quiche"):
+        case Some(v): warn_quiche = v
+        case None: pass
+    match flags.get("strict"):
+        case Some(v): strict = v
+        case None: pass
     warn = warn_all
     if warn_all:
         warn = True
-    return (warn, strict, warn_all, warn_quiche)
+    return WarnFlags.new(warn, strict, warn_all, warn_quiche)
 
 def template_quiche_toml(name: String) -> String:
-    return "[package]\nname = \"" + as_ref(name) + "\"\nversion = \"0.1.0\"\n"
+    return "[package]\nname = \"" + as_ref(name) + as_ref("\"\nversion = \"0.1.0\"\n")
 
 def template_cargo_toml(name: String, is_lib: bool, compiler_path: String) -> String:
-    s = "[package]\nname = \"" + as_ref(name) + "\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n"
-    s = s + "# Break out of any parent workspace\n[workspace]\n\n"
-    s = s + "[build-dependencies]\nquiche_compiler = { path = \"" + as_ref(compiler_path) + "\" }\n\n"
-    s = s + "[dependencies]\n"
+    s = "[package]\nname = \"" + as_ref(name) + as_ref("\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n")
+    s = s + as_ref("# Break out of any parent workspace\n[workspace]\n\n")
+    s = s + as_ref("[build-dependencies]\nquiche_compiler = { path = \"") + as_ref(compiler_path) + as_ref("\" }\n\n")
+    s = s + as_ref("[dependencies]\n")
     if is_lib:
-        s = s + "\n[lib]\npath = \"src/lib.rs\"\n"
+        s = s + as_ref("\n[lib]\npath = \"src/lib.rs\"\n")
     else:
-        s = s + "\n[[bin]]\nname = \"" + as_ref(name) + "\"\npath = \"src/main.rs\"\n"
+        s = s + as_ref("\n[[bin]]\nname = \"") + as_ref(name) + as_ref("\"\npath = \"src/main.rs\"\n")
     return s
 
 def template_build_rs() -> String:
@@ -310,7 +323,7 @@ def template_main_rs() -> String:
 
 def create_new_project(name: String, is_lib: bool):
     if path_exists(name.clone()):
-        print("Error: Directory '" + as_ref(name) + "' already exists")
+        print(f"Error: Directory '{name}' already exists")
         return
 
     create_dir_all(name.clone() + as_ref("/src"))
@@ -326,7 +339,7 @@ def create_new_project(name: String, is_lib: bool):
         write_string(name.clone() + as_ref("/src/main.qrs"), template_main_qrs())
         write_string(name.clone() + as_ref("/src/main.rs"), template_main_rs())
 
-    print("Created new project: " + as_ref(name))
+    print(f"Created new project: {name}")
 
 def run_transpiled_file(filename: String, script_args: List[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool):
     source = read_to_string(filename.clone())
@@ -376,7 +389,10 @@ def main():
                 print("Usage: quiche-self new [--lib] <project_name>")
                 exit(1)
             name = result.positionals[0].clone()
-            is_lib = flag_value(result.flags, "lib")
+            is_lib = False
+            match result.flags.get("lib"):
+                case Some(v): is_lib = v
+                case None: pass
             create_new_project(name, is_lib)
             return
 
@@ -401,7 +417,7 @@ def main():
                     print(e)
                 print_usage()
                 exit(1)
-            if path_exists("Cargo.toml".to_string()):
+            if path_exists("Cargo.toml"):
                 exit_code = run_cargo_command("run".to_string(), result.positionals)
                 if exit_code != 0:
                     exit(exit_code)
@@ -419,19 +435,19 @@ def main():
                     print(e)
                 print_usage()
                 exit(1)
-            (warn, strict, warn_all, warn_quiche) = parse_warn_flags(result)
-            if warn_all:
-                warn_quiche = True
-            if path_exists("tests/runner.qrs".to_string()):
+            flags = parse_warn_flags(result.flags.clone())
+            if flags.warn_all:
+                flags.warn_quiche = True
+            if path_exists("tests/runner.qrs"):
                 exe = current_exe_path()
                 if exe != "":
-                    set_env_var("QUICHE_TEST_BIN".to_string(), exe)
-                if warn_all:
-                    set_env_var("QUICHE_WARN_ALL".to_string(), "1".to_string())
-                if warn_quiche:
-                    set_env_var("QUICHE_WARN_QUICHE".to_string(), "1".to_string())
-                run_transpiled_file("tests/runner.qrs".to_string(), result.positionals, True, False, True, warn, strict, warn_quiche)
-            elif path_exists("Cargo.toml".to_string()):
+                    set_env_var("QUICHE_TEST_BIN", exe)
+                if flags.warn_all:
+                    set_env_var("QUICHE_WARN_ALL", "1")
+                if flags.warn_quiche:
+                    set_env_var("QUICHE_WARN_QUICHE", "1")
+                run_transpiled_file("tests/runner.qrs", result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche)
+            elif path_exists("Cargo.toml"):
                 exit_code = run_cargo_command("test".to_string(), result.positionals)
                 if exit_code != 0:
                     exit(exit_code)
@@ -442,23 +458,28 @@ def main():
 
     if cmd.ends_with(as_ref(".qrs")):
         if not path_exists(cmd.clone()):
-            print("Error: File '" + as_ref(cmd) + "' not found.")
+            print(f"Error: File '{cmd}' not found.")
             exit(1)
         parser = build_flag_parser(False)
-        result = parser.parse(args[1:])
+        rest = []
+        k = 1
+        while k < len(args):
+            rest.append(args[k].clone())
+            k = k + 1
+        result = parser.parse(rest)
         if result.errors.len() > 0:
             for e in result.errors:
                 print(e)
             print_usage()
             exit(1)
-        (_warn, strict, warn_all, warn_quiche) = parse_warn_flags(result)
-        if warn_all:
-            warn_quiche = True
+        flags = parse_warn_flags(result.flags.clone())
+        if flags.warn_all:
+            flags.warn_quiche = True
         source = read_to_string(cmd.clone())
-        compile_source(source, cmd.clone(), warn_quiche, strict)
+        compile_source(source, cmd.clone(), flags.warn_quiche, flags.strict)
         return
 
-    print("Error: Unrecognized command or file '" + as_ref(cmd) + "'")
+    print(f"Error: Unrecognized command or file '{cmd}'")
     print("")
     print_usage()
     exit(1)
