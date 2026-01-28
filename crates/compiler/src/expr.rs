@@ -2,6 +2,64 @@ use crate::Codegen;
 use ruff_python_ast as ast;
 
 impl Codegen {
+    pub(crate) fn self_field_type(&self, attr: &ast::ExprAttribute) -> Option<String> {
+        if let ast::Expr::Name(n) = &*attr.value {
+            if n.id.as_str() == "self" {
+                return self.get_self_field_type(attr.attr.as_str());
+            }
+        }
+        None
+    }
+
+    pub(crate) fn is_list_like_expr(&self, expr: &ast::Expr) -> bool {
+        match expr {
+            ast::Expr::List(_) => true,
+            ast::Expr::Name(_n) => self
+                .get_expr_type(expr)
+                .map(|t| t.contains("Vec") || t.contains("List"))
+                .unwrap_or(false),
+            ast::Expr::Attribute(a) => self
+                .self_field_type(a)
+                .or_else(|| {
+                    if let ast::Expr::Name(n) = &*a.value {
+                        self.get_symbol(&n.id)
+                            .and_then(|class| self.class_fields.get(class))
+                            .and_then(|fields| fields.get(a.attr.as_str()))
+                            .cloned()
+                    } else {
+                        None
+                    }
+                })
+                .map(|t| t.contains("Vec") || t.contains("List"))
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_dict_like_expr(&self, expr: &ast::Expr) -> bool {
+        match expr {
+            ast::Expr::Dict(_) => true,
+            ast::Expr::Name(_n) => self
+                .get_expr_type(expr)
+                .map(|t| t.contains("HashMap") || t.contains("Dict"))
+                .unwrap_or(false),
+            ast::Expr::Attribute(a) => self
+                .self_field_type(a)
+                .or_else(|| {
+                    if let ast::Expr::Name(n) = &*a.value {
+                        self.get_symbol(&n.id)
+                            .and_then(|class| self.class_fields.get(class))
+                            .and_then(|fields| fields.get(a.attr.as_str()))
+                            .cloned()
+                    } else {
+                        None
+                    }
+                })
+                .map(|t| t.contains("HashMap") || t.contains("Dict"))
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
     pub(crate) fn generate_expr(&mut self, expr: ast::Expr) {
         match expr {
             ast::Expr::BinOp(b) => {
@@ -83,6 +141,61 @@ impl Codegen {
                     return;
                 }
 
+                // 0b. Constructors for List/Dict (Rc<RefCell<...>>)
+                if let ast::Expr::Attribute(attr) = &*c.func {
+                    if attr.attr.as_str() == "new" {
+                        match &*attr.value {
+                            ast::Expr::Name(n) => match n.id.as_str() {
+                                "List" | "Vec" => {
+                                    self.output
+                                        .push_str("std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))");
+                                    return;
+                                }
+                                "Dict" | "HashMap" => {
+                                    self.output.push_str(
+                                        "std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))",
+                                    );
+                                    return;
+                                }
+                                _ => {}
+                            },
+                            ast::Expr::Subscript(s) => {
+                                let base = self.expr_to_string(&s.value);
+                                if base == "List" || base == "Vec" {
+                                    let inner = self.map_type(&s.slice);
+                                    self.output.push_str(
+                                        "std::rc::Rc::new(std::cell::RefCell::new(Vec::<",
+                                    );
+                                    self.output.push_str(&inner);
+                                    self.output.push_str(">::new()))");
+                                    return;
+                                }
+                                if base == "Dict" || base == "HashMap" {
+                                    if let ast::Expr::Tuple(t) = &*s.slice {
+                                        if t.elts.len() == 2 {
+                                            let k = self.map_type(&t.elts[0]);
+                                            let v = self.map_type(&t.elts[1]);
+                                            self.output.push_str(
+                                                "std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::<",
+                                            );
+                                            self.output.push_str(&k);
+                                            self.output.push_str(", ");
+                                            self.output.push_str(&v);
+                                            self.output.push_str(">::new()))");
+                                            return;
+                                        }
+                                    }
+                                    self.output.push_str(
+                                        "std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))",
+                                    );
+                                    return;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
                 // 1. Check foreign symbols (rust.* imports)
                 let foreign_name = if let ast::Expr::Name(n) = &*c.func {
                     if self.foreign_symbols.contains(n.id.as_str()) {
@@ -130,48 +243,90 @@ impl Codegen {
                 if let ast::Expr::Attribute(attr) = &*c.func {
                     let method_name = attr.attr.as_str();
 
-                    // List
-                    if let Some((rust_method, _)) = crate::list::map_list_method(method_name) {
-                        self.output.push_str("crate::quiche::check!(");
-                        self.generate_expr(*attr.value.clone());
-                        self.output.push_str(".");
-                        self.output.push_str(rust_method);
-                        self.output.push_str("(");
-                        for (i, arg) in c.arguments.args.iter().enumerate() {
-                            if i > 0 {
-                                self.output.push_str(", ");
-                            }
-                            self.generate_expr(arg.clone());
-                        }
-                        self.output.push_str("))");
-                        return;
-                    }
-
-                    // Dict
-                    if let Some((rust_method, key_needs_ref)) =
-                        crate::dict::map_dict_method(method_name)
+                    if method_name == "len"
+                        && (self.is_list_like_expr(&attr.value)
+                            || self.is_dict_like_expr(&attr.value))
                     {
                         self.output.push_str("crate::quiche::check!(");
                         self.generate_expr(*attr.value.clone());
-                        self.output.push_str(".");
-                        self.output.push_str(rust_method);
-                        self.output.push_str("(");
-                        for (i, arg) in c.arguments.args.iter().enumerate() {
-                            if i > 0 {
-                                self.output.push_str(", ");
-                            }
-                            if i == 0 && key_needs_ref {
-                                self.output.push_str("&");
-                            }
-                            self.generate_expr(arg.clone());
-                        }
-                        self.output.push_str(")");
-                        if method_name == "get" {
-                            self.output.push_str(".cloned()");
-                        }
+                        self.output.push_str(".borrow().len()");
                         self.output.push_str(")");
                         return;
                     }
+
+                    // List
+                    if self.is_list_like_expr(&attr.value) {
+                        if let Some((rust_method, _)) = crate::list::map_list_method(method_name) {
+                            self.output.push_str("crate::quiche::check!(");
+                            self.generate_expr(*attr.value.clone());
+                            self.output.push_str(".borrow_mut().");
+                            self.output.push_str(rust_method);
+                            self.output.push_str("(");
+                            for (i, arg) in c.arguments.args.iter().enumerate() {
+                                if i > 0 {
+                                    self.output.push_str(", ");
+                                }
+                                self.generate_expr(arg.clone());
+                            }
+                            self.output.push_str("))");
+                            return;
+                        }
+                    }
+
+                    // Dict
+                    if self.is_dict_like_expr(&attr.value) {
+                        if let Some((rust_method, key_needs_ref, is_mutating)) =
+                            crate::dict::map_dict_method(method_name)
+                        {
+                            self.output.push_str("crate::quiche::check!(");
+                            self.generate_expr(*attr.value.clone());
+                            if is_mutating {
+                                self.output.push_str(".borrow_mut().");
+                            } else {
+                                self.output.push_str(".borrow().");
+                            }
+                            self.output.push_str(rust_method);
+                            self.output.push_str("(");
+                            for (i, arg) in c.arguments.args.iter().enumerate() {
+                                if i > 0 {
+                                    self.output.push_str(", ");
+                                }
+                                if i == 0 && key_needs_ref {
+                                    self.output.push_str("&");
+                                }
+                                self.generate_expr(arg.clone());
+                            }
+                            self.output.push_str(")");
+                            if method_name == "get" {
+                                self.output.push_str(".cloned()");
+                            }
+                            self.output.push_str(")");
+                            return;
+                        }
+                    }
+                }
+
+                // 2b. Generic attribute call (instance methods)
+                if let ast::Expr::Attribute(attr) = &*c.func {
+                    self.output.push_str("crate::quiche::check!(");
+                    self.generate_expr(*attr.value.clone());
+                    self.output.push_str(".");
+                    let attr_name = if attr.attr.as_str() == "def_" {
+                        "def"
+                    } else {
+                        attr.attr.as_str()
+                    };
+                    self.output.push_str(attr_name);
+                    self.output.push_str("(");
+                    for (i, arg) in c.arguments.args.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.generate_expr(arg.clone());
+                    }
+                    self.output.push_str(")");
+                    self.output.push_str(")");
+                    return;
                 }
 
                 // 3. Builtins & Generic Calls (Wrap ALL, except specific builtins)
@@ -273,8 +428,24 @@ impl Codegen {
                     }
                 } else if func_name == "len" {
                     if let Some(arg) = c.arguments.args.first() {
+                        let arg_type = self.get_expr_type(arg);
                         self.generate_expr(arg.clone());
-                        self.output.push_str(".len()");
+                        let is_map = arg_type
+                            .as_ref()
+                            .map(|t| t.contains("HashMap") || t.contains("Dict"))
+                            .unwrap_or(false);
+                        let is_list = arg_type
+                            .as_ref()
+                            .map(|t| t.contains("Vec") || t.contains("List"))
+                            .unwrap_or(false);
+                        if is_map
+                            || is_list
+                            || matches!(arg, ast::Expr::Attribute(_) | ast::Expr::Subscript(_))
+                        {
+                            self.output.push_str(".borrow().len()");
+                        } else {
+                            self.output.push_str(".len()");
+                        }
                     }
                 } else if func_name == "deref" {
                     if let Some(arg) = c.arguments.args.first() {
@@ -396,17 +567,20 @@ impl Codegen {
                 self.output.push_str(if b.value { "true" } else { "false" })
             }
             ast::Expr::List(l) => {
-                self.output.push_str("vec![");
+                self.output
+                    .push_str("std::rc::Rc::new(std::cell::RefCell::new(vec![");
                 for (i, elt) in l.elts.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
                     self.generate_expr(elt.clone());
                 }
-                self.output.push_str("]");
+                self.output.push_str("]))");
             }
             ast::Expr::Dict(d) => {
-                self.output.push_str("std::collections::HashMap::from([");
+                self.output.push_str(
+                    "std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::from([",
+                );
                 for (i, item) in d.items.iter().enumerate() {
                     if let Some(key) = &item.key {
                         if i > 0 {
@@ -422,7 +596,7 @@ impl Codegen {
                         self.output.push_str("/* **kwargs not supported */");
                     }
                 }
-                self.output.push_str("])");
+                self.output.push_str("]))");
             }
             ast::Expr::Subscript(s) => {
                 // Check for tuple/map access via symbol table
@@ -431,10 +605,8 @@ impl Codegen {
                     .as_ref()
                     .map(|t| t.starts_with("("))
                     .unwrap_or(false);
-                let is_map = expr_type
-                    .as_ref()
-                    .map(|t| t.contains("HashMap") || t.contains("Dict"))
-                    .unwrap_or(false);
+                let is_map = self.is_dict_like_expr(&s.value);
+                let is_list = self.is_list_like_expr(&s.value);
 
                 if is_tuple {
                     if let ast::Expr::NumberLiteral(n) = &*s.slice {
@@ -451,9 +623,9 @@ impl Codegen {
                 if is_map {
                     // Map access: d[&key]
                     self.generate_expr(*s.value.clone());
-                    self.output.push_str("[&");
+                    self.output.push_str(".borrow()[&");
                     self.generate_expr(*s.slice.clone());
-                    self.output.push_str("]");
+                    self.output.push_str("].clone()");
                     return;
                 }
 
@@ -462,21 +634,36 @@ impl Codegen {
                     if matches!(u.op, ast::UnaryOp::USub) {
                         // x[-n] -> x[x.len() - n]
                         let value_str = self.expr_to_string(&s.value);
-                        self.generate_expr(*s.value.clone());
-                        self.output.push_str("[");
-                        self.output.push_str(&value_str);
-                        self.output.push_str(".len() - ");
-                        self.generate_expr(*u.operand.clone());
-                        self.output.push_str("]");
+                        if is_list {
+                            self.generate_expr(*s.value.clone());
+                            self.output.push_str(".borrow()[");
+                            self.output.push_str(&value_str);
+                            self.output.push_str(".borrow().len() - ");
+                            self.generate_expr(*u.operand.clone());
+                            self.output.push_str("].clone()");
+                        } else {
+                            self.generate_expr(*s.value.clone());
+                            self.output.push_str("[");
+                            self.output.push_str(&value_str);
+                            self.output.push_str(".len() - ");
+                            self.generate_expr(*u.operand.clone());
+                            self.output.push_str("]");
+                        }
                         return;
                     }
                 }
 
                 // Fallback to Vec/Index access: val[slice]
                 self.generate_expr(*s.value.clone());
-                self.output.push_str("[");
-                self.generate_expr(*s.slice.clone());
-                self.output.push_str("]");
+                if is_list {
+                    self.output.push_str(".borrow()[");
+                    self.generate_expr(*s.slice.clone());
+                    self.output.push_str("].clone()");
+                } else {
+                    self.output.push_str("[");
+                    self.generate_expr(*s.slice.clone());
+                    self.output.push_str("]");
+                }
             }
             ast::Expr::Tuple(t) => {
                 self.output.push_str("(");

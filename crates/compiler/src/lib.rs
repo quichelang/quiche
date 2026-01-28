@@ -15,6 +15,8 @@ pub struct Codegen {
     pub(crate) defined_vars: Vec<HashSet<String>>,
     pub(crate) foreign_symbols: HashSet<String>,
     pub(crate) linked_modules: HashSet<String>,
+    pub(crate) class_fields: HashMap<String, HashMap<String, String>>,
+    pub(crate) current_class: Option<String>,
 }
 
 impl Codegen {
@@ -26,6 +28,8 @@ impl Codegen {
             defined_vars: vec![HashSet::new()],
             foreign_symbols: HashSet::new(),
             linked_modules: HashSet::new(),
+            class_fields: HashMap::new(),
+            current_class: None,
         }
     }
 
@@ -130,6 +134,28 @@ impl Codegen {
                 .map(|c| c.is_uppercase())
                 .unwrap_or(false)
         }
+    }
+
+    pub(crate) fn register_class_field(&mut self, class: &str, field: &str, ty: String) {
+        self.class_fields
+            .entry(class.to_string())
+            .or_default()
+            .insert(field.to_string(), ty);
+    }
+
+    pub(crate) fn set_current_class(&mut self, class: &str) {
+        self.current_class = Some(class.to_string());
+    }
+
+    pub(crate) fn clear_current_class(&mut self) {
+        self.current_class = None;
+    }
+
+    pub(crate) fn get_self_field_type(&self, field: &str) -> Option<String> {
+        let class = self.current_class.as_ref()?;
+        self.class_fields
+            .get(class)
+            .and_then(|fields| fields.get(field).cloned())
     }
 }
 

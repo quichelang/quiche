@@ -12,8 +12,10 @@
 mod quiche {
     #![allow(unused_macros, unused_imports)]
 
+    use std::cell::RefCell;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
+    use std::rc::Rc;
     use std::process::{Command, Stdio};
 
     // High Priority: Consumes Self (Result/Option)
@@ -49,8 +51,8 @@ mod quiche {
     pub(crate) use check;
     pub(crate) use check as call;
 
-    pub fn env_args_helper() -> Vec<String> {
-        std::env::args().collect()
+    pub fn env_args_helper() -> Rc<RefCell<Vec<String>>> {
+        Rc::new(RefCell::new(std::env::args().collect()))
     }
 
     pub fn push_str_wrapper(mut s: String, val: String) -> String {
@@ -76,7 +78,7 @@ mod quiche {
         }
     }
 
-    pub fn list_test_files() -> Vec<String> {
+    pub fn list_test_files() -> Rc<RefCell<Vec<String>>> {
         let mut tests = Vec::new();
         if let Ok(entries) = std::fs::read_dir("tests") {
             for entry in entries.flatten() {
@@ -88,7 +90,7 @@ mod quiche {
             }
         }
         tests.sort();
-        tests
+        Rc::new(RefCell::new(tests))
     }
 
     pub fn path_exists(path: String) -> bool {
@@ -126,10 +128,10 @@ mod quiche {
         compiler_path.to_str().unwrap_or("").replace("\\", "/")
     }
 
-    pub fn run_cargo_command(cmd: String, args: Vec<String>) -> i32 {
+    pub fn run_cargo_command(cmd: String, args: Rc<RefCell<Vec<String>>>) -> i32 {
         let status = Command::new("cargo")
             .arg(cmd)
-            .args(args)
+            .args(args.borrow().iter())
             .status()
             .expect("Failed to run cargo");
         if status.success() {
@@ -141,7 +143,7 @@ mod quiche {
 
     pub fn run_rust_code(
         user_code: String,
-        script_args: Vec<String>,
+        script_args: Rc<RefCell<Vec<String>>>,
         quiet: bool,
         suppress_output: bool,
         raw_output: bool,
@@ -265,12 +267,12 @@ mod quiche {
         }
 
         if suppress_output {
-            let status = Command::new("./target/tmp_bin")
-                .args(script_args)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .expect("Failed to run binary");
+        let status = Command::new("./target/tmp_bin")
+            .args(script_args.borrow().iter())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("Failed to run binary");
             if !status.success() {
                 return status.code().unwrap_or(1);
             }
@@ -278,7 +280,7 @@ mod quiche {
         }
 
         let output = Command::new("./target/tmp_bin")
-            .args(script_args)
+            .args(script_args.borrow().iter())
             .output()
             .expect("Failed to run binary");
 
@@ -427,7 +429,7 @@ mod quiche {
         }
     }
 
-    pub fn build_module_index(root: String) -> HashMap<String, String> {
+    pub fn build_module_index(root: String) -> Rc<RefCell<HashMap<String, String>>> {
         let root_path = PathBuf::from(root);
         let mut files = Vec::new();
         collect_qrs_files(&root_path, &mut files);
@@ -440,7 +442,7 @@ mod quiche {
             let module_path = module_path_from_relative(rel);
             index.insert(module_path, file.to_string_lossy().into_owned());
         }
-        index
+        Rc::new(RefCell::new(index))
     }
 
     pub fn module_path_for_file(root: String, filename: String) -> String {

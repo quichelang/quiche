@@ -2,6 +2,47 @@ use crate::Codegen;
 use ruff_python_ast as ast;
 
 impl Codegen {
+    fn emit_attribute_assign(&mut self, attr: &ast::ExprAttribute, value: &ast::Expr) {
+        let target = self.expr_to_string(&ast::Expr::Attribute(attr.clone()));
+        self.output.push_str(&target);
+        self.output.push_str(" = ");
+        self.generate_expr(value.clone());
+        self.output.push_str(";\n");
+    }
+
+    fn emit_subscript_assign(&mut self, sub: &ast::ExprSubscript, value: &ast::Expr) {
+        let expr_type = self.get_expr_type(&sub.value);
+        let is_map = expr_type
+            .as_ref()
+            .map(|t| t.contains("HashMap") || t.contains("Dict"))
+            .unwrap_or(false);
+        let is_tuple = expr_type
+            .as_ref()
+            .map(|t| t.starts_with("("))
+            .unwrap_or(false);
+
+        if is_tuple {
+            self.output.push_str("// Tuple assignment not supported\n");
+            return;
+        }
+
+        if is_map {
+            self.generate_expr(*sub.value.clone());
+            self.output.push_str(".borrow_mut().insert(");
+            self.generate_expr(*sub.slice.clone());
+            self.output.push_str(", ");
+            self.generate_expr(value.clone());
+            self.output.push_str(");\n");
+            return;
+        }
+
+        self.generate_expr(*sub.value.clone());
+        self.output.push_str(".borrow_mut()[");
+        self.generate_expr(*sub.slice.clone());
+        self.output.push_str("] = ");
+        self.generate_expr(value.clone());
+        self.output.push_str(";\n");
+    }
     pub(crate) fn generate_stmt(&mut self, stmt: ast::Stmt) {
         match stmt {
             ast::Stmt::FunctionDef(f) => {
@@ -58,9 +99,22 @@ impl Codegen {
             }
             ast::Stmt::For(f) => {
                 self.push_indent();
-                self.output.push_str("for __q in (");
-                self.generate_expr(*f.iter);
-                self.output.push_str(").into_iter() {\n");
+                let is_map = self.is_dict_like_expr(&f.iter);
+                let is_list = self.is_list_like_expr(&f.iter);
+                let is_attr = matches!(&*f.iter, ast::Expr::Attribute(_) | ast::Expr::Subscript(_));
+                if is_map {
+                    self.output.push_str("for __q in (");
+                    self.generate_expr(*f.iter);
+                    self.output.push_str(").borrow().keys() {\n");
+                } else if is_list || is_attr {
+                    self.output.push_str("for __q in (");
+                    self.generate_expr(*f.iter);
+                    self.output.push_str(").borrow().iter() {\n");
+                } else {
+                    self.output.push_str("for __q in (");
+                    self.generate_expr(*f.iter);
+                    self.output.push_str(").into_iter() {\n");
+                }
                 self.indent_level += 1;
                 self.enter_scope();
                 self.push_indent();
@@ -77,6 +131,16 @@ impl Codegen {
             }
             ast::Stmt::Assign(a) => {
                 self.push_indent();
+                if a.targets.len() == 1 {
+                    if let ast::Expr::Subscript(s) = &a.targets[0] {
+                        self.emit_subscript_assign(s, &a.value);
+                        return;
+                    }
+                    if let ast::Expr::Attribute(a_attr) = &a.targets[0] {
+                        self.emit_attribute_assign(a_attr, &a.value);
+                        return;
+                    }
+                }
                 // Reassignment: x = y
                 // If x is new, emit 'let mut x'
                 for (i, target) in a.targets.iter().enumerate() {
@@ -90,7 +154,24 @@ impl Codegen {
                                 self.is_defined(&n.id) || self.get_symbol(&n.id).is_some();
                             if !already_defined {
                                 self.output.push_str("let mut ");
-                                self.add_symbol(n.id.to_string(), "/* inferred */".to_string());
+                                let mut inferred = "/* inferred */".to_string();
+                                match &*a.value {
+                                    ast::Expr::List(_) => inferred = "List".to_string(),
+                                    ast::Expr::Dict(_) => inferred = "Dict".to_string(),
+                                    ast::Expr::Call(c) => match &*c.func {
+                                        ast::Expr::Name(fn_name) => {
+                                            inferred = fn_name.id.to_string();
+                                        }
+                                        ast::Expr::Attribute(attr) => {
+                                            if attr.attr.as_str() == "new" {
+                                                inferred = self.expr_to_string(&attr.value);
+                                            }
+                                        }
+                                        _ => {}
+                                    },
+                                    _ => {}
+                                }
+                                self.add_symbol(n.id.to_string(), inferred);
                                 self.mark_defined(&n.id);
                             }
                         }
@@ -267,16 +348,20 @@ impl Codegen {
                     self.output.push_str(&format!("pub struct {} {{\n", c.name));
 
                     let mut methods = Vec::new();
+                    let class_name = c.name.to_string();
 
                     self.indent_level += 1;
                     for stmt in &c.body {
                         match stmt {
                             ast::Stmt::AnnAssign(a) => {
+                                let field_name = self.expr_to_string(&a.target);
+                                let field_type = self.map_type(&a.annotation);
+                                self.register_class_field(&class_name, &field_name, field_type.clone());
                                 self.push_indent();
                                 self.output.push_str("pub ");
-                                self.output.push_str(&self.expr_to_string(&a.target));
+                                self.output.push_str(&field_name);
                                 self.output.push_str(": ");
-                                self.output.push_str(&self.map_type(&a.annotation));
+                                self.output.push_str(&field_type);
                                 self.output.push_str(",\n");
                             }
                             ast::Stmt::FunctionDef(f) => {
@@ -299,11 +384,13 @@ impl Codegen {
                         self.push_indent();
                         self.output.push_str(&format!("impl {} {{\n", c.name));
                         self.indent_level += 1;
+                        self.set_current_class(&class_name);
 
                         for f in methods {
                             self.generate_function_def(f.clone());
                         }
 
+                        self.clear_current_class();
                         self.indent_level -= 1;
                         self.push_indent();
                         self.output.push_str("}\n\n");

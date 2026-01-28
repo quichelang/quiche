@@ -6,6 +6,7 @@ pub fn map_list_method(method: &str) -> Option<(&'static str, bool)> {
     match method {
         // Direct mappings
         "append" => Some(("push", false)),
+        "push" => Some(("push", false)),
         "pop" => Some(("pop", false)),
         "clear" => Some(("clear", false)),
         "reverse" => Some(("reverse", false)),
@@ -26,6 +27,6 @@ pub fn map_list_method(method: &str) -> Option<(&'static str, bool)> {
 pub fn is_list_method(method: &str) -> bool {
     matches!(
         method,
-        "append" | "pop" | "clear" | "reverse" | "sort" | "insert" | "extend"
+        "append" | "push" | "pop" | "clear" | "reverse" | "sort" | "insert" | "extend"
     )
 }

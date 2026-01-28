@@ -22,6 +22,8 @@ class Codegen:
     import_kinds: Dict[String, String]
     clone_names: bool
     current_module_path: String
+    class_fields: Dict[String, Dict[String, String]]
+    current_class: String
 
     def __init__(self):
         self.output = RustString.new()
@@ -32,21 +34,95 @@ class Codegen:
         self.import_kinds = Dict[String, String].new()
         self.clone_names = True
         self.current_module_path = ""
+        self.class_fields = Dict[String, Dict[String, String]].new()
+        self.current_class = ""
 
     def new() -> Codegen:
-        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=Dict[String, String].new(), import_kinds=Dict[String, String].new(), clone_names=True, current_module_path="")
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=Dict[String, String].new(), import_kinds=Dict[String, String].new(), clone_names=True, current_module_path="", class_fields=Dict[String, Dict[String, String]].new(), current_class="")
 
     def new_with_imports(import_paths: Dict[String, String], import_kinds: Dict[String, String]) -> Codegen:
-        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path="")
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path="", class_fields=Dict[String, Dict[String, String]].new(), current_class="")
 
     def new_with_imports_and_module(import_paths: Dict[String, String], import_kinds: Dict[String, String], current_module_path: String) -> Codegen:
-        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path=current_module_path)
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path=current_module_path, class_fields=Dict[String, Dict[String, String]].new(), current_class="")
 
     def generate_expr_no_clone(self, expr: ast.Expr):
         prev = self.clone_names
         self.clone_names = False
         self.generate_expr(expr)
         self.clone_names = prev
+
+    def register_class_field(self, class_name: String, field_name: String, field_type: String):
+        match self.class_fields.get(class_name.clone()):
+            case Some(fields):
+                fields.insert(field_name.clone(), field_type.clone())
+            case None:
+                fields = Dict[String, String].new()
+                fields.insert(field_name.clone(), field_type.clone())
+                self.class_fields.insert(class_name.clone(), fields)
+
+    def set_current_class(self, class_name: String):
+        self.current_class = class_name
+
+    def clear_current_class(self):
+        self.current_class = ""
+
+    def get_self_field_type(self, field_name: String) -> String:
+        if self.current_class == "": return ""
+        match self.class_fields.get(self.current_class.clone()):
+            case Some(fields):
+                match fields.get(field_name.clone()):
+                    case Some(t): return t
+                    case None: return ""
+            case None: return ""
+
+    def is_list_like_expr(self, expr: ast.Expr) -> bool:
+        match expr:
+            case ast.Expr.List(_): return True
+            case ast.Expr.Name(_):
+                t = self.infer_expr_type(expr)
+                return t.contains(as_ref("Vec")) or t.contains(as_ref("List"))
+            case ast.Expr.Attribute(a):
+                match as_ref(deref(a.value)):
+                    case ast.Expr.Name(n):
+                        if n.id.as_str().to_string() == "self":
+                            t = self.get_self_field_type(a.attr.as_str().to_string())
+                            return t.contains(as_ref("Vec")) or t.contains(as_ref("List"))
+                        base_type = self.infer_expr_type(ast.Expr.Name(n))
+                        match self.class_fields.get(base_type):
+                            case Some(fields):
+                                match fields.get(a.attr.as_str().to_string()):
+                                    case Some(ft):
+                                        return ft.contains(as_ref("Vec")) or ft.contains(as_ref("List"))
+                                    case None: pass
+                            case None: pass
+                    case _: pass
+                return False
+            case _: return False
+
+    def is_dict_like_expr(self, expr: ast.Expr) -> bool:
+        match expr:
+            case ast.Expr.Dict(_): return True
+            case ast.Expr.Name(_):
+                t = self.infer_expr_type(expr)
+                return t.contains(as_ref("HashMap")) or t.contains(as_ref("Dict"))
+            case ast.Expr.Attribute(a):
+                match as_ref(deref(a.value)):
+                    case ast.Expr.Name(n):
+                        if n.id.as_str().to_string() == "self":
+                            t = self.get_self_field_type(a.attr.as_str().to_string())
+                            return t.contains(as_ref("HashMap")) or t.contains(as_ref("Dict"))
+                        base_type = self.infer_expr_type(ast.Expr.Name(n))
+                        match self.class_fields.get(base_type):
+                            case Some(fields):
+                                match fields.get(a.attr.as_str().to_string()):
+                                    case Some(ft):
+                                        return ft.contains(as_ref("HashMap")) or ft.contains(as_ref("Dict"))
+                                    case None: pass
+                            case None: pass
+                    case _: pass
+                return False
+            case _: return False
 
     def register_import_symbol(self, name: String):
         match self.import_kinds.get(name.clone()):
@@ -238,6 +314,8 @@ class Codegen:
 
     def emit_assign(self, a: ast.StmtAssign):
         # Simple single target assignment
+        is_subscript = False
+        subscript_is_map = False
         match as_ref(a.targets[0]):
             case ast.Expr.Name(n):
                 name_assign = n.id.as_str().to_string()
@@ -258,16 +336,27 @@ class Codegen:
                     case ast.Expr.Tuple(_):
                         self.tuple_vars.insert(name_assign.clone(), True)
                     case _: pass
-            case ast.Expr.Attribute(_):
-                self.generate_expr_no_clone(ast.Expr.clone(as_ref(a.targets[0])))
+            case ast.Expr.Attribute(at):
+                self.emit_attribute_target(at)
                 self.emit(" = ")
             case ast.Expr.Subscript(s):
-                self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(s.value))))
-                self.emit("[")
-                self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(s.slice))))
-                self.emit("] = ")
+                is_subscript = True
+                is_map = self.is_dict_like_expr(ast.Expr.clone(as_ref(deref(s.value))))
+                subscript_is_map = is_map
+                if is_map:
+                    self.generate_expr(deref(s.value))
+                    self.emit(".borrow_mut().insert(")
+                    self.generate_expr(deref(s.slice))
+                    self.emit(", ")
+                else:
+                    self.generate_expr(deref(s.value))
+                    self.emit(".borrow_mut()[")
+                    self.generate_expr(deref(s.slice))
+                    self.emit("] = ")
             case _: pass
         self.generate_expr(deref(a.value))
+        if is_subscript and subscript_is_map:
+            self.emit(")")
         self.emit(";\n")
 
     def emit_ann_assign(self, a: ast.StmtAnnAssign):
@@ -293,9 +382,22 @@ class Codegen:
         self.emit(";\n")
 
     def emit_for(self, f: ast.StmtFor):
+        iter_expr_f = ast.Expr.clone(as_ref(deref(f.iter)))
+        is_map = self.is_dict_like_expr(iter_expr_f.clone())
+        is_list = self.is_list_like_expr(iter_expr_f.clone())
+        is_attr = False
+        match as_ref(deref(f.iter)):
+            case ast.Expr.Attribute(_): is_attr = True
+            case ast.Expr.Subscript(_): is_attr = True
+            case _: pass
         self.emit("for __q in (")
         self.generate_expr_no_clone(deref(f.iter))
-        self.emit(").into_iter() {\n")
+        if is_map:
+            self.emit(").borrow().keys() {\n")
+        elif is_list or is_attr:
+            self.emit(").borrow().iter() {\n")
+        else:
+            self.emit(").into_iter() {\n")
         self.emit("let ")
         match as_ref(deref(f.target)):
             case ast.Expr.Name(n):
@@ -446,6 +548,7 @@ class Codegen:
                                 self.emit(n.id.as_str().to_string())
                                 self.emit(": ")
                                 ann_str_f = self.type_to_string(ast.Expr.clone(as_ref(deref(a.annotation))))
+                                self.register_class_field(class_name.clone(), n.id.as_str().to_string(), ann_str_f.clone())
                                 self.emit(ann_str_f)
                                 self.emit(",\n")
                             case _: pass
@@ -456,11 +559,13 @@ class Codegen:
             self.emit("impl ")
             self.emit(c.name.as_str().to_string())
             self.emit(" {\n")
+            self.set_current_class(class_name.clone())
             for s in c.body:
                 match s:
                     case ast.Stmt.FunctionDef(_):
                         self.generate_stmt(s)
                     case _: pass
+            self.clear_current_class()
             self.emit("}\n")
 
     def emit_match(self, m: ast.StmtMatch):
@@ -693,8 +798,19 @@ class Codegen:
             self.emit(")")
         elif func_name == "len":
             if c.arguments.args.len() == 1:
-                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
-                self.emit(".len()")
+                target_len = ast.Expr.clone(as_ref(c.arguments.args[0]))
+                self.generate_expr(target_len)
+                is_list_len = self.is_list_like_expr(target_len.clone())
+                is_dict_len = self.is_dict_like_expr(target_len.clone())
+                is_attr = False
+                match as_ref(deref(c.arguments.args[0])):
+                    case ast.Expr.Attribute(_): is_attr = True
+                    case ast.Expr.Subscript(_): is_attr = True
+                    case _: pass
+                if is_list_len or is_dict_len or is_attr:
+                    self.emit(".borrow().len()")
+                else:
+                    self.emit(".len()")
             else: self.emit("0")
         elif func_name == "assert_eq" or func_name == "assert_str_eq":
             self.emit("assert_eq!(")
@@ -755,6 +871,42 @@ class Codegen:
 
                     if is_static_call:
                         attr_name_inner = at.attr.as_str().to_string()
+                        if attr_name_inner == "new":
+                            match as_ref(deref(at.value)):
+                                case ast.Expr.Name(n):
+                                    base_name = n.id.as_str().to_string()
+                                    if base_name == "List" or base_name == "Vec":
+                                        self.emit("std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))")
+                                        return
+                                    if base_name == "Dict" or base_name == "HashMap":
+                                        self.emit("std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))")
+                                        return
+                                case ast.Expr.Subscript(s):
+                                    base_name_s = self.type_to_string(deref(s.value))
+                                    if base_name_s == "Vec":
+                                        inner_s = self.type_to_string(deref(s.slice))
+                                        self.emit("std::rc::Rc::new(std::cell::RefCell::new(Vec::<")
+                                        self.emit(inner_s)
+                                        self.emit(">::new()))")
+                                        return
+                                    if base_name_s == "std::collections::HashMap":
+                                        match deref(s.slice):
+                                            case ast.Expr.Tuple(t):
+                                                if t.elts.len() == 2:
+                                                    k_s = self.type_to_string(t.elts[0])
+                                                    v_s = self.type_to_string(t.elts[1])
+                                                    self.emit("std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::<")
+                                                    self.emit(k_s)
+                                                    self.emit(", ")
+                                                    self.emit(v_s)
+                                                    self.emit(">::new()))")
+                                                    return
+                                            case _:
+                                                pass
+                                        self.emit("std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))")
+                                        return
+                                case _: pass
+
                         if attr_name_inner == "clone":
                             self.generate_expr(deref(c.func))
                             self.emit("(")
@@ -776,17 +928,55 @@ class Codegen:
                         self.emit("quiche_runtime::check!(")
                         self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(at.value))))
                         attr_name_inner = at.attr.as_str().to_string()
+                        receiver_expr = ast.Expr.clone(as_ref(deref(at.value)))
+                        is_list_receiver = self.is_list_like_expr(receiver_expr.clone())
+                        is_dict_receiver = self.is_dict_like_expr(receiver_expr.clone())
+                        if attr_name_inner == "len" and (is_list_receiver or is_dict_receiver):
+                            self.emit(".borrow().len()")
+                            self.emit(")")
+                            return
                         key_needs_ref = False
                         if attr_name_inner == "get": key_needs_ref = True
                         if attr_name_inner == "remove": key_needs_ref = True
                         if attr_name_inner == "contains_key": key_needs_ref = True
                         if attr_name_inner == "pop": key_needs_ref = True
 
-                        if attr_name_inner == "append": self.emit(".push(")
-                        elif attr_name_inner == "pop": self.emit(".pop(")
-                        elif attr_name_inner == "push": self.emit(".push(")
+                        is_list_method = False
+                        if attr_name_inner == "append": is_list_method = True
+                        elif attr_name_inner == "pop": is_list_method = True
+                        elif attr_name_inner == "push": is_list_method = True
+                        elif attr_name_inner == "clear": is_list_method = True
+                        elif attr_name_inner == "reverse": is_list_method = True
+                        elif attr_name_inner == "sort": is_list_method = True
+                        elif attr_name_inner == "insert": is_list_method = True
+                        elif attr_name_inner == "extend": is_list_method = True
+
+                        is_dict_mut = False
+                        if attr_name_inner == "insert": is_dict_mut = True
+                        elif attr_name_inner == "remove": is_dict_mut = True
+                        elif attr_name_inner == "clear": is_dict_mut = True
+                        elif attr_name_inner == "update": is_dict_mut = True
+                        elif attr_name_inner == "pop": is_dict_mut = True
+
+                        if is_list_method and is_list_receiver:
+                            self.emit(".borrow_mut().")
+                        elif is_dict_receiver and (attr_name_inner == "get" or attr_name_inner == "contains_key" or attr_name_inner == "keys" or attr_name_inner == "values" or attr_name_inner == "items"):
+                            self.emit(".borrow().")
+                        elif is_dict_mut and is_dict_receiver:
+                            self.emit(".borrow_mut().")
                         else:
                             self.emit(".")
+
+                        if is_list_method and is_list_receiver:
+                            if attr_name_inner == "append": self.emit("push(")
+                            elif attr_name_inner == "pop": self.emit("pop(")
+                            elif attr_name_inner == "push": self.emit("push(")
+                            else:
+                                self.emit(attr_name_inner.clone())
+                                self.emit("(")
+                        elif is_dict_receiver and attr_name_inner == "items":
+                            self.emit("iter(")
+                        else:
                             self.emit(attr_name_inner.clone())
                             self.emit("(")
 
@@ -797,7 +987,7 @@ class Codegen:
                             self.generate_expr(arg)
                             idx_arg_m = idx_arg_m + 1
                         self.emit(")")
-                        if attr_name_inner == "get": self.emit(".cloned()")
+                        if is_dict_receiver and attr_name_inner == "get": self.emit(".cloned()")
                         self.emit(")")
                 case _:
                     self.emit("quiche_runtime::check!(quiche_runtime::call!(")
@@ -808,13 +998,13 @@ class Codegen:
                     self.emit("))")
 
     def emit_list(self, l: ast.ExprList):
-        self.emit("vec![")
+        self.emit("std::rc::Rc::new(std::cell::RefCell::new(vec![")
         idx_l: usize = 0
         for e in l.elts:
             if idx_l > 0: self.emit(", ")
             self.generate_expr(e)
             idx_l = idx_l + 1
-        self.emit("]")
+        self.emit("]))")
 
     def emit_bin_op(self, b: ast.ExprBinOp):
         self.generate_expr(deref(b.left))
@@ -915,6 +1105,33 @@ class Codegen:
         else: self.emit(".")
         self.emit(a.attr.as_str().to_string())
 
+    def emit_attribute_target(self, a: ast.ExprAttribute):
+        target_attr = deref(a.value)
+        is_static_attr = False
+        match self.get_root_name(ast.Expr.clone(as_ref(target_attr))):
+            case Some(root_name):
+                if self.is_type_or_mod(root_name.clone()):
+                    is_static_attr = True
+                else:
+                    match self.symbols.lookup(root_name):
+                        case Some(s):
+                            if s.is_class or s.is_extern:
+                                is_static_attr = True
+                        case None: pass
+            case None: pass
+        if a.attr.as_str().to_string() == "new": is_static_attr = True
+
+        match as_ref(target_attr):
+            case ast.Expr.Attribute(inner):
+                self.emit_attribute_target(inner)
+            case ast.Expr.Name(n):
+                self.emit(n.id.as_str().to_string())
+            case _:
+                self.generate_expr_no_clone(ast.Expr.clone(as_ref(target_attr)))
+        if is_static_attr: self.emit("::")
+        else: self.emit(".")
+        self.emit(a.attr.as_str().to_string())
+
     def emit_subscript(self, s: ast.ExprSubscript):
         target_type_s = self.infer_expr_type(ast.Expr.clone(as_ref(s.value)))
         is_tuple_target = self.is_tuple_expr(ast.Expr.clone(as_ref(s.value)))
@@ -945,16 +1162,18 @@ class Codegen:
             case _: pass
 
         if tuple_via_registry or tuple_via_symbol or is_tuple_target or target_type_s == "Tuple" or target_type_s.starts_with(as_ref("Tuple")) or target_type_s.starts_with(as_ref("(")):
-             self.generate_expr(deref(s.value))
-             self.emit(".")
-             match deref(s.slice):
-                 case ast.Expr.NumberLiteral(n):
-                     match n.value:
-                         case ast.Number.Int(i):
-                             self.emit(i.to_string())
-                         case _: self.emit("0")
-                 case _: self.emit("0")
+            self.generate_expr(deref(s.value))
+            self.emit(".")
+            match deref(s.slice):
+                case ast.Expr.NumberLiteral(n):
+                    match n.value:
+                        case ast.Number.Int(i):
+                            self.emit(i.to_string())
+                        case _: self.emit("0")
+                case _: self.emit("0")
         else:
+            is_map = self.is_dict_like_expr(ast.Expr.clone(as_ref(deref(s.value))))
+            is_list = self.is_list_like_expr(ast.Expr.clone(as_ref(deref(s.value))))
             is_neg_s = False
             sl_s = deref(s.slice)
             match as_ref(sl_s):
@@ -968,17 +1187,33 @@ class Codegen:
                 match sl_s:
                     case ast.Expr.UnaryOp(u):
                         self.generate_expr(ast.Expr.clone(as_ref(deref(s.value))))
-                        self.emit("[")
-                        self.generate_expr(ast.Expr.clone(as_ref(deref(s.value))))
-                        self.emit(".len() - ")
-                        self.generate_expr(deref(u.operand))
-                        self.emit("]")
+                        if is_list:
+                            self.emit(".borrow()[")
+                            self.generate_expr(ast.Expr.clone(as_ref(deref(s.value))))
+                            self.emit(".borrow().len() - ")
+                            self.generate_expr(deref(u.operand))
+                            self.emit("].clone()")
+                        else:
+                            self.emit("[")
+                            self.generate_expr(ast.Expr.clone(as_ref(deref(s.value))))
+                            self.emit(".len() - ")
+                            self.generate_expr(deref(u.operand))
+                            self.emit("]")
                     case _: pass
             else:
                 self.generate_expr(deref(s.value))
-                self.emit("[")
-                self.generate_expr(sl_s)
-                self.emit("]")
+                if is_map:
+                    self.emit(".borrow()[&")
+                    self.generate_expr(sl_s)
+                    self.emit("].clone()")
+                elif is_list:
+                    self.emit(".borrow()[")
+                    self.generate_expr(sl_s)
+                    self.emit("].clone()")
+                else:
+                    self.emit("[")
+                    self.generate_expr(sl_s)
+                    self.emit("]")
 
     def emit_lambda(self, l: ast.ExprLambda):
         self.emit("(|")
@@ -1016,7 +1251,7 @@ class Codegen:
         self.emit(")")
 
     def emit_dict(self, d: ast.ExprDict):
-        self.emit("std::collections::HashMap::from([")
+        self.emit("std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::from([")
         idx_dict = 0
         for item in d.items:
             if idx_dict > 0: self.emit(", ")
@@ -1032,7 +1267,7 @@ class Codegen:
                 case None:
                     self.emit("/* **kwargs */")
             idx_dict = idx_dict + 1
-        self.emit("])")
+        self.emit("]))")
 
     def infer_expr_type(self, expr: ast.Expr) -> String:
         match expr:
@@ -1040,6 +1275,22 @@ class Codegen:
             case ast.Expr.StringLiteral(_): return "String"
             case ast.Expr.BooleanLiteral(_): return "bool"
             case ast.Expr.Tuple(_): return "Tuple"
+            case ast.Expr.List(_): return "Vec"
+            case ast.Expr.Dict(_): return "std::collections::HashMap"
+            case ast.Expr.Call(c):
+                match as_ref(deref(c.func)):
+                    case ast.Expr.Name(n):
+                        return n.id.as_str().to_string()
+                    case ast.Expr.Attribute(a):
+                        if a.attr.as_str().to_string() == "new":
+                            match as_ref(deref(a.value)):
+                                case ast.Expr.Name(nv):
+                                    return nv.id.as_str().to_string()
+                                case ast.Expr.Subscript(sv):
+                                    return self.type_to_string(deref(sv.value))
+                                case _: pass
+                    case _: pass
+                return "unknown"
             case ast.Expr.Name(n):
                 match self.symbols.lookup(n.id.as_str().to_string()):
                     case Some(s):
@@ -1063,14 +1314,13 @@ class Codegen:
                     match deref(s.slice):
                         case ast.Expr.Tuple(t):
                             res = RustString.new()
-                            res = q_push(res, base)
-                            res = q_push(res, "<")
+                            res = q_push(res, "std::rc::Rc<std::cell::RefCell<std::collections::HashMap<")
                             idx_h: usize = 0
                             for e in t.elts:
                                 if idx_h > 0: res = q_push(res, ", ")
                                 res = q_push(res, self.type_to_string(e))
                                 idx_h = idx_h + 1
-                            res = q_push(res, ">")
+                            res = q_push(res, ">>>")
                             return res
                         case _:
                             pass
@@ -1094,6 +1344,11 @@ class Codegen:
                             return res
                 inner = self.type_to_string(deref(s.slice))
                 res = RustString.new()
+                if base == "Vec":
+                    res = q_push(res, "std::rc::Rc<std::cell::RefCell<Vec<")
+                    res = q_push(res, inner)
+                    res = q_push(res, ">>>")
+                    return res
                 res = q_push(res, base)
                 res = q_push(res, "<")
                 res = q_push(res, inner)

@@ -53,7 +53,19 @@ impl Codegen {
                     _ => &base,
                 };
 
-                format!("{}{}<{}>", rust_base, sep, final_inner)
+                if rust_base == "Vec" {
+                    format!(
+                        "std::rc::Rc{}<std::cell::RefCell{}<Vec{}<{}>>>",
+                        sep, sep, sep, final_inner
+                    )
+                } else if rust_base == "std::collections::HashMap" {
+                    format!(
+                        "std::rc::Rc{}<std::cell::RefCell{}<std::collections::HashMap{}<{}>>>",
+                        sep, sep, sep, final_inner
+                    )
+                } else {
+                    format!("{}{}<{}>", rust_base, sep, final_inner)
+                }
             }
             ast::Expr::Tuple(t) => {
                 let mut output = String::from("(");
