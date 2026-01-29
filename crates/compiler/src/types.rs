@@ -50,6 +50,8 @@ impl Codegen {
                     "List" | "Vec" => "Vec",
                     "Option" => "Option",
                     "Result" => "Result",
+                    "Ref" => "&",
+                    "MutRef" => "&mut",
                     _ => &base,
                 };
 
@@ -60,6 +62,10 @@ impl Codegen {
                         "std::rc::Rc{}<std::collections::HashMap{}<{}>>",
                         sep, sep, final_inner
                     )
+                } else if rust_base == "&" {
+                    format!("&{}", final_inner)
+                } else if rust_base == "&mut" {
+                    format!("&mut {}", final_inner)
                 } else {
                     format!("{}{}<{}>", rust_base, sep, final_inner)
                 }

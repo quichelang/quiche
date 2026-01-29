@@ -416,7 +416,11 @@ impl Codegen {
                     return;
                 }
 
-                self.output.push_str("crate::quiche::check!(");
+                let is_intrinsic =
+                    func_name == "as_ref" || func_name == "as_mut" || func_name == "deref";
+                if !is_intrinsic {
+                    self.output.push_str("crate::quiche::check!(");
+                }
 
                 if func_name == "print" {
                     self.output.push_str("println!(\"{}\", ");
@@ -549,7 +553,9 @@ impl Codegen {
                     self.output.push_str(")");
                 }
 
-                self.output.push_str(")"); // End check!
+                if !is_intrinsic {
+                    self.output.push_str(")"); // End check!
+                }
             }
             ast::Expr::Attribute(a) => {
                 let (base_str, base_is_type) = if let ast::Expr::Subscript(s) = &*a.value {

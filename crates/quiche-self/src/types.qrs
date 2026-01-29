@@ -4,6 +4,10 @@ import ast
 # Dict is handled as a built-in mapping to HashMap in the host compiler.
 # No need for @extern class Dict because it and its methods (get, insert) are whitelisted.
 
+
+def to_usize(i: usize) -> usize:
+    return i
+
 class Symbol:
     name: String
     type_name: String
@@ -11,6 +15,9 @@ class Symbol:
     is_class: bool
     is_extern: bool
     is_module: bool
+
+    def identity(s: Symbol) -> Symbol:
+        return s
 
     def new(name: String, type_name: String, is_const: bool, is_class: bool, is_extern: bool, is_module: bool) -> Symbol:
         return Symbol(name=name, type_name=type_name, is_const=is_const, is_class=is_class, is_extern=is_extern, is_module=is_module)
@@ -52,20 +59,26 @@ class SymbolTable:
         # Extract index to a local to avoid borrow conflict in generated Rust code
         sz = self.scopes.len()
         idx = sz - 1
-        idx = sz - 1
-        current_scope: Dict[String, Symbol] = self.scopes[idx].clone()
+        idx_val: usize = idx
+        # Usage of to_usize to force value context
+        current_scope: Dict[String, Symbol] = self.scopes[to_usize(idx_val)].clone()
         current_scope.insert(name, symbol)
-        self.scopes[idx] = current_scope
+        self.scopes[to_usize(idx_val)] = current_scope
 
     def lookup(self, name: String) -> Option[Symbol]:
         # Search from inner to outer
         i = self.scopes.len()
         while i > 0:
             i = i - 1
-            scope = as_ref(self.scopes[i])
-            match scope.get(as_ref(name)):
+            i_val: usize = i
+            # Using deref because i_val is mutated loop var, emitted as reference
+            scope = as_ref(self.scopes[to_usize(i_val)])
+            match scope.get(name.as_str()):
                 case Some(s):
-                    return Some(s.clone())
+                    # Force Symbol type
+                    s_val: Symbol = Symbol.identity(s.clone())
+                    ret: Option[Symbol] = Some(s_val)
+                    return ret
                 case None:
                     pass
         return None
@@ -88,7 +101,7 @@ class TypeChecker:
                     arg = arg_with_default.parameter
                     match arg.annotation:
                         case Some(ann):
-                            type_name = self.get_type_name(deref(ann))
+                            type_name = self.get_type_name(deref(ann.clone()))
                             self.symbols.insert(arg.name.as_str().to_string(), Symbol.new(arg.name.as_str().to_string(), type_name, False, False, False, False))
                         case None:
                             self.warnings.push("Missing type annotation for argument")

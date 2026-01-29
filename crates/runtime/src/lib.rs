@@ -115,3 +115,35 @@ where
         (*self).clone().quiche_iter()
     }
 }
+
+impl<'a, K, V> QuicheIterable for std::collections::hash_map::Keys<'a, K, V> {
+    type Item = &'a K;
+    type Iter = std::collections::hash_map::Keys<'a, K, V>;
+    fn quiche_iter(self) -> Self::Iter {
+        self
+    }
+}
+
+impl<'a, K, V> QuicheIterable for std::collections::hash_map::Values<'a, K, V> {
+    type Item = &'a V;
+    type Iter = std::collections::hash_map::Values<'a, K, V>;
+    fn quiche_iter(self) -> Self::Iter {
+        self
+    }
+}
+
+impl<'a, K, V> QuicheIterable for std::collections::hash_map::Iter<'a, K, V> {
+    type Item = (&'a K, &'a V);
+    type Iter = std::collections::hash_map::Iter<'a, K, V>;
+    fn quiche_iter(self) -> Self::Iter {
+        self
+    }
+}
+
+impl<T> QuicheIterable for Box<[T]> {
+    type Item = T;
+    type Iter = std::vec::IntoIter<T>;
+    fn quiche_iter(self) -> Self::Iter {
+        self.into_vec().into_iter()
+    }
+}

@@ -1,0 +1,207 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.22
+   Compiling quote v1.0.44
+   Compiling cfg-if v1.0.4
+   Compiling smallvec v1.15.1
+   Compiling rustversion v1.0.22
+   Compiling interpolator v0.5.0
+   Compiling collection_literals v1.0.3
+   Compiling libc v0.2.180
+   Compiling equivalent v1.0.2
+   Compiling hashbrown v0.16.1
+   Compiling zerocopy v0.8.34
+   Compiling siphasher v1.0.1
+   Compiling ryu v1.0.22
+   Compiling itoa v1.0.17
+   Compiling static_assertions v1.1.0
+   Compiling phf_shared v0.11.3
+   Compiling memchr v2.7.6
+   Compiling unicode-width v0.2.2
+   Compiling either v1.15.0
+   Compiling log v0.4.29
+   Compiling thiserror v2.0.18
+   Compiling heck v0.5.0
+   Compiling getopts v0.2.24
+   Compiling itertools v0.14.0
+   Compiling rustc-hash v2.1.1
+   Compiling indexmap v2.13.0
+   Compiling aho-corasick v1.1.4
+   Compiling bitflags v2.10.0
+   Compiling castaway v0.2.4
+   Compiling compact_str v0.9.0
+   Compiling syn v2.0.114
+   Compiling proc-macro-utils v0.10.0
+   Compiling tinyvec_macros v0.1.1
+   Compiling tinyvec v1.10.0
+   Compiling regex-automata v0.4.13
+   Compiling getrandom v0.2.17
+   Compiling rand_core v0.6.4
+   Compiling unicode-normalization v0.1.25
+   Compiling manyhow-macros v0.11.4
+   Compiling phf v0.11.3
+   Compiling ordermap v1.1.0
+   Compiling quiche_self v0.1.0 (/Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/crates/quiche-self)
+   Compiling quiche_runtime v0.1.0 (/Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/crates/runtime)
+warning: hiding a lifetime that's elided elsewhere is confusing
+  --> crates/runtime/src/lib.rs:49:21
+   |
+49 |     fn try_borrow_q(&self) -> Result<std::cell::Ref<T>, QuicheException>;
+   |                     ^^^^^            ^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+   |                     |
+   |                     the lifetime is elided here
+   |
+   = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+   = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+   |
+49 |     fn try_borrow_q(&self) -> Result<std::cell::Ref<'_, T>, QuicheException>;
+   |                                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+  --> crates/runtime/src/lib.rs:50:25
+   |
+50 |     fn try_borrow_mut_q(&self) -> Result<std::cell::RefMut<T>, QuicheException>;
+   |                         ^^^^^            ^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+   |                         |
+   |                         the lifetime is elided here
+   |
+   = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+   |
+50 |     fn try_borrow_mut_q(&self) -> Result<std::cell::RefMut<'_, T>, QuicheException>;
+   |                                                            +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+  --> crates/runtime/src/lib.rs:54:21
+   |
+54 |     fn try_borrow_q(&self) -> Result<std::cell::Ref<T>, QuicheException> {
+   |                     ^^^^^            ^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+   |                     |
+   |                     the lifetime is elided here
+   |
+   = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+   |
+54 |     fn try_borrow_q(&self) -> Result<std::cell::Ref<'_, T>, QuicheException> {
+   |                                                     +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+  --> crates/runtime/src/lib.rs:58:25
+   |
+58 |     fn try_borrow_mut_q(&self) -> Result<std::cell::RefMut<T>, QuicheException> {
+   |                         ^^^^^            ^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+   |                         |
+   |                         the lifetime is elided here
+   |
+   = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+   |
+58 |     fn try_borrow_mut_q(&self) -> Result<std::cell::RefMut<'_, T>, QuicheException> {
+   |                                                            +++
+
+warning: `quiche_runtime` (lib) generated 4 warnings (run `cargo fix --lib -p quiche_runtime` to apply 4 suggestions)
+   Compiling bstr v1.12.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.3.1
+   Compiling rand v0.8.5
+   Compiling manyhow v0.11.4
+   Compiling phf_generator v0.11.3
+   Compiling phf_codegen v0.11.3
+   Compiling unicode_names2_generator v1.3.0
+   Compiling quote-use-macros v0.8.4
+   Compiling derive-where v1.6.0
+   Compiling thiserror-impl v2.0.18
+   Compiling is-macro v0.3.7
+   Compiling unicode_names2 v1.3.0
+   Compiling quote-use v0.8.4
+   Compiling attribute-derive-macro v0.10.5
+   Compiling attribute-derive v0.10.5
+   Compiling get-size-derive2 v0.7.4
+   Compiling get-size2 v0.7.4
+   Compiling ruff_text_size v0.0.0 (https://github.com/astral-sh/ruff#cfc3980a)
+   Compiling ruff_source_file v0.0.0 (https://github.com/astral-sh/ruff#cfc3980a)
+   Compiling ruff_python_trivia v0.0.0 (https://github.com/astral-sh/ruff#cfc3980a)
+   Compiling ruff_python_ast v0.0.0 (https://github.com/astral-sh/ruff#cfc3980a)
+   Compiling ruff_python_parser v0.0.0 (https://github.com/astral-sh/ruff#cfc3980a)
+   Compiling quiche_compiler v0.1.0 (/Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/crates/compiler)
+warning: irrefutable `if let` pattern
+  --> crates/compiler/src/stmt.rs:75:24
+   |
+75 |                     if let ast::ExceptHandler::ExceptHandler(eh) = h {
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this pattern will always match, so the `if let` is useless
+   = help: consider replacing the `if let` with a `let`
+   = note: `#[warn(irrefutable_let_patterns)]` on by default
+
+warning: `quiche_compiler` (lib) generated 1 warning
+   Compiling parsley-qrs v0.1.0 (/Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/crates/parsley-qrs)
+warning: unused return value of `from` that must be used
+ --> /Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/target/stage1/debug/build/quiche_self-4044d3aa5ba57b69/out/compiler/type_utils.rs:6:5
+  |
+6 |     std::string::String::from("Infer the type of an expression.");
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+  |
+6 |     let _ = std::string::String::from("Infer the type of an expression.");
+  |     +++++++
+
+warning: unused return value of `from` that must be used
+  --> /Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/target/stage1/debug/build/quiche_self-4044d3aa5ba57b69/out/compiler/type_utils.rs:75:5
+   |
+75 |     std::string::String::from("Convert a type expression to string (simple version without recursion).");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+75 |     let _ = std::string::String::from("Convert a type expression to string (simple version without recursion).");
+   |     +++++++
+
+warning: unused return value of `from` that must be used
+  --> /Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/target/stage1/debug/build/quiche_self-4044d3aa5ba57b69/out/compiler/type_utils.rs:97:5
+   |
+97 |     std::string::String::from("Check if expression represents a tuple type.");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+97 |     let _ = std::string::String::from("Check if expression represents a tuple type.");
+   |     +++++++
+
+warning: unused return value of `from` that must be used
+   --> /Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/target/stage1/debug/build/quiche_self-4044d3aa5ba57b69/out/compiler/type_utils.rs:128:5
+    |
+128 |     std::string::String::from("Get the root name from a nested expression.");
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: use `let _ = ...` to ignore the resulting value
+    |
+128 |     let _ = std::string::String::from("Get the root name from a nested expression.");
+    |     +++++++
+
+warning: unused return value of `from` that must be used
+   --> /Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/target/stage1/debug/build/quiche_self-4044d3aa5ba57b69/out/compiler/type_utils.rs:143:5
+    |
+143 |     std::string::String::from("Check if a name refers to a type or module.");
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: use `let _ = ...` to ignore the resulting value
+    |
+143 |     let _ = std::string::String::from("Check if a name refers to a type or module.");
+    |     +++++++
+
+warning: unused return value of `from` that must be used
+   --> /Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/target/stage1/debug/build/quiche_self-4044d3aa5ba57b69/out/compiler/type_utils.rs:202:5
+    |
+202 |     std::string::String::from("Check if an expression contains a reference to a variable name.");
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: use `let _ = ...` to ignore the resulting value
+    |
+202 |     let _ = std::string::String::from("Check if an expression contains a reference to a variable name.");
+    |     +++++++
+
+warning: `quiche_self` (bin "quiche_self") generated 6 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.53s

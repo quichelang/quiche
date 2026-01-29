@@ -62,7 +62,7 @@ class UsageAnalyzer:
                 self.analyze_expr(deref(m.subject))
                 for case_ in m.cases:
                     match case_.guard:
-                        case Some(g): self.analyze_expr(deref(g))
+                        case Some(g): self.analyze_expr(deref(g.clone()))
                         case None: pass
                     for s in case_.body: self.analyze_stmt(s)
 

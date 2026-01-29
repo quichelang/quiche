@@ -760,6 +760,9 @@ impl Codegen {
 
             // Detect if this method needs &mut self or can use &self
             let needs_mut_self = method_mutates_self(&f.body);
+            self.output
+                .push_str(&format!("// method_mutates_self: {}\n", needs_mut_self));
+            self.push_indent();
 
             // Generate arguments
             // Ruff parameters.args returns Vec<ParameterWithDefault> ? No, check AST

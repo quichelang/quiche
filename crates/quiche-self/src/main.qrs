@@ -245,7 +245,7 @@ def compile_source_to_string(source: String, filename: String, warn_quiche: bool
     
     # Type Check
     checker = TypeChecker.new()
-    for stmt in as_ref(stmts):
+    for stmt in stmts.clone():
         checker.check_stmt(stmt)
 
     if warn_quiche and checker.warnings.len() > 0:
