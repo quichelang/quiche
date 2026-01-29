@@ -11,6 +11,7 @@ QUICHE_SELF_DIR = os.path.join(WORKSPACE_ROOT, "crates", "quiche-self")
 SRC_DIR = os.path.join(QUICHE_SELF_DIR, "src")
 TARGET_DIR = os.environ.get("CARGO_TARGET_DIR", os.path.join(WORKSPACE_ROOT, "target"))
 RUNTIME_PATH = os.path.join(WORKSPACE_ROOT, "crates", "runtime")
+PARSLEY_PATH = os.path.join(WORKSPACE_ROOT, "crates", "parsley-qrs")
 
 def find_stage1_out():
     pattern = os.path.join(TARGET_DIR, "debug", "build", "quiche_self-*", "out")
@@ -53,6 +54,7 @@ edition = "2024"
 
 [dependencies]
 quiche_runtime = {{ path = "{RUNTIME_PATH.replace('\\', '/')}" }}
+parsley-qrs = {{ path = "{PARSLEY_PATH.replace('\\', '/')}" }}
 ruff_python_parser = {{ git = "https://github.com/astral-sh/ruff" }}
 ruff_python_ast = {{ git = "https://github.com/astral-sh/ruff" }}
 

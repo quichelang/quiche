@@ -555,7 +555,21 @@ impl Codegen {
     pub(crate) fn generate_pattern(&mut self, pat: &ast::Pattern) {
         match pat {
             ast::Pattern::MatchValue(v) => {
-                self.generate_expr(*v.value.clone());
+                // For enum variant patterns like ast.CmpOp.Eq, use emit_pattern_path
+                fn emit_pattern_path(codegen: &mut Codegen, expr: &ast::Expr) {
+                    match expr {
+                        ast::Expr::Name(n) => {
+                            codegen.output.push_str(&n.id);
+                        }
+                        ast::Expr::Attribute(a) => {
+                            emit_pattern_path(codegen, &a.value);
+                            codegen.output.push_str("::");
+                            codegen.output.push_str(&a.attr);
+                        }
+                        _ => codegen.generate_expr(expr.clone()),
+                    }
+                }
+                emit_pattern_path(self, &v.value);
             }
             ast::Pattern::MatchAs(a) => {
                 if let Some(name) = &a.name {
@@ -574,19 +588,22 @@ impl Codegen {
                 }
             }
             ast::Pattern::MatchClass(c) => {
-                // Class name: Shape.Circle -> Shape::Circle
-                // Self-contained logic to print class path
-                match &*c.cls {
-                    ast::Expr::Attribute(a) => {
-                        self.output.push_str(&self.expr_to_string(&a.value));
-                        self.output.push_str("::");
-                        self.output.push_str(&a.attr);
+                // Class name: ast.Stmt.FunctionDef -> ast::Stmt::FunctionDef
+                // Recursively emit path with :: for all segments
+                fn emit_pattern_path(codegen: &mut Codegen, expr: &ast::Expr) {
+                    match expr {
+                        ast::Expr::Name(n) => {
+                            codegen.output.push_str(&n.id);
+                        }
+                        ast::Expr::Attribute(a) => {
+                            emit_pattern_path(codegen, &a.value);
+                            codegen.output.push_str("::");
+                            codegen.output.push_str(&a.attr);
+                        }
+                        _ => codegen.output.push_str("/* unknown pattern path */"),
                     }
-                    ast::Expr::Name(n) => {
-                        self.output.push_str(&n.id);
-                    }
-                    _ => self.output.push_str("/* unknown match class */"),
                 }
+                emit_pattern_path(self, &c.cls);
 
                 if !c.arguments.patterns.is_empty() {
                     // Tuple style: (p1, p2)

@@ -216,6 +216,18 @@ class Codegen:
                 # Fallback to generate_expr_no_clone for other cases
                 self.generate_expr_no_clone(expr)
 
+    def emit_pattern_path(self, expr: ast.Expr):
+        # Emit type/enum path using :: for all segments (for match case patterns)
+        match expr:
+            case ast.Expr.Name(n):
+                self.emit(n.id.as_str().to_string())
+            case ast.Expr.Attribute(a):
+                self.emit_pattern_path(deref(a.value.clone()))
+                self.emit("::")
+                self.emit(a.attr.as_str().to_string())
+            case _:
+                self.generate_expr(expr)
+
     def register_class_field(self, class_name: String, field_name: String, field_type: String):
         match self.class_fields.get(class_name.clone()):
             case Some(cf_untyped):
@@ -565,6 +577,8 @@ class Codegen:
         self.emit(";\n")
 
     def emit_for(self, f: ast.StmtFor):
+        prev_clone = self.clone_names
+        self.clone_names = True
         iter_expr_f = ast.Expr.clone(as_ref(deref(f.iter)))
         is_map = self.is_dict_like_expr(iter_expr_f.clone())
         is_list = self.is_list_like_expr(iter_expr_f.clone())
@@ -574,7 +588,12 @@ class Codegen:
             case ast.Expr.Subscript(_): is_attr = True
             case _: pass
         self.emit("for __q in (")
-        self.generate_expr_no_clone(deref(f.iter))
+        match as_ref(deref(f.iter)):
+            case ast.Expr.Name(n):
+                self.emit(n.id.as_str().to_string())
+                self.emit(".clone()")
+            case _:
+                self.generate_expr(deref(f.iter))
         if is_map:
             self.emit(").keys() {\n")
         elif is_list or is_attr:
@@ -589,6 +608,7 @@ class Codegen:
                 self.emit("_")
         self.emit(" = quiche_runtime::check!(__q);\n")
         self.enter_var_scope()
+        self.clone_names = prev_clone
         for s in f.body:
             self.generate_stmt(s)
         self.exit_var_scope()
@@ -783,7 +803,12 @@ class Codegen:
                 case Some(a): alias_name = a.as_str().to_string()
                 case None: pass
 
+            rust_path_opt = None
             match self.import_paths.get(alias_name.clone()):
+                case Some(p): rust_path_opt = Some(p.clone())
+                case None: pass
+
+            match rust_path_opt:
                 case Some(rust_path):
                     if is_root_module and rust_path.starts_with(as_ref("crate::")):
                         self.register_import_symbol(alias_name.clone())
@@ -824,7 +849,12 @@ class Codegen:
                 case Some(a): alias_name = a.as_str().to_string()
                 case None: pass
 
+            rust_path_opt = None
             match self.import_paths.get(alias_name.clone()):
+                case Some(p): rust_path_opt = Some(p.clone())
+                case None: pass
+            
+            match rust_path_opt:
                 case Some(rust_path):
                     self.emit("use ")
                     self.emit(rust_path)
@@ -959,12 +989,22 @@ class Codegen:
 
         if func_name == "as_ref":
             if c.arguments.args.len() > 0:
-                self.emit("&")
+                is_name = False
+                match as_ref(c.arguments.args[0]):
+                    case ast.Expr.Name(_): is_name = True
+                    case _: pass
+                if not is_name:
+                    self.emit("&")
                 self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0])))
             return
         if func_name == "as_mut":
             if c.arguments.args.len() > 0:
-                self.emit("&mut ")
+                is_name = False
+                match as_ref(c.arguments.args[0]):
+                    case ast.Expr.Name(_): is_name = True
+                    case _: pass
+                if not is_name:
+                    self.emit("&mut ")
                 self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0])))
             return
         if func_name == "deref":
@@ -1127,11 +1167,10 @@ class Codegen:
                             self.emit("))")
                     else:
                         # Method call on an instance
-                        # Method call on an instance
-                        self.emit("quiche_runtime::check!(")
-                        
                         attr_name_inner = at.attr.as_str().to_string()
                         receiver_expr = ast.Expr.clone(as_ref(deref(at.value)))
+                        self.emit("quiche_runtime::check!(")
+                        
                         
                         is_list_receiver = False
                         is_dict_receiver = False
@@ -1170,7 +1209,7 @@ class Codegen:
                         elif attr_name_inner == "update": is_dict_mut = True
                         elif attr_name_inner == "pop": is_dict_mut = True
 
-                        is_mut_call = (is_list_receiver and is_list_method) or (is_dict_receiver and is_dict_mut)
+                        is_mut_call = is_list_method or is_dict_mut
 
                         if is_mut_call:
                             self.emit("std::rc::Rc::make_mut(&mut ")
@@ -1314,7 +1353,10 @@ class Codegen:
                 else:
                     self.emit_lvalue_target(ast.Expr.clone(as_ref(target_attr)))
             case _:
-                self.emit_lvalue_target(ast.Expr.clone(as_ref(target_attr)))
+                if is_static_attr:
+                    self.emit_pattern_path(ast.Expr.clone(as_ref(target_attr)))
+                else:
+                    self.emit_lvalue_target(ast.Expr.clone(as_ref(target_attr)))
         if is_static_attr: self.emit("::")
         else: self.emit(".")
         self.emit(a.attr.as_str().to_string())
@@ -1709,13 +1751,13 @@ class Codegen:
 
     def generate_pattern(self, pat: ast.Pattern):
         match pat:
-            case ast.Pattern.MatchValue(v): self.generate_expr(deref(v.value))
+            case ast.Pattern.MatchValue(v): self.emit_pattern_path(deref(v.value))
             case ast.Pattern.MatchAs(a):
                 match a.name:
                     case Some(n): self.emit(n.as_str().to_string())
                     case None: self.emit("_")
             case ast.Pattern.MatchClass(c):
-                self.generate_expr(deref(c.cls))
+                self.emit_pattern_path(deref(c.cls))
                 if c.arguments.patterns.len() > 0:
                     self.emit("(")
                     first_p = True
