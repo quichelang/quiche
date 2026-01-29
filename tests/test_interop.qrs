@@ -1,25 +1,22 @@
 
 from rust.std.fs import read_dir
 
-@extern(path="std::vec::Vec")
-class Vector:
-    pass
-
 def test_dynamic_macro():
     # Should transpile to: let entries = quiche::call!(read_dir, String::from("."));
-    entries = read_dir(".")
-    
-    for entry in entries:
+    for entry in read_dir("."):
         if entry.path().is_dir():
-            print(entry.file_name())
+            # Bind to variable to prolong lifetime of OsString
+            fname = entry.file_name()
+            # Use into_owned() on the Cow result (treated as Any)
+            print(fname.to_string_lossy())
     
 def test_extern_binding():
-    # Should use std::vec::Vec
-    v = Vector.new()
+    # Should use std::vec::Vec wrapped in Rc for mutation
+    v = List[i64].new()
     v.push(10)
     v.push(20)
     print(v.len())
     assert(v.len() == 2)
 
 test_dynamic_macro()
-test_extern_binding() 
+test_extern_binding()

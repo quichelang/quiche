@@ -1213,7 +1213,7 @@ class Codegen:
 
                         if is_mut_call:
                             self.emit("std::rc::Rc::make_mut(&mut ")
-                            self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(at.value))))
+                            self.emit_lvalue_target(deref(at.value.clone()))
                             self.emit(")")
                         else:
                              self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(at.value))))
