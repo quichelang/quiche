@@ -41,3 +41,22 @@ macro_rules! check {
         ($val).quiche_handle()
     }};
 }
+
+#[derive(Debug, Clone)]
+pub struct QuicheException(pub String);
+
+pub trait QuicheBorrow<T> {
+    fn try_borrow_q(&self) -> Result<std::cell::Ref<T>, QuicheException>;
+    fn try_borrow_mut_q(&self) -> Result<std::cell::RefMut<T>, QuicheException>;
+}
+
+impl<T> QuicheBorrow<T> for std::cell::RefCell<T> {
+    fn try_borrow_q(&self) -> Result<std::cell::Ref<T>, QuicheException> {
+        self.try_borrow()
+            .map_err(|e| QuicheException(e.to_string()))
+    }
+    fn try_borrow_mut_q(&self) -> Result<std::cell::RefMut<T>, QuicheException> {
+        self.try_borrow_mut()
+            .map_err(|e| QuicheException(e.to_string()))
+    }
+}
