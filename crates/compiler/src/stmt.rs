@@ -1,6 +1,95 @@
 use crate::Codegen;
 use ruff_python_ast as ast;
 
+/// Check if an expression is `self` (the base of self.x)
+fn expr_is_self(expr: &ast::Expr) -> bool {
+    matches!(expr, ast::Expr::Name(n) if n.id.as_str() == "self")
+}
+
+/// Check if an expression is a potential mutation target on self (e.g., self.x or self.x.y)
+fn is_self_mutation_target(expr: &ast::Expr) -> bool {
+    match expr {
+        ast::Expr::Attribute(attr) => {
+            // Check if base is self or another attribute chain from self
+            expr_is_self(&attr.value) || is_self_mutation_target(&attr.value)
+        }
+        ast::Expr::Subscript(sub) => {
+            // self.list[0] = value or self.dict["key"] = value
+            is_self_mutation_target(&sub.value)
+        }
+        _ => false,
+    }
+}
+
+/// Check if a call expression is on self or self.x (any method call on self needs &mut self)
+fn is_method_call_on_self(expr: &ast::Expr) -> bool {
+    match expr {
+        ast::Expr::Attribute(attr) => {
+            // self.method() or self.field.method()
+            expr_is_self(&attr.value) || is_self_mutation_target(&attr.value)
+        }
+        _ => false,
+    }
+}
+
+/// Check if a statement contains mutations to self
+fn stmt_mutates_self(stmt: &ast::Stmt) -> bool {
+    match stmt {
+        ast::Stmt::Assign(a) => {
+            // Check if any target is self.x
+            a.targets.iter().any(|t| is_self_mutation_target(t))
+        }
+        ast::Stmt::AugAssign(a) => {
+            // self.x += ... is a mutation
+            is_self_mutation_target(&a.target)
+        }
+        ast::Stmt::AnnAssign(a) => {
+            // self.x: Type = value is a mutation if it has a value
+            a.value.is_some() && is_self_mutation_target(&a.target)
+        }
+        ast::Stmt::Expr(e) => {
+            // Any method call on self requires &mut self
+            if let ast::Expr::Call(c) = &*e.value {
+                is_method_call_on_self(&c.func)
+            } else {
+                false
+            }
+        }
+        ast::Stmt::If(i) => {
+            // Check body and elif/else clauses
+            i.body.iter().any(|s| stmt_mutates_self(s))
+                || i.elif_else_clauses
+                    .iter()
+                    .any(|c| c.body.iter().any(|s| stmt_mutates_self(s)))
+        }
+        ast::Stmt::While(w) => w.body.iter().any(|s| stmt_mutates_self(s)),
+        ast::Stmt::For(f) => f.body.iter().any(|s| stmt_mutates_self(s)),
+        ast::Stmt::Match(m) => m
+            .cases
+            .iter()
+            .any(|c| c.body.iter().any(|s| stmt_mutates_self(s))),
+        ast::Stmt::With(w) => w.body.iter().any(|s| stmt_mutates_self(s)),
+        ast::Stmt::Try(t) => {
+            t.body.iter().any(|s| stmt_mutates_self(s))
+                || t.handlers.iter().any(|h| {
+                    if let ast::ExceptHandler::ExceptHandler(eh) = h {
+                        eh.body.iter().any(|s| stmt_mutates_self(s))
+                    } else {
+                        false
+                    }
+                })
+                || t.orelse.iter().any(|s| stmt_mutates_self(s))
+                || t.finalbody.iter().any(|s| stmt_mutates_self(s))
+        }
+        _ => false,
+    }
+}
+
+/// Check if a method body contains any mutations to self
+fn method_mutates_self(body: &[ast::Stmt]) -> bool {
+    body.iter().any(|s| stmt_mutates_self(s))
+}
+
 impl Codegen {
     fn emit_attribute_assign(&mut self, attr: &ast::ExprAttribute, value: &ast::Expr) {
         let target = self.expr_to_string(&ast::Expr::Attribute(attr.clone()));
@@ -669,6 +758,9 @@ impl Codegen {
             }
             self.output.push_str(&format!("pub fn {}(", f.name));
 
+            // Detect if this method needs &mut self or can use &self
+            let needs_mut_self = method_mutates_self(&f.body);
+
             // Generate arguments
             // Ruff parameters.args returns Vec<ParameterWithDefault> ? No, check AST
             // ParameterWithDefault { parameter: Parameter, default: Option<Box<Expr>>, .. }
@@ -678,7 +770,12 @@ impl Codegen {
                 }
                 let arg = &param_with_default.parameter; // Ruff renaming from def to parameter
                 if arg.name.as_str() == "self" {
-                    self.output.push_str("&mut self");
+                    // Use &self for read-only methods, &mut self for mutating methods
+                    if needs_mut_self {
+                        self.output.push_str("&mut self");
+                    } else {
+                        self.output.push_str("&self");
+                    }
                 } else {
                     let type_ann = if let Some(annotation) = &arg.annotation {
                         self.map_type(annotation)

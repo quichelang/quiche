@@ -2,3 +2,7 @@
 from compiler.codegen import Codegen
 from compiler.usage_analyzer import UsageAnalyzer
 from compiler.extern_defs import RustString, q_push, escape_rust_string, vec_to_list
+
+# Type utilities as standalone functions
+from compiler.type_utils import infer_type, type_to_str_simple, is_tuple, get_root
+from compiler.type_utils import is_type_or_module, contains_name

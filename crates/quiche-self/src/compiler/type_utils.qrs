@@ -1,0 +1,143 @@
+# Type utilities for the code generator
+# Extracted from codegen.qrs for modularization
+# These are standalone functions that take Codegen reference as first parameter
+
+import ast
+import types
+from compiler.extern_defs import RustString, q_push
+
+# Forward declaration - Codegen will be imported by files that use this
+# The cg parameter is typed as &Codegen in the generated Rust
+
+def infer_type(cg: types.SymbolTable, expr: ast.Expr) -> String:
+    """Infer the type of an expression."""
+    match expr:
+        case ast.Expr.NumberLiteral(_): return "i32"
+        case ast.Expr.StringLiteral(_): return "String"
+        case ast.Expr.BooleanLiteral(_): return "bool"
+        case ast.Expr.Tuple(_): return "Tuple"
+        case ast.Expr.List(_): return "Vec"
+        case ast.Expr.Dict(_): return "std::collections::HashMap"
+        case ast.Expr.Call(c):
+            match as_ref(deref(c.func)):
+                case ast.Expr.Name(n):
+                    return n.id.as_str().to_string()
+                case ast.Expr.Attribute(a):
+                    if a.attr.as_str().to_string() == "new":
+                        match as_ref(deref(a.value)):
+                            case ast.Expr.Name(nv):
+                                return nv.id.as_str().to_string()
+                            case ast.Expr.Subscript(sv):
+                                return type_to_str_simple(deref(sv.value.clone()))
+                            case _: pass
+                case _: pass
+            return "unknown"
+        case ast.Expr.Name(n):
+            match cg.lookup(n.id.as_str().to_string()):
+                case Some(s):
+                    if s.type_name.starts_with(as_ref("(")): return "Tuple"
+                    if s.type_name.starts_with(as_ref("Tuple")): return "Tuple"
+                    return s.type_name
+                case None: return "unknown"
+        case _: return "unknown"
+
+def type_to_str_simple(expr: ast.Expr) -> String:
+    """Convert a type expression to string (simple version without recursion)."""
+    match expr:
+        case ast.Expr.Name(n):
+            s = n.id.as_str().to_string()
+            if s == "List": return "Vec"
+            if s == "Dict": return "std::collections::HashMap"
+            if s == "StrRef": return "&str"
+            return s
+        case _: return "Any"
+
+def is_tuple(cg: types.SymbolTable, expr: ast.Expr) -> bool:
+    """Check if expression represents a tuple type."""
+    match expr:
+        case ast.Expr.Tuple(_): return True
+        case ast.Expr.Name(n):
+            match cg.lookup(n.id.as_str().to_string()):
+                case Some(s):
+                    if s.type_name.starts_with(as_ref("(")): return True
+                    if s.type_name.starts_with(as_ref("Tuple")): return True
+                case None: pass
+            return False
+        case ast.Expr.Subscript(s): return is_tuple(cg, deref(s.value))
+        case _: return False
+
+def get_root(expr: ast.Expr) -> Option[String]:
+    """Get the root name from a nested expression."""
+    match expr:
+        case ast.Expr.Name(n): return Some(n.id.as_str().to_string())
+        case ast.Expr.Attribute(a): return get_root(deref(a.value))
+        case _: return None
+
+def is_type_or_module(cg: types.SymbolTable, name: String) -> bool:
+    """Check if a name refers to a type or module."""
+    if name == "self": return False
+    match cg.lookup(name.clone()):
+        case Some(s):
+            if s.is_module: return True
+            if s.is_class: return True
+            if s.is_extern: return True
+        case None: pass
+    if name == "ast": return True
+    if name == "compiler": return True
+    if name == "types": return True
+    if name == "rustpython_parser": return True
+    if name == "ruff_python_parser": return True
+    if name == "ruff_python_ast": return True
+    if name == "std": return True
+    if name == "crate": return True
+    first_char = name.chars().next()
+    match first_char:
+        case Some(c):
+            if c.is_uppercase(): return True
+        case None: pass
+    return False
+
+def contains_name(expr: ast.Expr, name: String) -> bool:
+    """Check if an expression contains a reference to a variable name."""
+    match expr:
+        case ast.Expr.Name(n):
+            return n.id.as_str().to_string() == name
+        case ast.Expr.BinOp(b):
+            if contains_name(deref(b.left), name.clone()): return True
+            return contains_name(deref(b.right), name)
+        case ast.Expr.BoolOp(b):
+            for v in b.values.clone():
+                if contains_name(v, name.clone()): return True
+            return False
+        case ast.Expr.UnaryOp(u):
+            return contains_name(deref(u.operand), name)
+        case ast.Expr.Call(c):
+            if contains_name(deref(c.func), name.clone()): return True
+            for arg in c.arguments.args.clone():
+                if contains_name(arg, name.clone()): return True
+            for kw in c.arguments.keywords.clone():
+                if contains_name(ast.Expr.clone(as_ref(kw.value)), name.clone()): return True
+            return False
+        case ast.Expr.Attribute(a):
+            return contains_name(deref(a.value), name)
+        case ast.Expr.Subscript(s):
+            if contains_name(deref(s.value), name.clone()): return True
+            return contains_name(deref(s.slice), name)
+        case ast.Expr.Tuple(t):
+            for e in t.elts:
+                if contains_name(e, name.clone()): return True
+            return False
+        case ast.Expr.List(l):
+            for e in l.elts:
+                if contains_name(e, name.clone()): return True
+            return False
+        case ast.Expr.If(i):
+            if contains_name(deref(i.test), name.clone()): return True
+            if contains_name(deref(i.body), name.clone()): return True
+            return contains_name(deref(i.orelse), name)
+        case ast.Expr.Compare(c):
+            if contains_name(deref(c.left), name.clone()): return True
+            for comp in c.comparators.clone():
+                if contains_name(comp, name.clone()): return True
+            return False
+        case _: return False
