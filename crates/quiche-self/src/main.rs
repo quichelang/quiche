@@ -15,8 +15,8 @@ mod quiche {
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
-    use std::rc::Rc;
     use std::process::{Command, Stdio};
+    use std::rc::Rc;
 
     // High Priority: Consumes Self (Result/Option)
     pub trait QuicheResult {
@@ -42,6 +42,10 @@ mod quiche {
         }
     }
 
+    pub fn vec_to_list<T>(v: Vec<T>) -> std::rc::Rc<Vec<T>> {
+        std::rc::Rc::new(v)
+    }
+
     macro_rules! check {
         ($val:expr) => {{
             use crate::quiche::{QuicheGeneric, QuicheResult};
@@ -51,8 +55,8 @@ mod quiche {
     pub(crate) use check;
     pub(crate) use check as call;
 
-    pub fn env_args_helper() -> Rc<RefCell<Vec<String>>> {
-        Rc::new(RefCell::new(std::env::args().collect()))
+    pub fn env_args_helper() -> Rc<Vec<String>> {
+        Rc::new(std::env::args().collect())
     }
 
     pub fn push_str_wrapper(mut s: String, val: String) -> String {
@@ -78,7 +82,7 @@ mod quiche {
         }
     }
 
-    pub fn list_test_files() -> Rc<RefCell<Vec<String>>> {
+    pub fn list_test_files() -> Rc<Vec<String>> {
         let mut tests = Vec::new();
         if let Ok(entries) = std::fs::read_dir("tests") {
             for entry in entries.flatten() {
@@ -90,7 +94,7 @@ mod quiche {
             }
         }
         tests.sort();
-        Rc::new(RefCell::new(tests))
+        Rc::new(tests)
     }
 
     pub fn path_exists(path: String) -> bool {
@@ -128,10 +132,10 @@ mod quiche {
         compiler_path.to_str().unwrap_or("").replace("\\", "/")
     }
 
-    pub fn run_cargo_command(cmd: String, args: Rc<RefCell<Vec<String>>>) -> i32 {
+    pub fn run_cargo_command(cmd: String, args: Rc<Vec<String>>) -> i32 {
         let status = Command::new("cargo")
             .arg(cmd)
-            .args(args.borrow().iter())
+            .args(args.iter())
             .status()
             .expect("Failed to run cargo");
         if status.success() {
@@ -143,7 +147,7 @@ mod quiche {
 
     pub fn run_rust_code(
         user_code: String,
-        script_args: Rc<RefCell<Vec<String>>>,
+        script_args: Rc<Vec<String>>,
         quiet: bool,
         suppress_output: bool,
         raw_output: bool,
@@ -258,7 +262,10 @@ mod quiche {
             rustc.arg("-D").arg("warnings");
         }
         if quiet && !warn && !strict {
-            rustc.arg("-Awarnings").stdout(Stdio::null()).stderr(Stdio::null());
+            rustc
+                .arg("-Awarnings")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
         }
 
         let status = rustc.status().expect("Failed to run rustc");
@@ -267,12 +274,12 @@ mod quiche {
         }
 
         if suppress_output {
-        let status = Command::new("./target/tmp_bin")
-            .args(script_args.borrow().iter())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .expect("Failed to run binary");
+            let status = Command::new("./target/tmp_bin")
+                .args(script_args.iter())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .expect("Failed to run binary");
             if !status.success() {
                 return status.code().unwrap_or(1);
             }
@@ -280,7 +287,7 @@ mod quiche {
         }
 
         let output = Command::new("./target/tmp_bin")
-            .args(script_args.borrow().iter())
+            .args(script_args.iter())
             .output()
             .expect("Failed to run binary");
 
@@ -363,9 +370,7 @@ mod quiche {
     pub fn path_dirname(path: String) -> String {
         let p = Path::new(&path);
         match p.parent() {
-            Some(parent) if !parent.as_os_str().is_empty() => {
-                parent.to_string_lossy().into_owned()
-            }
+            Some(parent) if !parent.as_os_str().is_empty() => parent.to_string_lossy().into_owned(),
             _ => ".".to_string(),
         }
     }
@@ -400,7 +405,11 @@ mod quiche {
         };
         let mut parts: Vec<String> = rel
             .parent()
-            .map(|p| p.iter().filter_map(|c| c.to_str().map(|s| s.to_string())).collect())
+            .map(|p| {
+                p.iter()
+                    .filter_map(|c| c.to_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_else(Vec::new);
 
         if file_name == "mod.qrs" {
@@ -429,7 +438,7 @@ mod quiche {
         }
     }
 
-    pub fn build_module_index(root: String) -> Rc<RefCell<HashMap<String, String>>> {
+    pub fn build_module_index(root: String) -> Rc<HashMap<String, String>> {
         let root_path = PathBuf::from(root);
         let mut files = Vec::new();
         collect_qrs_files(&root_path, &mut files);
@@ -442,7 +451,7 @@ mod quiche {
             let module_path = module_path_from_relative(rel);
             index.insert(module_path, file.to_string_lossy().into_owned());
         }
-        Rc::new(RefCell::new(index))
+        Rc::new(index)
     }
 
     pub fn module_path_for_file(root: String, filename: String) -> String {

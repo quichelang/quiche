@@ -52,8 +52,10 @@ class SymbolTable:
         # Extract index to a local to avoid borrow conflict in generated Rust code
         sz = self.scopes.len()
         idx = sz - 1
-        current_scope = as_mut(self.scopes[idx])
+        idx = sz - 1
+        current_scope: Dict[String, Symbol] = self.scopes[idx].clone()
         current_scope.insert(name, symbol)
+        self.scopes[idx] = current_scope
 
     def lookup(self, name: String) -> Option[Symbol]:
         # Search from inner to outer
@@ -61,9 +63,9 @@ class SymbolTable:
         while i > 0:
             i = i - 1
             scope = as_ref(self.scopes[i])
-            match scope.get(name):
+            match scope.get(as_ref(name)):
                 case Some(s):
-                    return Some(s)
+                    return Some(s.clone())
                 case None:
                     pass
         return None

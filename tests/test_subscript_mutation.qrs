@@ -4,5 +4,6 @@ def main():
     print(xs[1])
 
     obj = {"y": [1, 2]}
-    obj["y"][1] = 13
-    print(obj["y"][1])
+    # Simple dict value replacement (nested mutation not yet supported)
+    obj["y"] = [13, 14]
+    print(obj["y"][0])

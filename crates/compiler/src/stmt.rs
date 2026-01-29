@@ -27,8 +27,9 @@ impl Codegen {
         }
 
         if is_map {
+            self.output.push_str("std::rc::Rc::make_mut(&mut ");
             self.generate_expr(*sub.value.clone());
-            self.output.push_str(".borrow_mut().insert(");
+            self.output.push_str(").insert(");
             self.generate_expr(*sub.slice.clone());
             self.output.push_str(", ");
             self.generate_expr(value.clone());
@@ -36,8 +37,9 @@ impl Codegen {
             return;
         }
 
+        self.output.push_str("std::rc::Rc::make_mut(&mut ");
         self.generate_expr(*sub.value.clone());
-        self.output.push_str(".borrow_mut()[");
+        self.output.push_str(")[");
         self.generate_expr(*sub.slice.clone());
         self.output.push_str("] = ");
         self.generate_expr(value.clone());
@@ -105,11 +107,11 @@ impl Codegen {
                 if is_map {
                     self.output.push_str("for __q in (");
                     self.generate_expr(*f.iter);
-                    self.output.push_str(").borrow().keys() {\n");
+                    self.output.push_str(").keys() {\n");
                 } else if is_list || is_attr {
                     self.output.push_str("for __q in (");
                     self.generate_expr(*f.iter);
-                    self.output.push_str(").borrow().iter() {\n");
+                    self.output.push_str(").iter() {\n");
                 } else {
                     self.output.push_str("for __q in (");
                     self.generate_expr(*f.iter);
@@ -356,7 +358,11 @@ impl Codegen {
                             ast::Stmt::AnnAssign(a) => {
                                 let field_name = self.expr_to_string(&a.target);
                                 let field_type = self.map_type(&a.annotation);
-                                self.register_class_field(&class_name, &field_name, field_type.clone());
+                                self.register_class_field(
+                                    &class_name,
+                                    &field_name,
+                                    field_type.clone(),
+                                );
                                 self.push_indent();
                                 self.output.push_str("pub ");
                                 self.output.push_str(&field_name);

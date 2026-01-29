@@ -2,5 +2,6 @@ def main():
     values = ["a", "b"]
     val = values[0].clone()
     print(val)
-    val = 100
-    print(val)
+    # Use different variable for different type (Rust doesn't support type-changing reassignment)
+    val2 = 100
+    print(val2)

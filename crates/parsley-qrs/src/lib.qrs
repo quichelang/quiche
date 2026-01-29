@@ -68,22 +68,22 @@ class Parsley:
             commands=[],
         )
 
-    def add_flag(self, name: String, aliases: List[String], default_bool: bool):
+    def add_flag(self: Parsley, name: String, aliases: List[String], default_bool: bool):
         spec = FlagSpec.new_flag(name.clone(), aliases.clone(), default_bool)
         self.specs.append(spec.clone())
         self.by_name.insert(name.clone(), spec)
         self.register_aliases(name, aliases)
 
-    def add_option(self, name: String, aliases: List[String], default_value: String, has_default: bool):
+    def add_option(self: Parsley, name: String, aliases: List[String], default_value: String, has_default: bool):
         spec = FlagSpec.new_option(name.clone(), aliases.clone(), default_value.clone(), has_default)
         self.specs.append(spec.clone())
         self.by_name.insert(name.clone(), spec)
         self.register_aliases(name, aliases)
 
-    def add_command(self, name: String):
+    def add_command(self: Parsley, name: String):
         self.commands.append(name)
 
-    def register_aliases(self, name: String, aliases: List[String]):
+    def register_aliases(self: Parsley, name: String, aliases: List[String]):
         self.alias_map.insert(name.clone(), name.clone())
         self.alias_map.insert("--".to_string() + as_ref(name.clone()), name.clone())
         if len(name.clone()) == 1:
@@ -91,13 +91,13 @@ class Parsley:
         for a in aliases:
             self.alias_map.insert(a.clone(), name.clone())
 
-    def parse(self, args: List[String]) -> ParseResult:
-        result = ParseResult.new()
+    def parse(self: Parsley, args: List[String]) -> ParseResult:
+        result: ParseResult = ParseResult.new()
 
         # defaults
         idx_spec: usize = 0
         while idx_spec < len(self.specs):
-            spec = self.specs[idx_spec].clone()
+            spec: FlagSpec = self.specs[idx_spec].clone()
             if spec.takes_value:
                 if spec.has_default:
                     result.options.insert(spec.name.clone(), spec.default_value.clone())
@@ -107,7 +107,7 @@ class Parsley:
 
         i: usize = 0
         while i < len(args):
-            arg = args[i].clone()
+            arg: String = args[i].clone()
 
             if arg == "--":
                 j = i + 1
@@ -135,24 +135,26 @@ class Parsley:
                         case Some(spec):
                             if spec.takes_value:
                                 if i + 1 < len(args):
-                                    value = args[i + 1].clone()
+                                    value: String = args[i + 1].clone()
                                     result.options.insert(spec.name.clone(), value)
                                     i = i + 2
                                     continue
                                 else:
-                                    result.errors.append("Missing value for option: " + as_ref(arg))
+                                    result.errors.push("Missing value for option: " + as_ref(arg))
                             else:
                                 result.flags.insert(spec.name.clone(), True)
                         case None:
-                            result.errors.append("Unknown option: " + as_ref(arg))
+                            result.errors.push("Unknown option: " + as_ref(arg))
                 case None:
-                    result.errors.append("Unknown option: " + as_ref(arg))
+                    result.errors.push("Unknown option: " + as_ref(arg))
 
             i = i + 1
 
         return result
 
-    def is_command(self, name: String) -> bool:
+        return result
+
+    def is_command(self: Parsley, name: String) -> bool:
         i = 0
         while i < len(self.commands):
             if self.commands[i] == name: return True

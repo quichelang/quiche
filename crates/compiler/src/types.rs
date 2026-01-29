@@ -54,14 +54,11 @@ impl Codegen {
                 };
 
                 if rust_base == "Vec" {
-                    format!(
-                        "std::rc::Rc{}<std::cell::RefCell{}<Vec{}<{}>>>",
-                        sep, sep, sep, final_inner
-                    )
+                    format!("std::rc::Rc{}<Vec{}<{}>>", sep, sep, final_inner)
                 } else if rust_base == "std::collections::HashMap" {
                     format!(
-                        "std::rc::Rc{}<std::cell::RefCell{}<std::collections::HashMap{}<{}>>>",
-                        sep, sep, sep, final_inner
+                        "std::rc::Rc{}<std::collections::HashMap{}<{}>>",
+                        sep, sep, final_inner
                     )
                 } else {
                     format!("{}{}<{}>", rust_base, sep, final_inner)

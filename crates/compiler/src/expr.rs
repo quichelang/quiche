@@ -16,7 +16,12 @@ impl Codegen {
             ast::Expr::List(_) => true,
             ast::Expr::Name(_n) => self
                 .get_expr_type(expr)
-                .map(|t| t.contains("Vec") || t.contains("List"))
+                .map(|t| {
+                    t.starts_with("Vec")
+                        || t.starts_with("List")
+                        || t.starts_with("std::rc::Rc<Vec")
+                        || t.starts_with("Rc<Vec")
+                })
                 .unwrap_or(false),
             ast::Expr::Attribute(a) => self
                 .self_field_type(a)
@@ -30,7 +35,12 @@ impl Codegen {
                         None
                     }
                 })
-                .map(|t| t.contains("Vec") || t.contains("List"))
+                .map(|t| {
+                    t.starts_with("Vec")
+                        || t.starts_with("List")
+                        || t.starts_with("std::rc::Rc<Vec")
+                        || t.starts_with("Rc<Vec")
+                })
                 .unwrap_or(false),
             _ => false,
         }
@@ -41,7 +51,13 @@ impl Codegen {
             ast::Expr::Dict(_) => true,
             ast::Expr::Name(_n) => self
                 .get_expr_type(expr)
-                .map(|t| t.contains("HashMap") || t.contains("Dict"))
+                .map(|t| {
+                    t.starts_with("HashMap")
+                        || t.starts_with("Dict")
+                        || t.starts_with("std::rc::Rc<std::collections::HashMap")
+                        || t.starts_with("std::rc::Rc<HashMap")
+                        || t.starts_with("Rc<HashMap")
+                })
                 .unwrap_or(false),
             ast::Expr::Attribute(a) => self
                 .self_field_type(a)
@@ -55,7 +71,13 @@ impl Codegen {
                         None
                     }
                 })
-                .map(|t| t.contains("HashMap") || t.contains("Dict"))
+                .map(|t| {
+                    t.starts_with("HashMap")
+                        || t.starts_with("Dict")
+                        || t.starts_with("std::rc::Rc<std::collections::HashMap")
+                        || t.starts_with("std::rc::Rc<HashMap")
+                        || t.starts_with("Rc<HashMap")
+                })
                 .unwrap_or(false),
             _ => false,
         }
@@ -147,13 +169,12 @@ impl Codegen {
                         match &*attr.value {
                             ast::Expr::Name(n) => match n.id.as_str() {
                                 "List" | "Vec" => {
-                                    self.output
-                                        .push_str("std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))");
+                                    self.output.push_str("std::rc::Rc::new(Vec::new())");
                                     return;
                                 }
                                 "Dict" | "HashMap" => {
                                     self.output.push_str(
-                                        "std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))",
+                                        "std::rc::Rc::new(std::collections::HashMap::new())",
                                     );
                                     return;
                                 }
@@ -163,11 +184,9 @@ impl Codegen {
                                 let base = self.expr_to_string(&s.value);
                                 if base == "List" || base == "Vec" {
                                     let inner = self.map_type(&s.slice);
-                                    self.output.push_str(
-                                        "std::rc::Rc::new(std::cell::RefCell::new(Vec::<",
-                                    );
+                                    self.output.push_str("std::rc::Rc::new(Vec::<");
                                     self.output.push_str(&inner);
-                                    self.output.push_str(">::new()))");
+                                    self.output.push_str(">::new())");
                                     return;
                                 }
                                 if base == "Dict" || base == "HashMap" {
@@ -176,17 +195,17 @@ impl Codegen {
                                             let k = self.map_type(&t.elts[0]);
                                             let v = self.map_type(&t.elts[1]);
                                             self.output.push_str(
-                                                "std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::<",
+                                                "std::rc::Rc::new(std::collections::HashMap::<",
                                             );
                                             self.output.push_str(&k);
                                             self.output.push_str(", ");
                                             self.output.push_str(&v);
-                                            self.output.push_str(">::new()))");
+                                            self.output.push_str(">::new())");
                                             return;
                                         }
                                     }
                                     self.output.push_str(
-                                        "std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))",
+                                        "std::rc::Rc::new(std::collections::HashMap::new())",
                                     );
                                     return;
                                 }
@@ -249,7 +268,7 @@ impl Codegen {
                     {
                         self.output.push_str("crate::quiche::check!(");
                         self.generate_expr(*attr.value.clone());
-                        self.output.push_str(".borrow().len()");
+                        self.output.push_str(".len()");
                         self.output.push_str(")");
                         return;
                     }
@@ -258,8 +277,29 @@ impl Codegen {
                     if self.is_list_like_expr(&attr.value) {
                         if let Some((rust_method, _)) = crate::list::map_list_method(method_name) {
                             self.output.push_str("crate::quiche::check!(");
-                            self.generate_expr(*attr.value.clone());
-                            self.output.push_str(".borrow_mut().");
+
+                            // Check for mutation
+                            let is_mutating = matches!(
+                                method_name,
+                                "append"
+                                    | "pop"
+                                    | "push"
+                                    | "clear"
+                                    | "reverse"
+                                    | "sort"
+                                    | "insert"
+                                    | "extend"
+                            );
+
+                            if is_mutating {
+                                self.output.push_str("std::rc::Rc::make_mut(&mut ");
+                                self.generate_expr(*attr.value.clone());
+                                self.output.push_str(")");
+                            } else {
+                                self.generate_expr(*attr.value.clone());
+                            }
+
+                            self.output.push_str(".");
                             self.output.push_str(rust_method);
                             self.output.push_str("(");
                             for (i, arg) in c.arguments.args.iter().enumerate() {
@@ -279,14 +319,25 @@ impl Codegen {
                             crate::dict::map_dict_method(method_name)
                         {
                             self.output.push_str("crate::quiche::check!(");
-                            self.generate_expr(*attr.value.clone());
+
                             if is_mutating {
-                                self.output.push_str(".borrow_mut().");
+                                self.output.push_str("std::rc::Rc::make_mut(&mut ");
+                                self.generate_expr(*attr.value.clone());
+                                self.output.push_str(")");
+                            } else if method_name == "items" {
+                                self.generate_expr(*attr.value.clone());
+                                self.output.push_str(".iter()"); // items() -> iter()
+                                self.output.push_str("("); // Hack: consume arguments (usually 0) but ensure call syntax
                             } else {
-                                self.output.push_str(".borrow().");
+                                self.generate_expr(*attr.value.clone());
                             }
-                            self.output.push_str(rust_method);
-                            self.output.push_str("(");
+
+                            if method_name != "items" {
+                                self.output.push_str(".");
+                                self.output.push_str(rust_method);
+                                self.output.push_str("(");
+                            }
+
                             for (i, arg) in c.arguments.args.iter().enumerate() {
                                 if i > 0 {
                                     self.output.push_str(", ");
@@ -442,7 +493,7 @@ impl Codegen {
                             || is_list
                             || matches!(arg, ast::Expr::Attribute(_) | ast::Expr::Subscript(_))
                         {
-                            self.output.push_str(".borrow().len()");
+                            self.output.push_str(".len()");
                         } else {
                             self.output.push_str(".len()");
                         }
@@ -567,20 +618,18 @@ impl Codegen {
                 self.output.push_str(if b.value { "true" } else { "false" })
             }
             ast::Expr::List(l) => {
-                self.output
-                    .push_str("std::rc::Rc::new(std::cell::RefCell::new(vec![");
+                self.output.push_str("std::rc::Rc::new(vec![");
                 for (i, elt) in l.elts.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
                     self.generate_expr(elt.clone());
                 }
-                self.output.push_str("]))");
+                self.output.push_str("])");
             }
             ast::Expr::Dict(d) => {
-                self.output.push_str(
-                    "std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::from([",
-                );
+                self.output
+                    .push_str("std::rc::Rc::new(std::collections::HashMap::from([");
                 for (i, item) in d.items.iter().enumerate() {
                     if let Some(key) = &item.key {
                         if i > 0 {
@@ -623,7 +672,7 @@ impl Codegen {
                 if is_map {
                     // Map access: d[&key]
                     self.generate_expr(*s.value.clone());
-                    self.output.push_str(".borrow()[&");
+                    self.output.push_str("[&");
                     self.generate_expr(*s.slice.clone());
                     self.output.push_str("].clone()");
                     return;
@@ -636,9 +685,9 @@ impl Codegen {
                         let value_str = self.expr_to_string(&s.value);
                         if is_list {
                             self.generate_expr(*s.value.clone());
-                            self.output.push_str(".borrow()[");
+                            self.output.push_str("[");
                             self.output.push_str(&value_str);
-                            self.output.push_str(".borrow().len() - ");
+                            self.output.push_str(".len() - ");
                             self.generate_expr(*u.operand.clone());
                             self.output.push_str("].clone()");
                         } else {
@@ -656,7 +705,7 @@ impl Codegen {
                 // Fallback to Vec/Index access: val[slice]
                 self.generate_expr(*s.value.clone());
                 if is_list {
-                    self.output.push_str(".borrow()[");
+                    self.output.push_str("[");
                     self.generate_expr(*s.slice.clone());
                     self.output.push_str("].clone()");
                 } else {
