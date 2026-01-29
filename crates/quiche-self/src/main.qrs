@@ -72,6 +72,12 @@ def compiler_path_for_new() -> String: pass
 @extern(path="crate::quiche::print_stdout")
 def print_stdout(s: String): pass
 
+def get_flag_bool(flags: Dict[String, bool], key: String) -> bool:
+    for (k, v) in flags:
+        if k == key:
+            return v
+    return False
+
 
 @extern(path="crate::quiche::vec_to_list")
 def vec_to_list(v: List[Stmt]) -> List[Stmt]: pass 
@@ -298,14 +304,11 @@ def parse_warn_flags(flags: Dict[String, bool]) -> WarnFlags:
     k1 = "warn-all"
     k1 = "warn-all"
     k1 = "warn-all"
-    for (k, v) in flags.clone():
-        if k == k1: warn_all = v
+    warn_all = get_flag_bool(flags.clone(), k1)
     k2 = "warn-quiche"
-    for (k, v) in flags.clone():
-        if k == k2: warn_quiche = v
+    warn_quiche = get_flag_bool(flags.clone(), k2)
     k3 = "strict"
-    for (k, v) in flags.clone():
-        if k == k3: strict = v
+    strict = get_flag_bool(flags.clone(), k3)
     warn = warn_all
     if warn_all:
         warn = True
@@ -410,8 +413,8 @@ def main():
             name = result.positionals[0].clone()
             is_lib = False
             k_lib = "lib"
-            for (k, v) in result.flags.clone():
-                if k == k_lib: is_lib = v.clone()
+            k_lib = "lib"
+            is_lib = get_flag_bool(result.flags.clone(), k_lib)
             create_new_project(name, is_lib)
             return
 
@@ -495,8 +498,8 @@ def main():
         
         emit_rust = False
         k_er = "emit-rust"
-        for (k, v) in result.flags.clone():
-             if k == k_er: emit_rust = v.clone()
+        k_er = "emit-rust"
+        emit_rust = get_flag_bool(result.flags.clone(), k_er)
 
         if emit_rust:
              source = read_to_string(cmd.clone())
