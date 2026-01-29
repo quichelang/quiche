@@ -195,7 +195,16 @@ mod quiche {
         };
     }
     pub(crate) use check;
-    pub(crate) use check as call;
+
+    macro_rules! call {
+        ($func:expr $(, $arg:expr)*) => {
+            {
+                use crate::quiche::{QuicheResult, QuicheGeneric};
+                $func( $( ($arg).quiche_handle() ),* )
+            }
+        };
+    }
+    pub(crate) use call;
 
     pub fn run_test_cmd(exe: String, test_path: String) -> bool {
         let mut cmd = std::process::Command::new(exe);
@@ -239,6 +248,7 @@ mod quiche {
         );
         full_code.push_str(quiche_module);
         full_code.push_str("\n");
+        full_code.push_str("use crate::quiche as quiche_runtime;\n");
         full_code.push_str(&wrapped_user_code);
 
         if !Path::new("target").exists() {

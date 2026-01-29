@@ -60,7 +60,15 @@ fn main() {
                 if warn_quiche {
                     env::set_var("QUICHE_WARN_QUICHE", "1");
                 }
-                run_single_file_with_options("tests/runner.qrs", &rest, true, false, true, warn, strict);
+                run_single_file_with_options(
+                    "tests/runner.qrs",
+                    &rest,
+                    true,
+                    false,
+                    true,
+                    warn,
+                    strict,
+                );
             } else if Path::new("Cargo.toml").exists() {
                 run_cargo_command("test", &rest);
             } else {
@@ -175,13 +183,6 @@ fn run_cargo_command(cmd: &str, args: &[String]) {
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));
     }
-}
-
-fn run_single_file(filename: &str, script_args: &[String]) {
-    let quiet = env::var("QUICHE_QUIET").ok().as_deref() == Some("1");
-    let suppress_output = env::var("QUICHE_SUPPRESS_OUTPUT").ok().as_deref() == Some("1");
-    let raw_output = env::var("QUICHE_RAW_OUTPUT").ok().as_deref() == Some("1");
-    run_single_file_with_options(filename, script_args, quiet, suppress_output, raw_output, false, false);
 }
 
 fn run_single_file_with_options(
@@ -306,7 +307,8 @@ mod quiche {
             println!("--- Compiling and Running ---");
         }
         let mut rustc = Command::new("rustc");
-        rustc.arg(tmp_rs)
+        rustc
+            .arg(tmp_rs)
             .arg("--edition")
             .arg("2024")
             .arg("-o")
@@ -316,7 +318,8 @@ mod quiche {
             rustc.arg("-D").arg("warnings");
         }
         if quiet && !warn && !strict {
-            rustc.arg("-Awarnings")
+            rustc
+                .arg("-Awarnings")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null());
         }

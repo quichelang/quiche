@@ -23,7 +23,7 @@ def main():
     exe_path = var("QUICHE_TEST_BIN")
     passed = 0
     failed = 0
-    failures = []
+    failures: List[String] = []
     i = 0
 
     for name in tests:
