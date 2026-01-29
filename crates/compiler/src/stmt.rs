@@ -683,7 +683,12 @@ impl Codegen {
                     let type_ann = if let Some(annotation) = &arg.annotation {
                         self.map_type(annotation)
                     } else {
-                        "/* untyped */".to_string()
+                        // Emit a compile-time error for untyped parameters
+                        // This is better than silently generating invalid Rust
+                        format!(
+                            "compile_error!(\"Parameter '{}' requires a type annotation\")",
+                            arg.name
+                        )
                     };
                     self.output.push_str(&format!("{}: {}", arg.name, type_ann));
                 }
@@ -703,16 +708,20 @@ impl Codegen {
         self.indent_level += 1;
         self.enter_scope(); // Start function scope
 
-        // Register arguments in new scope
+        // Register arguments in new scope (MUST register ALL params, typed or not)
         if !is_main_with_args {
             for param_with_default in f.parameters.args.iter() {
                 let arg = &param_with_default.parameter;
                 if arg.name.as_str() != "self" {
-                    if let Some(annotation) = &arg.annotation {
-                        let type_ann = self.map_type(annotation);
-                        self.add_symbol(arg.name.to_string(), type_ann);
-                        self.mark_defined(arg.name.as_str());
-                    }
+                    let type_ann = if let Some(annotation) = &arg.annotation {
+                        self.map_type(annotation)
+                    } else {
+                        // Untyped parameters get registered with "unknown" type
+                        // to prevent "not found" errors in match arms
+                        "unknown".to_string()
+                    };
+                    self.add_symbol(arg.name.to_string(), type_ann);
+                    self.mark_defined(arg.name.as_str());
                 }
             }
         }

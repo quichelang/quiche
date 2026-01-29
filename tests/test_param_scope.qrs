@@ -1,0 +1,85 @@
+# Test cases for function parameter scope in match arms
+# Tests the fix for: parameters being accessible inside match arms
+
+from lib.test import assert_eq, assert_true
+
+# Context type for testing - simple struct with a value
+class Context:
+    value: i32
+
+    def new(val: i32) -> Context:
+        return Context(value=val)
+
+# Test: Parameters should be accessible inside match arms
+def helper_with_param(ctx: Context, choice: i32) -> i32:
+    """A helper function that uses `ctx` parameter inside match arms."""
+    match choice:
+        case 1:
+            # ctx should be accessible here
+            return ctx.value + 10
+        case 2:
+            # ctx should still be accessible here
+            return ctx.value * 2
+        case _:
+            return ctx.value
+
+def test_param_accessible_in_match():
+    print("Running test_param_accessible_in_match...")
+    ctx = Context.new(5)
+    
+    # Test different match arms
+    r1 = helper_with_param(ctx.clone(), 1)
+    assert_eq(r1, 15, "case 1: ctx.value + 10")
+    
+    r2 = helper_with_param(ctx.clone(), 2)
+    assert_eq(r2, 10, "case 2: ctx.value * 2")
+    
+    r3 = helper_with_param(ctx.clone(), 99)
+    assert_eq(r3, 5, "default case: ctx.value")
+
+# Test: Recursive functions with parameters in match arms
+def recurse_with_ctx(ctx: Context, n: i32) -> i32:
+    """Recursive function that passes ctx through match arms."""
+    match n:
+        case 0:
+            return ctx.value
+        case _:
+            # ctx must be accessible and passable in recursive call
+            return recurse_with_ctx(ctx, n - 1)
+
+def test_recursive_param_passing():
+    print("Running test_recursive_param_passing...")
+    ctx = Context.new(42)
+    
+    result = recurse_with_ctx(ctx, 5)
+    assert_eq(result, 42, "Recursive function should pass ctx through")
+
+# Test: Multiple parameters in match arms (using i32 selector to avoid bool match issues)
+def multi_param_match(a: i32, b: i32, choice: i32) -> i32:
+    """Function with multiple parameters, all accessible in match arms."""
+    match choice:
+        case 1:
+            return a + b
+        case 0:
+            return a - b
+        case _:
+            return a * b
+
+def test_multi_params_in_match():
+    print("Running test_multi_params_in_match...")
+    
+    r1 = multi_param_match(10, 3, 1)
+    assert_eq(r1, 13, "case 1: a + b")
+    
+    r2 = multi_param_match(10, 3, 0)
+    assert_eq(r2, 7, "case 0: a - b")
+    
+    r3 = multi_param_match(10, 3, 99)
+    assert_eq(r3, 30, "default: a * b")
+
+def main():
+    print("=== Parameter Scope Suite ===")
+    test_param_accessible_in_match()
+    test_recursive_param_passing()
+    test_multi_params_in_match()
+    print("=== All tests passed ===")
