@@ -1,151 +1,7 @@
 import ast
 import types
-
-@extern(path="std::string::String", no_generic=True)
-class RustString:
-    def new() -> RustString: pass
-    def len(self) -> usize: pass
-    def as_str(self) -> StrRef: pass
-
-@extern(path="crate::quiche::push_str_wrapper")
-def q_push(s: RustString, val: String) -> RustString: pass
-
-@extern(path="crate::quiche::escape_rust_string")
-def escape_rust_string(s: String) -> String: pass
-
-@extern(path="crate::quiche::vec_to_list")
-def vec_to_list(v: List[ast.Stmt]) -> List[ast.Stmt]: pass
-
-class UsageAnalyzer:
-    ledger: Dict[String, types.UsageInfo]
-    current_idx: i32
-    loop_depth: i32
-
-    def new() -> UsageAnalyzer:
-        return UsageAnalyzer(ledger=Dict[String, types.UsageInfo].new(), current_idx=0, loop_depth=0)
-
-    def analyze_body(self, body: List[ast.Stmt]):
-        self.ledger = Dict[String, types.UsageInfo].new()
-        self.current_idx = 0
-        self.loop_depth = 0
-        for stmt in body:
-            self.analyze_stmt(stmt)
-            self.current_idx = self.current_idx + 1
-
-    def analyze_stmt(self, stmt: ast.Stmt):
-        match stmt:
-            case ast.Stmt.Assign(a):
-                match as_ref(a.targets[0]):
-                    case ast.Expr.Name(n):
-                        self.record_usage(n.id.as_str().to_string(), True)
-                    case _: pass
-                self.analyze_expr(deref(a.value))
-            case ast.Stmt.Expr(e):
-                self.analyze_expr(deref(e.value))
-            case ast.Stmt.If(i):
-                self.analyze_expr(deref(i.test))
-                for s in i.body: self.analyze_stmt(s)
-                for clause in i.elif_else_clauses:
-                    match clause.test:
-                        case Some(t): self.analyze_expr(t)
-                        case None: pass
-                    for s in clause.body: self.analyze_stmt(s)
-            
-            case ast.Stmt.Return(r):
-                match r.value:
-                    case Some(v): self.analyze_expr(deref(v))
-                    case None: pass
-
-            case ast.Stmt.For(f):
-                self.analyze_expr(deref(f.iter))
-                self.loop_depth = self.loop_depth + 1
-                for s in f.body: self.analyze_stmt(s)
-                self.loop_depth = self.loop_depth - 1
-                for s in f.orelse: self.analyze_stmt(s)
-
-            case ast.Stmt.While(w):
-                self.analyze_expr(deref(w.test))
-                self.loop_depth = self.loop_depth + 1
-                for s in w.body: self.analyze_stmt(s)
-                self.loop_depth = self.loop_depth - 1
-                for s in w.orelse: self.analyze_stmt(s)
-
-            case ast.Stmt.Match(m):
-                self.analyze_expr(deref(m.subject))
-                for case_ in m.cases:
-                    match case_.guard:
-                        case Some(g): self.analyze_expr(deref(g))
-                        case None: pass
-                    for s in case_.body: self.analyze_stmt(s)
-
-            case ast.Stmt.AnnAssign(a):
-                match as_ref(deref(a.target)):
-                    case ast.Expr.Name(n):
-                         self.record_usage(n.id.as_str().to_string(), True)
-                    case _: pass
-                match a.value:
-                    case Some(v): self.analyze_expr(deref(v))
-                    case None: pass
-
-            case ast.Stmt.Assert(a):
-                self.analyze_expr(deref(a.test))
-                match a.msg:
-                    case Some(m): self.analyze_expr(deref(m))
-                    case None: pass
-
-            case _: pass
-
-    def analyze_expr(self, expr: ast.Expr):
-        match expr:
-            case ast.Expr.Name(n):
-                self.record_usage(n.id.as_str().to_string(), False)
-            case ast.Expr.BinOp(b):
-                self.analyze_expr(deref(b.left))
-                self.analyze_expr(deref(b.right))
-            case ast.Expr.UnaryOp(u):
-                self.analyze_expr(deref(u.operand))
-            case ast.Expr.BoolOp(b):
-                for v in b.values: self.analyze_expr(v)
-            case ast.Expr.Compare(c):
-                self.analyze_expr(deref(c.left))
-                for v in c.comparators: self.analyze_expr(v)
-            case ast.Expr.Call(c):
-                self.analyze_expr(deref(c.func))
-                for arg in c.arguments.args:
-                    self.analyze_expr(arg)
-                for kw in c.arguments.keywords:
-                    self.analyze_expr(kw.value)
-            case ast.Expr.Attribute(a):
-                self.analyze_expr(deref(a.value))
-            case ast.Expr.Subscript(s):
-                self.analyze_expr(deref(s.value))
-                self.analyze_expr(deref(s.slice))
-            case ast.Expr.List(l):
-                for e in l.elts: self.analyze_expr(e)
-            case ast.Expr.Tuple(t):
-                for e in t.elts: self.analyze_expr(e)
-            case ast.Expr.If(i):
-                 self.analyze_expr(deref(i.test))
-                 self.analyze_expr(deref(i.body))
-                 self.analyze_expr(deref(i.orelse))
-            case ast.Expr.Dict(d):
-                pass
-            case ast.Expr.Lambda(l):
-                self.analyze_expr(deref(l.body))
-            case _: pass
-
-    def record_usage(self, name: String, is_mutation: bool):
-        idx = self.current_idx
-        if self.loop_depth > 0:
-            idx = idx + 1
-        
-        match self.ledger.get(name.clone()):
-            case Some(info):
-                new_mut = is_mutation
-                if info.is_mutated: new_mut = True
-                self.ledger.insert(name.clone(), types.UsageInfo.new(idx, new_mut))
-            case None:
-                self.ledger.insert(name.clone(), types.UsageInfo.new(idx, is_mutation))
+from compiler.extern_defs import RustString, q_push, escape_rust_string, vec_to_list
+from compiler.usage_analyzer import UsageAnalyzer
 
 class Codegen:
     output: RustString
@@ -587,19 +443,33 @@ class Codegen:
             case ast.Expr.Attribute(_): is_attr = True
             case ast.Expr.Subscript(_): is_attr = True
             case _: pass
-        self.emit("for __q in (")
-        match as_ref(deref(f.iter)):
-            case ast.Expr.Name(n):
-                self.emit(n.id.as_str().to_string())
-                self.emit(".clone()")
-            case _:
-                self.generate_expr(deref(f.iter))
         if is_map:
+            self.emit("for __q in (")
+            match as_ref(deref(f.iter)):
+                case ast.Expr.Name(n):
+                    self.emit(n.id.as_str().to_string())
+                    self.emit(".clone()")
+                case _:
+                    self.generate_expr(deref(f.iter))
             self.emit(").keys() {\n")
         elif is_list or is_attr:
+            self.emit("for __q in (")
+            match as_ref(deref(f.iter)):
+                case ast.Expr.Name(n):
+                    self.emit(n.id.as_str().to_string())
+                    self.emit(".clone()")
+                case _:
+                    self.generate_expr(deref(f.iter))
             self.emit(").iter() {\n")
         else:
-            self.emit(").into_iter() {\n")
+            self.emit("for __q in quiche_runtime::QuicheIterable::quiche_iter(")
+            match as_ref(deref(f.iter)):
+                case ast.Expr.Name(n):
+                    self.emit(n.id.as_str().to_string())
+                    self.emit(".clone()")
+                case _:
+                    self.generate_expr(deref(f.iter))
+            self.emit(") {\n")
         self.emit("let ")
         match as_ref(deref(f.target)):
             case ast.Expr.Name(n):
@@ -1202,7 +1072,10 @@ class Codegen:
                             self.emit_lvalue_target(deref(at.value.clone()))
                             self.emit(")")
                         else:
+                             old_cn = self.clone_names
+                             if attr_name_inner == "clone": self.clone_names = True
                              self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(at.value))))
+                             if attr_name_inner == "clone": self.clone_names = old_cn
 
                         self.emit(".")
 
@@ -1458,11 +1331,17 @@ class Codegen:
                     self.emit("].clone()")
                 elif sub_is_list:
                     self.emit("[")
+                    old_cn = self.clone_names
+                    self.clone_names = True
                     self.generate_expr(sl_s)
+                    self.clone_names = old_cn
                     self.emit("].clone()")
                 else:
                     self.emit("[")
+                    old_cn_2 = self.clone_names
+                    self.clone_names = True
                     self.generate_expr(sl_s)
+                    self.clone_names = old_cn_2
                     self.emit("]")
 
     def emit_lambda(self, l: ast.ExprLambda):

@@ -73,11 +73,11 @@ def compiler_path_for_new() -> String: pass
 def print_stdout(s: String): pass
 
 def get_flag_bool(flags: Dict[String, bool], key: String) -> bool:
-    for k in flags.clone():
-        match flags.get(k):
-            case Some(v):
-                if k == key: return v
-            case None: pass
+    for k in flags.keys():
+        if k == key:
+            match flags.get(k):
+                case Some(v): return v
+                case None: pass
     return False
 
 
@@ -394,7 +394,7 @@ def main():
             has_command = True
 
     if has_command:
-        subargs = []
+        subargs: List[String] = []
         j = 1
         while j < len(args):
             subargs.push(args[j].clone())
@@ -485,7 +485,7 @@ def main():
             print(f"Error: File '{cmd}' not found.")
             exit(1)
         parser = build_flag_parser(False)
-        rest = []
+        rest: List[String] = []
         k = 1
         while k < len(args):
             rest.append(args[k].clone())

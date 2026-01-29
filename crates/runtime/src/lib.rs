@@ -60,3 +60,58 @@ impl<T> QuicheBorrow<T> for std::cell::RefCell<T> {
             .map_err(|e| QuicheException(e.to_string()))
     }
 }
+
+pub trait QuicheIterable {
+    type Item;
+    type Iter: Iterator<Item = Self::Item>;
+    fn quiche_iter(self) -> Self::Iter;
+}
+
+impl<T: Clone> QuicheIterable for std::rc::Rc<Vec<T>> {
+    type Item = T;
+    type Iter = std::vec::IntoIter<T>;
+    fn quiche_iter(self) -> Self::Iter {
+        self.as_ref().clone().into_iter()
+    }
+}
+
+impl<T> QuicheIterable for Vec<T> {
+    type Item = T;
+    type Iter = std::vec::IntoIter<T>;
+    fn quiche_iter(self) -> Self::Iter {
+        self.into_iter()
+    }
+}
+
+impl<T> QuicheIterable for std::ops::Range<T>
+where
+    std::ops::Range<T>: Iterator<Item = T>,
+{
+    type Item = T;
+    type Iter = std::ops::Range<T>;
+    fn quiche_iter(self) -> Self::Iter {
+        self
+    }
+}
+
+impl<'a, I> QuicheIterable for &'a I
+where
+    I: QuicheIterable + Clone,
+{
+    type Item = I::Item;
+    type Iter = I::Iter;
+    fn quiche_iter(self) -> Self::Iter {
+        self.clone().quiche_iter()
+    }
+}
+
+impl<'a, I> QuicheIterable for &'a mut I
+where
+    I: QuicheIterable + Clone,
+{
+    type Item = I::Item;
+    type Iter = I::Iter;
+    fn quiche_iter(self) -> Self::Iter {
+        (*self).clone().quiche_iter()
+    }
+}

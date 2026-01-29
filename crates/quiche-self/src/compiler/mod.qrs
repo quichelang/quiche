@@ -1,1 +1,4 @@
+# Compiler module exports
 from compiler.codegen import Codegen
+from compiler.usage_analyzer import UsageAnalyzer
+from compiler.extern_defs import RustString, q_push, escape_rust_string, vec_to_list
