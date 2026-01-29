@@ -1,4 +1,3 @@
-use quiche_compiler::compile;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -116,57 +115,64 @@ fn main() {
         let rel = path.strip_prefix(src_dir).unwrap_or(path);
         let (module_path, is_mod) = module_path_from_rel(rel);
         let out_rel = output_rel_from_rel(rel, is_mod);
-        let source = fs::read_to_string(path).expect("Read source failed");
 
-        // HACK: Removed obsolete struct-to-class replacement.
-        let mut source = source.to_string();
+        let dest_path = out_path.join(out_rel);
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent).expect("Failed to create output dir");
+        }
 
-        // If this is the root file, inject hint for the compiler
+        // --- External Binary Transpilation ---
+        let bootstrap_bin =
+            env::var("QUICHE_BOOTSTRAP_BIN").expect("QUICHE_BOOTSTRAP_BIN env var must be set");
+        let output = std::process::Command::new(&bootstrap_bin)
+            .arg(path)
+            .arg("--emit-rust")
+            .output()
+            .unwrap_or_else(|e| panic!("Failed to run bootstrap bin {}: {}", bootstrap_bin, e));
+
+        if !output.status.success() {
+            panic!(
+                "Bootstrap compilation failed for {}:\nstdout: {}\nstderr: {}",
+                path.display(),
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let rust_code = String::from_utf8(output.stdout).expect("Bootstrap output not UTF-8");
+        // -------------------------------------
+
+        let mut final_code = rust_code;
+
+        // If this is the root file, inject `mod` declarations for linking
         if let Some((_, root_stem)) = root_file {
             if stem == root_stem {
-                let link_hint = format!("\"quiche:link={}\"\n", top_modules.join(","));
-                source = format!("{}\n{}", link_hint, source);
+                let mod_decls: String = top_modules
+                    .iter()
+                    .map(|m| format!("pub mod {};\n", m))
+                    .collect();
+                final_code = format!("{}\n{}", mod_decls, final_code);
             }
         }
 
-        if let Some(mut rust_code) = compile(&source) {
-            // If this is the root file, also inject `mod` declarations for linking
-            if let Some((_, root_stem)) = root_file {
-                if stem == root_stem {
-                    let mod_decls: String = top_modules
+        if is_mod {
+            if let Some(children) = module_children.get(&module_path) {
+                let mut child_mods: Vec<String> = children
+                    .iter()
+                    .filter_map(|child| child.rsplit_once('.').map(|(_, name)| name.to_string()))
+                    .collect();
+                child_mods.sort();
+                child_mods.dedup();
+                if !child_mods.is_empty() {
+                    let mod_decls: String = child_mods
                         .iter()
                         .map(|m| format!("pub mod {};\n", m))
                         .collect();
-                    rust_code = format!("{}\n{}", mod_decls, rust_code);
+                    final_code = format!("{}\n{}", mod_decls, final_code);
                 }
             }
-
-            if is_mod {
-                if let Some(children) = module_children.get(&module_path) {
-                    let mut child_mods: Vec<String> = children
-                        .iter()
-                        .filter_map(|child| child.rsplit_once('.').map(|(_, name)| name.to_string()))
-                        .collect();
-                    child_mods.sort();
-                    child_mods.dedup();
-                    if !child_mods.is_empty() {
-                        let mod_decls: String = child_mods
-                            .iter()
-                            .map(|m| format!("pub mod {};\n", m))
-                            .collect();
-                        rust_code = format!("{}\n{}", mod_decls, rust_code);
-                    }
-                }
-            }
-
-            let dest_path = out_path.join(out_rel);
-            if let Some(parent) = dest_path.parent() {
-                fs::create_dir_all(parent).expect("Failed to create output dir");
-            }
-            fs::write(&dest_path, rust_code).expect("Write output failed");
-        } else {
-            panic!("Compilation failed for {}", path.display());
         }
+
+        fs::write(&dest_path, final_code).expect("Write output failed");
     }
 
     // Ensure main.rs exists if we only have lib.qrs?

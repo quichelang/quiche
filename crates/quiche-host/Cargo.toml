@@ -1,5 +1,5 @@
 [package]
-name = "quiche_cli"
+name = "quiche-host"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 quiche_compiler = { path = "../compiler" }
 
 [[bin]]
-name = "quiche"
+name = "quiche-host"
 path = "src/main.rs"
 
 [dev-dependencies]

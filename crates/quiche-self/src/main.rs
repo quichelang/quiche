@@ -109,6 +109,10 @@ mod quiche {
         std::fs::write(path, contents).expect("Failed to write file");
     }
 
+    pub fn print_stdout(s: String) {
+        print!("{}", s);
+    }
+
     pub fn set_env_var(key: String, value: String) {
         unsafe {
             std::env::set_var(key, value);

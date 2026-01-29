@@ -69,6 +69,10 @@ def run_rust_code(user_code: String, script_args: List[String], quiet: bool, sup
 @extern(path="crate::quiche::compiler_path_for_new")
 def compiler_path_for_new() -> String: pass
 
+@extern(path="crate::quiche::print_stdout")
+def print_stdout(s: String): pass
+
+
 @extern(path="crate::quiche::vec_to_list")
 def vec_to_list(v: List[Stmt]) -> List[Stmt]: pass 
 
@@ -282,6 +286,7 @@ def build_flag_parser(include_lib: bool) -> Parsley:
     parser.add_flag("warn-all", ["--warn"], False)
     parser.add_flag("warn-quiche", [], False)
     parser.add_flag("strict", [], False)
+    parser.add_flag("emit-rust", [], False)
     if include_lib:
         parser.add_flag("lib", [], False)
     return parser
@@ -290,32 +295,34 @@ def parse_warn_flags(flags: Dict[String, bool]) -> WarnFlags:
     warn_all = False
     warn_quiche = False
     strict = False
-    match flags.get("warn-all"):
-        case Some(v): warn_all = v
-        case None: pass
-    match flags.get("warn-quiche"):
-        case Some(v): warn_quiche = v
-        case None: pass
-    match flags.get("strict"):
-        case Some(v): strict = v
-        case None: pass
+    k1 = "warn-all"
+    k1 = "warn-all"
+    k1 = "warn-all"
+    for (k, v) in flags.clone():
+        if k == k1: warn_all = v
+    k2 = "warn-quiche"
+    for (k, v) in flags.clone():
+        if k == k2: warn_quiche = v
+    k3 = "strict"
+    for (k, v) in flags.clone():
+        if k == k3: strict = v
     warn = warn_all
     if warn_all:
         warn = True
     return WarnFlags.new(warn, strict, warn_all, warn_quiche)
 
 def template_quiche_toml(name: String) -> String:
-    return "[package]\nname = \"" + as_ref(name) + as_ref("\"\nversion = \"0.1.0\"\n")
+    return "[package]\nname = \"" + name.as_str() + as_ref("\"\nversion = \"0.1.0\"\n")
 
 def template_cargo_toml(name: String, is_lib: bool, compiler_path: String) -> String:
-    s = "[package]\nname = \"" + as_ref(name) + as_ref("\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n")
+    s = "[package]\nname = \"" + name.as_str() + as_ref("\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n")
     s = s + as_ref("# Break out of any parent workspace\n[workspace]\n\n")
-    s = s + as_ref("[build-dependencies]\nquiche_compiler = { path = \"") + as_ref(compiler_path) + as_ref("\" }\n\n")
+    s = s + as_ref("[build-dependencies]\nquiche_compiler = { path = \"") + compiler_path.as_str() + as_ref("\" }\n\n")
     s = s + as_ref("[dependencies]\n")
     if is_lib:
         s = s + as_ref("\n[lib]\npath = \"src/lib.rs\"\n")
     else:
-        s = s + as_ref("\n[[bin]]\nname = \"") + as_ref(name) + as_ref("\"\npath = \"src/main.rs\"\n")
+        s = s + as_ref("\n[[bin]]\nname = \"") + name.as_str() + as_ref("\"\npath = \"src/main.rs\"\n")
     return s
 
 def template_build_rs() -> String:
@@ -362,7 +369,7 @@ def run_transpiled_file(filename: String, script_args: List[String], quiet: bool
 
 def main():
     cli_args: List[String] = env_args()
-    args = []
+    args: List[String] = []
     i = 0
     for arg in cli_args:
         if i > 0:
@@ -385,7 +392,7 @@ def main():
         subargs = []
         j = 1
         while j < len(args):
-            subargs.append(args[j].clone())
+            subargs.push(args[j].clone())
             j = j + 1
 
         if cmd == "new":
@@ -402,9 +409,9 @@ def main():
                 exit(1)
             name = result.positionals[0].clone()
             is_lib = False
-            match result.flags.get(as_ref("lib")):
-                case Some(v): is_lib = v.clone()
-                case None: pass
+            k_lib = "lib"
+            for (k, v) in result.flags.clone():
+                if k == k_lib: is_lib = v.clone()
             create_new_project(name, is_lib)
             return
 
@@ -485,6 +492,18 @@ def main():
             print_usage()
             exit(1)
         flags = parse_warn_flags(result.flags.clone())
+        
+        emit_rust = False
+        k_er = "emit-rust"
+        for (k, v) in result.flags.clone():
+             if k == k_er: emit_rust = v.clone()
+
+        if emit_rust:
+             source = read_to_string(cmd.clone())
+             code = compile_source_to_string(source, cmd.clone(), flags.warn_quiche, flags.strict)
+             print_stdout(code)
+             return
+
         if flags.warn_all:
             flags.warn_quiche = True
         run_transpiled_file(cmd.clone(), result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche)

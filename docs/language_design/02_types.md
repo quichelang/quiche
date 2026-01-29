@@ -22,7 +22,7 @@ Quiche uses a **Type-First** design. Unlike Python, types are static and map dir
 
 ### HashMaps
 -   Syntax: `{"k": v}`.
--   Type: `Dict[String, i32]`.
+-   Type: `Map[String, i32]`.
 -   Compilation: `std::collections::HashMap::from([...])`.
 
 ## Memory Management Strategy

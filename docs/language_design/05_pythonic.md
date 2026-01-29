@@ -42,14 +42,14 @@ msg: String = f"Hello {name}, 2+2={2+2}"
 
 ## Method Aliasing
 
-| Python Method | Rust Method |
+| Quiche Method | Rust Method |
 |---------------|-------------|
-| `list.append(x)` | `vec.push(x)` |
-| `list.pop()` | `vec.pop()` |
-| `list.insert(i, x)` | `vec.insert(i, x)` |
-| `list.clear()` | `vec.clear()` |
-| `dict.get(k)` | `map.get(k)` |
-| `dict.keys()` | `map.keys()` |
+| `vec.append(x)` | `vec.push(x)` |
+| `vec.pop()` | `vec.pop()` |
+| `vec.insert(i, x)` | `vec.insert(i, x)` |
+| `vec.clear()` | `vec.clear()` |
+| `map.get(k)` | `map.get(k)` |
+| `map.keys()` | `map.keys()` |
 
 ## Slicing (Planned)
 

@@ -33,11 +33,13 @@ fn main() {
             }
         }
         "build" => {
-            let (_warn, _strict, _warn_all, _warn_quiche, rest) = parse_flags(&args[2..]);
+            let (_warn, _strict, _warn_all, _warn_quiche, _emit_rust, rest) =
+                parse_flags(&args[2..]);
             run_cargo_command("build", &rest);
         }
         "run" => {
-            let (_warn, _strict, _warn_all, _warn_quiche, rest) = parse_flags(&args[2..]);
+            let (_warn, _strict, _warn_all, _warn_quiche, _emit_rust, rest) =
+                parse_flags(&args[2..]);
             if Path::new("Cargo.toml").exists() {
                 run_cargo_command("run", &rest);
             } else {
@@ -47,7 +49,7 @@ fn main() {
             }
         }
         "test" => {
-            let (warn, strict, warn_all, warn_quiche, rest) = parse_flags(&args[2..]);
+            let (warn, strict, warn_all, warn_quiche, emit_rust, rest) = parse_flags(&args[2..]);
             if Path::new("tests/runner.qrs").exists() {
                 if let Ok(exe) = env::current_exe() {
                     if let Some(exe_str) = exe.to_str() {
@@ -68,6 +70,7 @@ fn main() {
                     true,
                     warn,
                     strict,
+                    emit_rust,
                 );
             } else if Path::new("Cargo.toml").exists() {
                 run_cargo_command("test", &rest);
@@ -82,14 +85,17 @@ fn main() {
                     eprintln!("Error: File '{}' not found.", arg);
                     std::process::exit(1);
                 }
-                let (warn, strict, warn_all, warn_quiche, rest) = parse_flags(&args[2..]);
+                let (warn, strict, warn_all, warn_quiche, emit_rust, rest) =
+                    parse_flags(&args[2..]);
                 if warn_all {
                     env::set_var("QUICHE_WARN_ALL", "1");
                 }
                 if warn_quiche {
                     env::set_var("QUICHE_WARN_QUICHE", "1");
                 }
-                run_single_file_with_options(arg, &rest, false, false, false, warn, strict);
+                run_single_file_with_options(
+                    arg, &rest, false, false, false, warn, strict, emit_rust,
+                );
             } else {
                 eprintln!("Error: Unrecognized command or file '{}'", arg);
                 if Path::new(arg).exists() {
@@ -193,6 +199,7 @@ fn run_single_file_with_options(
     raw_output: bool,
     warn: bool,
     strict: bool,
+    emit_rust: bool,
 ) {
     let source_raw = match fs::read_to_string(filename) {
         Ok(s) => s,
@@ -201,13 +208,18 @@ fn run_single_file_with_options(
             std::process::exit(1);
         }
     };
-    let source = source_raw.replace("struct ", "class ");
+    let source = source_raw;
 
     // Virtual Module System (Poor Man's Linker)
     // Removed in favor of native macros and Cargo dependencies.
     let dependencies = String::new();
 
     if let Some(rust_code) = compile(&source) {
+        if emit_rust {
+            print!("{}", rust_code);
+            return;
+        }
+
         let rust_code = rust_code.replace("#[test]", "");
 
         let quiche_module = r#"
@@ -364,11 +376,12 @@ mod quiche {
     }
 }
 
-fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, Vec<String>) {
+fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, bool, Vec<String>) {
     let mut warn = false;
     let mut strict = false;
     let mut warn_all = false;
     let mut warn_quiche = false;
+    let mut emit_rust = false;
     let mut rest = Vec::new();
     for a in args {
         match a.as_str() {
@@ -376,6 +389,7 @@ fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, Vec<String>) {
             "--strict" => strict = true,
             "--warn-all" => warn_all = true,
             "--warn-quiche" => warn_quiche = true,
+            "--emit-rust" => emit_rust = true,
             _ => rest.push(a.clone()),
         }
     }
@@ -385,5 +399,5 @@ fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, Vec<String>) {
     if warn_all {
         warn = true;
     }
-    (warn, strict, warn_all, warn_quiche, rest)
+    (warn, strict, warn_all, warn_quiche, emit_rust, rest)
 }

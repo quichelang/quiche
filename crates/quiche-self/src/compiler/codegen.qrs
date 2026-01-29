@@ -989,22 +989,12 @@ class Codegen:
 
         if func_name == "as_ref":
             if c.arguments.args.len() > 0:
-                is_name = False
-                match as_ref(c.arguments.args[0]):
-                    case ast.Expr.Name(_): is_name = True
-                    case _: pass
-                if not is_name:
-                    self.emit("&")
+                self.emit("&")
                 self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0])))
             return
         if func_name == "as_mut":
             if c.arguments.args.len() > 0:
-                is_name = False
-                match as_ref(c.arguments.args[0]):
-                    case ast.Expr.Name(_): is_name = True
-                    case _: pass
-                if not is_name:
-                    self.emit("&mut ")
+                self.emit("&mut ")
                 self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0])))
             return
         if func_name == "deref":
@@ -1187,10 +1177,6 @@ class Codegen:
                             return
 
                         key_needs_ref = False
-                        if attr_name_inner == "get": key_needs_ref = True
-                        if attr_name_inner == "remove": key_needs_ref = True
-                        if attr_name_inner == "contains_key": key_needs_ref = True
-                        if attr_name_inner == "pop": key_needs_ref = True
 
                         is_list_method = False
                         if attr_name_inner == "append": is_list_method = True
@@ -1435,7 +1421,7 @@ class Codegen:
             sub_is_list = self.is_list_like_expr(ast.Expr.clone(as_ref(deref(s.value))))
             is_neg_s = False
             sl_s = deref(s.slice)
-            match as_ref(sl_s):
+            match sl_s.clone():
                 case ast.Expr.UnaryOp(u):
                     match u.op:
                         case ast.UnaryOp.USub: is_neg_s = True

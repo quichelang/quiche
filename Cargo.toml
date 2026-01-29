@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "crates/compiler",
-    "crates/cli",
+    "crates/quiche-host",
     "crates/quiche-self",
     "crates/runtime",
     "crates/parsley-qrs",

@@ -380,7 +380,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quiche_cli"
+name = "quiche-host"
 version = "0.1.0"
 dependencies = [
  "quiche_compiler",
@@ -404,7 +404,6 @@ name = "quiche_self"
 version = "0.1.0"
 dependencies = [
  "parsley-qrs",
- "quiche_compiler",
  "quiche_runtime",
  "ruff_python_ast",
  "ruff_python_parser",

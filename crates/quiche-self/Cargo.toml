@@ -6,7 +6,7 @@ edition = "2024"
 
 
 [build-dependencies]
-quiche_compiler = { path = "/Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/crates/compiler" }
+# quiche_compiler removed
 
 [dependencies]
 ruff_python_parser = { git = "https://github.com/astral-sh/ruff" }
