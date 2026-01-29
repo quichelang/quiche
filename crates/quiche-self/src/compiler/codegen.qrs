@@ -3,6 +3,10 @@ import types
 from compiler.extern_defs import RustString, q_push, escape_rust_string, vec_to_list
 from compiler.usage_analyzer import UsageAnalyzer
 
+# ============================================================================
+# CODEGEN CORE - Main class, fields, constructors, and core utilities
+# ============================================================================
+
 class Codegen:
     output: RustString
     symbols: types.SymbolTable
@@ -176,6 +180,10 @@ class Codegen:
 
     def emit(self, s: String):
         self.output = q_push(self.output.clone(), s)
+
+    # ========================================================================
+    # STATEMENT EMISSION - Corresponds to stmt.rs in host compiler
+    # ========================================================================
 
     def generate_stmt(self, stmt: ast.Stmt):
         match stmt:
@@ -769,6 +777,10 @@ class Codegen:
                         case None: pass
                     self.emit(";\n")
             self.register_import_symbol(alias_name.clone())
+
+    # ========================================================================
+    # EXPRESSION EMISSION - Corresponds to expr.rs in host compiler
+    # ========================================================================
 
     def generate_expr(self, expr: ast.Expr):
         match expr:
@@ -1398,6 +1410,10 @@ class Codegen:
             idx_dict = idx_dict + 1
         self.emit("]))")
 
+    # ========================================================================
+    # TYPE UTILITIES - Corresponds to types.rs in host compiler
+    # ========================================================================
+
     def infer_expr_type(self, expr: ast.Expr) -> String:
         match expr:
             case ast.Expr.NumberLiteral(_): return "i32"
@@ -1613,6 +1629,10 @@ class Codegen:
                     if self.expr_contains_name(comp, name.clone()): return True
                 return False
             case _: return False
+
+    # ========================================================================
+    # PATTERN MATCHING - Pattern generation for match statements
+    # ========================================================================
 
     def generate_pattern(self, pat: ast.Pattern):
         match pat:
