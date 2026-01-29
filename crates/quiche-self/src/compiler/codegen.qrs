@@ -13,6 +13,138 @@ def q_push(s: RustString, val: String) -> RustString: pass
 @extern(path="crate::quiche::escape_rust_string")
 def escape_rust_string(s: String) -> String: pass
 
+class UsageAnalyzer:
+    ledger: Dict[String, types.UsageInfo]
+    current_idx: i32
+    loop_depth: i32
+
+    def new() -> UsageAnalyzer:
+        return UsageAnalyzer(ledger=Dict[String, types.UsageInfo].new(), current_idx=0, loop_depth=0)
+
+    def analyze_body(self, body: List[ast.Stmt]):
+        self.ledger = Dict[String, types.UsageInfo].new()
+        self.current_idx = 0
+        self.loop_depth = 0
+        for stmt in body:
+            self.analyze_stmt(stmt)
+            self.current_idx = self.current_idx + 1
+
+    def analyze_stmt(self, stmt: ast.Stmt):
+        match stmt:
+            case ast.Stmt.Assign(a):
+                match as_ref(a.targets[0]):
+                    case ast.Expr.Name(n):
+                        self.record_usage(n.id.as_str().to_string(), True)
+                    case _: pass
+                self.analyze_expr(deref(a.value))
+            case ast.Stmt.Expr(e):
+                self.analyze_expr(deref(e.value))
+            case ast.Stmt.If(i):
+                self.analyze_expr(deref(i.test))
+                for s in i.body: self.analyze_stmt(s)
+                for clause in i.elif_else_clauses:
+                    match clause.test:
+                        case Some(t): self.analyze_expr(t)
+                        case None: pass
+                    for s in clause.body: self.analyze_stmt(s)
+                for s in i.orelse: self.analyze_stmt(s)
+            
+            case ast.Stmt.Return(r):
+                match r.value:
+                    case Some(v): self.analyze_expr(deref(v))
+                    case None: pass
+
+            case ast.Stmt.For(f):
+                self.analyze_expr(deref(f.iter))
+                self.loop_depth = self.loop_depth + 1
+                for s in f.body: self.analyze_stmt(s)
+                self.loop_depth = self.loop_depth - 1
+                for s in f.orelse: self.analyze_stmt(s)
+
+            case ast.Stmt.While(w):
+                self.analyze_expr(deref(w.test))
+                self.loop_depth = self.loop_depth + 1
+                for s in w.body: self.analyze_stmt(s)
+                self.loop_depth = self.loop_depth - 1
+                for s in w.orelse: self.analyze_stmt(s)
+
+            case ast.Stmt.Match(m):
+                self.analyze_expr(deref(m.subject))
+                for case_ in m.cases:
+                    match case_.guard:
+                        case Some(g): self.analyze_expr(deref(g))
+                        case None: pass
+                    for s in case_.body: self.analyze_stmt(s)
+
+            case ast.Stmt.AnnAssign(a):
+                match as_ref(deref(a.target)):
+                    case ast.Expr.Name(n):
+                         self.record_usage(n.id.as_str().to_string(), True)
+                    case _: pass
+                match a.value:
+                    case Some(v): self.analyze_expr(deref(v))
+                    case None: pass
+
+            case ast.Stmt.Assert(a):
+                self.analyze_expr(deref(a.test))
+                match a.msg:
+                    case Some(m): self.analyze_expr(deref(m))
+                    case None: pass
+
+            case _: pass
+
+    def analyze_expr(self, expr: ast.Expr):
+        match expr:
+            case ast.Expr.Name(n):
+                self.record_usage(n.id.as_str().to_string(), False)
+            case ast.Expr.BinOp(b):
+                self.analyze_expr(deref(b.left))
+                self.analyze_expr(deref(b.right))
+            case ast.Expr.UnaryOp(u):
+                self.analyze_expr(deref(u.operand))
+            case ast.Expr.BoolOp(b):
+                for v in b.values: self.analyze_expr(v)
+            case ast.Expr.Compare(c):
+                self.analyze_expr(deref(c.left))
+                for v in c.comparators: self.analyze_expr(v)
+            case ast.Expr.Call(c):
+                self.analyze_expr(deref(c.func))
+                for arg in c.arguments.args:
+                    self.analyze_expr(arg)
+                for kw in c.arguments.keywords:
+                    self.analyze_expr(deref(kw.value))
+            case ast.Expr.Attribute(a):
+                self.analyze_expr(deref(a.value))
+            case ast.Expr.Subscript(s):
+                self.analyze_expr(deref(s.value))
+                self.analyze_expr(deref(s.slice))
+            case ast.Expr.List(l):
+                for e in l.elts: self.analyze_expr(e)
+            case ast.Expr.Tuple(t):
+                for e in t.elts: self.analyze_expr(e)
+            case ast.Expr.If(i):
+                 self.analyze_expr(deref(i.test))
+                 self.analyze_expr(deref(i.body))
+                 self.analyze_expr(deref(i.orelse))
+            case ast.Expr.Dict(d):
+                pass
+            case ast.Expr.Lambda(l):
+                self.analyze_expr(deref(l.body))
+            case _: pass
+
+    def record_usage(self, name: String, is_mutation: bool):
+        idx = self.current_idx
+        if self.loop_depth > 0:
+            idx = idx + 1
+        
+        match self.ledger.get(name.clone()):
+            case Some(info):
+                new_mut = is_mutation
+                if info.is_mutated: new_mut = True
+                self.ledger.insert(name.clone(), types.UsageInfo.new(idx, new_mut))
+            case None:
+                self.ledger.insert(name.clone(), types.UsageInfo.new(idx, is_mutation))
+
 class Codegen:
     output: RustString
     symbols: types.SymbolTable
@@ -24,6 +156,8 @@ class Codegen:
     current_module_path: String
     class_fields: Dict[String, Dict[String, String]]
     current_class: String
+    usage_ledger: Dict[String, types.UsageInfo]
+    current_stmt_idx: i32
 
     def __init__(self):
         self.output = RustString.new()
@@ -36,15 +170,17 @@ class Codegen:
         self.current_module_path = ""
         self.class_fields = Dict[String, Dict[String, String]].new()
         self.current_class = ""
+        self.usage_ledger = Dict[String, types.UsageInfo].new()
+        self.current_stmt_idx = 0
 
     def new() -> Codegen:
-        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=Dict[String, String].new(), import_kinds=Dict[String, String].new(), clone_names=True, current_module_path="", class_fields=Dict[String, Dict[String, String]].new(), current_class="")
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=Dict[String, String].new(), import_kinds=Dict[String, String].new(), clone_names=True, current_module_path="", class_fields=Dict[String, Dict[String, String]].new(), current_class="", usage_ledger=Dict[String, types.UsageInfo].new(), current_stmt_idx=0)
 
     def new_with_imports(import_paths: Dict[String, String], import_kinds: Dict[String, String]) -> Codegen:
-        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path="", class_fields=Dict[String, Dict[String, String]].new(), current_class="")
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path="", class_fields=Dict[String, Dict[String, String]].new(), current_class="", usage_ledger=Dict[String, types.UsageInfo].new(), current_stmt_idx=0)
 
     def new_with_imports_and_module(import_paths: Dict[String, String], import_kinds: Dict[String, String], current_module_path: String) -> Codegen:
-        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path=current_module_path, class_fields=Dict[String, Dict[String, String]].new(), current_class="")
+        return Codegen(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=Dict[String, bool].new(), defined_vars=[Dict[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path=current_module_path, class_fields=Dict[String, Dict[String, String]].new(), current_class="", usage_ledger=Dict[String, types.UsageInfo].new(), current_stmt_idx=0)
 
     def generate_expr_no_clone(self, expr: ast.Expr):
         prev = self.clone_names
@@ -233,6 +369,12 @@ class Codegen:
                 self.emit("\n")
             return
 
+        # NEW: Analyze usage before emitting anything
+        analyzer = UsageAnalyzer.new()
+        analyzer.analyze_body(f.body.clone())
+        self.usage_ledger = analyzer.ledger
+        self.current_stmt_idx = 0
+
         self.emit("pub fn ")
         self.emit(func_name)
         self.emit("(")
@@ -251,26 +393,26 @@ class Codegen:
             else:
                 self.emit(param.name.as_str().to_string())
                 self.emit(": ")
-                match param.annotation:
-                    case Some(ann):
-                        type_name = self.type_to_string(ast.Expr.clone(as_ref(ann)))
-                        self.emit(type_name.clone())
-                        self.symbols.insert(param.name.as_str().to_string(), types.Symbol.var(param.name.as_str().to_string(), type_name))
-                        self.mark_var_defined(param.name.as_str().to_string())
-                    case None:
-                        self.emit("Any")
-                        pass
+                if param.annotation.is_some():
+                    ann = param.annotation.clone().unwrap()
+                    type_name = self.type_to_string(deref(ann))
+                    self.emit(type_name.clone())
+                    self.symbols.insert(param.name.as_str().to_string(), types.Symbol.var(param.name.as_str().to_string(), type_name))
+                    self.mark_var_defined(param.name.as_str().to_string())
+                else:
+                    self.emit("Any")
+                    pass
         self.emit(")")
-        match f.returns:
-            case Some(ret):
-                ret_type = self.type_to_string(ast.Expr.clone(as_ref(ret)))
-                self.emit(" -> ")
-                self.emit(ret_type)
-            case None: pass
+        if f.returns.is_some():
+            ret = f.returns.clone().unwrap()
+            ret_type = self.type_to_string(deref(ret))
+            self.emit(" -> ")
+            self.emit(ret_type)
         self.emit(" {\n")
 
         for s in f.body:
             self.generate_stmt(s)
+            self.current_stmt_idx = self.current_stmt_idx + 1
         self.exit_var_scope()
         self.symbols.exit_scope()
         self.emit("}\n")
@@ -695,11 +837,30 @@ class Codegen:
             case ast.Expr.NoneLiteral(_): self.emit("None")
             case ast.Expr.Name(n):
                 name_str = n.id.as_str().to_string()
-                if self.clone_names and not self.is_type_or_mod(name_str.clone()):
+                if self.is_type_or_mod(name_str.clone()):
                     self.emit(name_str)
-                    self.emit(".clone()")
                 else:
-                    self.emit(name_str)
+                    match self.usage_ledger.get(name_str.clone()):
+                        case Some(info):
+                            is_terminal = (info.last_use_idx == self.current_stmt_idx)
+                            if is_terminal:
+                                self.emit(name_str)
+                            else:
+                                if self.clone_names:
+                                    self.emit(name_str)
+                                    self.emit(".clone()")
+                                elif info.is_mutated:
+                                    self.emit("&mut ")
+                                    self.emit(name_str)
+                                else:
+                                    self.emit("&")
+                                    self.emit(name_str)
+                        case None:
+                            if self.clone_names:
+                                self.emit(name_str)
+                                self.emit(".clone()")
+                            else:
+                                self.emit(name_str)
             case ast.Expr.Call(c): self.emit_call(c)
             case ast.Expr.List(l): self.emit_list(l)
             case ast.Expr.BinOp(b): self.emit_bin_op(b)
@@ -1287,7 +1448,7 @@ class Codegen:
                                 case ast.Expr.Name(nv):
                                     return nv.id.as_str().to_string()
                                 case ast.Expr.Subscript(sv):
-                                    return self.type_to_string(deref(sv.value))
+                                    return self.type_to_string(deref(sv.value.clone()))
                                 case _: pass
                     case _: pass
                 return "unknown"

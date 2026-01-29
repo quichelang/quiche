@@ -135,3 +135,10 @@ class TypeChecker:
                 return n.id.as_str().to_string()
             case _:
                 return "complex"
+
+class UsageInfo:
+    last_use_idx: i32
+    is_mutated: bool
+
+    def new(idx: i32, is_mut: bool) -> UsageInfo:
+        return UsageInfo(last_use_idx=idx, is_mutated=is_mut)
