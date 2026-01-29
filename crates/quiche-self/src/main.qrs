@@ -487,8 +487,7 @@ def main():
         flags = parse_warn_flags(result.flags.clone())
         if flags.warn_all:
             flags.warn_quiche = True
-        source = read_to_string(cmd.clone())
-        compile_source(source, cmd.clone(), flags.warn_quiche, flags.strict)
+        run_transpiled_file(cmd.clone(), result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche)
         return
 
     print(f"Error: Unrecognized command or file '{cmd}'")

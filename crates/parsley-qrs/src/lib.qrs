@@ -152,8 +152,6 @@ class Parsley:
 
         return result
 
-        return result
-
     def is_command(self: Parsley, name: String) -> bool:
         i = 0
         while i < len(self.commands):

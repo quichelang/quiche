@@ -419,7 +419,7 @@ impl Codegen {
                 self.output.push_str("crate::quiche::check!(");
 
                 if func_name == "print" {
-                    self.output.push_str("println!(\"{:?}\", ");
+                    self.output.push_str("println!(\"{}\", ");
                     for (i, arg) in c.arguments.args.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");

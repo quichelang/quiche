@@ -84,7 +84,6 @@ class TypeChecker:
                 self.symbols.insert(f.name.as_str().to_string(), Symbol.new(f.name.as_str().to_string(), "function", True, False, False, False))
                 self.symbols.enter_scope()
                 # Register args
-                # Register args
                 for arg_with_default in f.parameters.args:
                     arg = arg_with_default.parameter
                     match arg.annotation:

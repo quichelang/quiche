@@ -1023,7 +1023,7 @@ class Codegen:
             return
 
         if func_name == "print":
-            self.emit("println!(\"{:?}\", ")
+            self.emit("println!(\"{}\", ")
             first_p = True
             for arg in c.arguments.args:
                 if not first_p: self.emit(", ")

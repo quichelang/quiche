@@ -167,10 +167,7 @@ pub fn compile(source: &str) -> Option<String> {
             // println!("Successfully generated Rust code:\n{}", rust_code);
             Some(dedup_shadowed_let_mut(&rust_code))
         }
-        Err(e) => {
-            println!("Parse error: {:?}", e);
-            None
-        }
+        Err(_e) => None,
     }
 }
 
