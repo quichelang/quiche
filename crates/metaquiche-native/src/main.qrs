@@ -1,5 +1,5 @@
 
-from ast import Stmt, Parsed
+from rust.quiche_parser.ast import Stmt, Parsed
 
 from compiler.codegen import Codegen
 from rust.parsley_qrs import Parsley

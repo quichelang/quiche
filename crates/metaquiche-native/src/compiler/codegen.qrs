@@ -1,8 +1,8 @@
-import ast
+import rust.quiche_parser.ast as ast
 from rust.quiche_runtime import deref, as_ref
 
 
-from extern_defs import RustString, escape_rust_string
+# extern_defs is provided by the wrapper module
 
 
 from compiler.type_utils import infer_type as util_infer_type
@@ -11,7 +11,7 @@ from compiler.type_utils import is_tuple as util_is_tuple
 from compiler.type_utils import get_root as util_get_root
 from compiler.type_utils import is_type_or_module as util_is_type_or_module
 from compiler.type_utils import contains_name as util_contains_name
-import extern_defs
+# Using extern_defs from wrapper
 # ============================================================================
 # CODEGEN CORE - Main class, fields, constructors, and core utilities
 # ============================================================================

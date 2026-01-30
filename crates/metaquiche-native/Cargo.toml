@@ -12,6 +12,7 @@ edition = "2024"
 ruff_python_parser = { git = "https://github.com/astral-sh/ruff" }
 ruff_python_ast = { git = "https://github.com/astral-sh/ruff" }
 quiche-runtime = { path = "../quiche-runtime" }
+quiche-parser = { path = "../quiche-parser" }
 parsley-qrs = { path = "../parsley-qrs" }
 
 [[bin]]

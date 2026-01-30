@@ -304,6 +304,7 @@ name = "metaquiche-native"
 version = "0.1.0"
 dependencies = [
  "parsley-qrs",
+ "quiche-parser",
  "quiche-runtime",
  "ruff_python_ast",
  "ruff_python_parser",

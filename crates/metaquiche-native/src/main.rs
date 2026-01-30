@@ -681,7 +681,9 @@ pub mod generated_main {
     use super::{concat2, concat3, concat4};
     use crate::compiler;
     use quiche_runtime::as_ref;
-    use std::collections::HashMap; // needed for ImportMaps // expose compiler module
+
+    // Re-export ast from quiche_parser so generated code can reference ast::
+    pub use quiche_parser::ast;
 
     include!(concat!(env!("OUT_DIR"), "/main.rs"));
 
@@ -698,41 +700,9 @@ pub mod generated_main {
             warn_quiche,
         }
     }
-
-    pub fn create_ImportMaps(
-        paths: HashMap<String, String>,
-        kinds: HashMap<String, String>,
-    ) -> ImportMaps {
-        ImportMaps { paths, kinds }
-    }
-
-    pub fn create_codegen(
-        output: String,
-        tuple_vars: HashMap<String, bool>,
-        defined_vars: Vec<HashMap<String, bool>>,
-        import_paths: HashMap<String, String>,
-        import_kinds: HashMap<String, String>,
-        clone_names: bool,
-        current_module_path: String,
-        class_fields: HashMap<String, HashMap<String, String>>,
-        current_class: String,
-    ) -> self::compiler::codegen::Codegen {
-        self::compiler::codegen::Codegen {
-            output,
-            tuple_vars,
-            defined_vars,
-            import_paths,
-            import_kinds,
-            clone_names,
-            current_module_path,
-            class_fields,
-            current_class,
-        }
-    }
 }
 
-#[cfg(not(feature = "bootstrap"))]
-pub use generated_main::ast;
+// ast is now accessed via quiche_parser::ast directly
 
 #[cfg(not(feature = "bootstrap"))]
 fn main() {
