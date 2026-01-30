@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-quiche_compiler = { path = "../compiler" }
+quiche-compiler = { path = "../quiche-compiler" }
 
 [[bin]]
 name = "quiche-host"

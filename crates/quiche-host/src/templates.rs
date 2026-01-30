@@ -21,7 +21,7 @@ edition = "2024"
 [workspace]
 
 [build-dependencies]
-quiche_compiler = {{ path = "{}" }}
+quiche-compiler = {{ path = "{}" }}
 
 [dependencies]
 "#,

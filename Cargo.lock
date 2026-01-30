@@ -309,7 +309,7 @@ dependencies = [
 name = "parsley-qrs"
 version = "0.1.0"
 dependencies = [
- "quiche_compiler",
+ "quiche-runtime",
 ]
 
 [[package]]
@@ -380,15 +380,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quiche-host"
-version = "0.1.0"
-dependencies = [
- "quiche_compiler",
- "tempfile",
-]
-
-[[package]]
-name = "quiche_compiler"
+name = "quiche-compiler"
 version = "0.1.0"
 dependencies = [
  "ruff_python_ast",
@@ -396,15 +388,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "quiche_runtime"
+name = "quiche-host"
+version = "0.1.0"
+dependencies = [
+ "quiche-compiler",
+ "tempfile",
+]
+
+[[package]]
+name = "quiche-runtime"
 version = "0.1.0"
 
 [[package]]
-name = "quiche_self"
+name = "quiche-self"
 version = "0.1.0"
 dependencies = [
  "parsley-qrs",
- "quiche_runtime",
+ "quiche-runtime",
  "ruff_python_ast",
  "ruff_python_parser",
  "tempfile",

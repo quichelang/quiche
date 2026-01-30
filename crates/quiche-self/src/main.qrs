@@ -498,11 +498,11 @@ def main():
             date = version_get_date()
             kind = version_get_build_kind()
             
-            print(f"compiler path/name: {stage}")
-            print(f"active version stage: {stage}")
-            print(f"commit #: {commit}")
-            print(f"datetime of build: {date}")
-            print(f"build kind: {kind}")
+            print(f"quiche-self {stage}")
+            print(f"  stage:   {stage}")
+            print(f"  commit:  {commit}")
+            print(f"  built:   {date}")
+            print(f"  profile: {kind}")
             return
 
     if cmd.ends_with(as_ref(".qrs")):

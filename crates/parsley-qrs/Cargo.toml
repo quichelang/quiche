@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [build-dependencies]
-quiche_compiler = { path = "/Users/jagtesh/.gemini/antigravity/playground/exo-kuiper/quiche/crates/compiler" }
+# No build-time compiler dependency - uses QUICHE_BOOTSTRAP_BIN at build time
 
 [dependencies]
+quiche-runtime = { path = "../quiche-runtime" }
 
 [lib]
 path = "src/lib.rs"
