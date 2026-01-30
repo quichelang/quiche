@@ -1144,7 +1144,8 @@ class Codegen:
                              if attr_name_inner == "clone":
                                  self.generate_expr(ast.Expr.clone(as_ref(deref(at.value))))
                              else:
-                                 self.generate_expr_no_clone(ast.Expr.clone(as_ref(deref(at.value))))
+                                 # Use emit_lvalue_target to avoid spurious & prefix on receivers
+                                 self.emit_lvalue_target(ast.Expr.clone(as_ref(deref(at.value))))
                              if attr_name_inner == "clone": self.clone_names = old_cn
 
                         self.emit(".")
@@ -1165,13 +1166,19 @@ class Codegen:
                             self.emit(attr_name_inner.clone())
                             self.emit("(")
 
-                        # Always pass reference for dict-like method first args
-                        dict_like_method = (attr_name_inner == "get") or (attr_name_inner == "contains_key") or (attr_name_inner == "remove")
-
                         idx_arg_m = 0
                         for arg in c.arguments.args.clone():
                             if idx_arg_m > 0: self.emit(", ")
-                            if (key_needs_ref or dict_like_method) and idx_arg_m == 0: self.emit("&")
+                            # Skip adding & if arg is already as_ref() call
+                            arg_is_ref = False
+                            match arg.clone():
+                                case ast.Expr.Call(ac):
+                                    match deref(ac.func.clone()):
+                                        case ast.Expr.Name(n):
+                                            if n.id.as_str().to_string() == "as_ref": arg_is_ref = True
+                                        case _: pass
+                                case _: pass
+                            if key_needs_ref and idx_arg_m == 0 and not arg_is_ref: self.emit("&")
                             self.generate_expr(arg)
                             idx_arg_m = idx_arg_m + 1
                         self.emit(")")

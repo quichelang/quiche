@@ -73,7 +73,7 @@ class SymbolTable:
             i_val: usize = i
             # Using deref because i_val is mutated loop var, emitted as reference
             scope = as_ref(self.scopes[to_usize(i_val)])
-            match scope.get(name.as_str()):
+            match scope.get(as_ref(name.clone())):
                 case Some(s):
                     # Force Symbol type
                     s_val: Symbol = Symbol.identity(s.clone())

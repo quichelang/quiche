@@ -342,7 +342,17 @@ impl Codegen {
                                 if i > 0 {
                                     self.output.push_str(", ");
                                 }
-                                if i == 0 && key_needs_ref {
+                                // Check if arg is already an as_ref() call to avoid double reference
+                                let arg_is_ref = if let ast::Expr::Call(call) = arg {
+                                    if let ast::Expr::Name(n) = &*call.func {
+                                        n.id.as_str() == "as_ref"
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                };
+                                if i == 0 && key_needs_ref && !arg_is_ref {
                                     self.output.push_str("&");
                                 }
                                 self.generate_expr(arg.clone());

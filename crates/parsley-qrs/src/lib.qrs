@@ -129,9 +129,9 @@ class Parsley:
                 i = i + 1
                 continue
 
-            match self.alias_map.get(arg.clone()):
+            match self.alias_map.get(as_ref(arg.clone())):
                 case Some(name):
-                    match self.by_name.get(name.clone()):
+                    match self.by_name.get(as_ref(name.clone())):
                         case Some(spec):
                             if spec.takes_value:
                                 if i + 1 < len(args):
