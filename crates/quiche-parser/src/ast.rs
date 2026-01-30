@@ -194,7 +194,7 @@ pub enum CmpOperator {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Constant {
-    None,
+    NoneVal,
     Bool(bool),
     Str(String),
     Int(i64),
@@ -304,3 +304,4 @@ pub struct AssertStmt {
     pub test: Box<QuicheExpr>,
     pub msg: Option<Box<QuicheExpr>>,
 }
+pub type Expr = QuicheExpr; pub type Stmt = QuicheStmt;

@@ -412,7 +412,7 @@ impl Codegen {
                 self.output.push_str(&n);
             }
             ast::QuicheExpr::Constant(c) => match c {
-                ast::Constant::None => self.output.push_str("None"),
+                ast::Constant::NoneVal => self.output.push_str("None"),
                 ast::Constant::Bool(b) => self.output.push_str(&b.to_string()),
                 ast::Constant::Str(s) => self.output.push_str(&format!("String::from({:?})", s)),
                 ast::Constant::Int(i) => self.output.push_str(&i.to_string()),

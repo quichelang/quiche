@@ -142,7 +142,7 @@ fn lower_pattern(pat: ast::Pattern) -> Result<Pattern, ParseError> {
             // TODO: Fix Constant mapping (Ruff changed Ast)
             // For now mapping everything to None/Fallback or checking debug string?
             // Actually let's just use simplistic mapping based on Debug format or skip
-            let c = Constant::None;
+            let c = Constant::NoneVal;
             Ok(Pattern::MatchSingleton(c))
         }
         ast::Pattern::MatchSequence(p) => {
@@ -408,7 +408,7 @@ fn lower_expr(expr: ast::Expr) -> Result<QuicheExpr, ParseError> {
         },
         ast::Expr::StringLiteral(s) => Ok(QuicheExpr::Constant(Constant::Str(s.value.to_string()))),
         ast::Expr::BooleanLiteral(b) => Ok(QuicheExpr::Constant(Constant::Bool(b.value))),
-        ast::Expr::NoneLiteral(_) => Ok(QuicheExpr::Constant(Constant::None)),
+        ast::Expr::NoneLiteral(_) => Ok(QuicheExpr::Constant(Constant::NoneVal)),
         ast::Expr::BinOp(b) => Ok(QuicheExpr::BinOp {
             left: Box::new(lower_expr(*b.left)?),
             op: lower_operator(b.op),

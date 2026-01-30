@@ -3,28 +3,28 @@
 # These are standalone functions that take Codegen reference as first parameter
 
 from std.cell import Ref
-import rust.quiche_parser.ast as ast
+import rust.quiche_parser.ast as q_ast
 
 from compiler.extern_defs import RustString, q_push
 
 # Forward declaration - Codegen will be imported by files that use this
 # The cg parameter is typed as &Codegen in the generated Rust
 
-def infer_type(expr: ast.Expr) -> String:
+def infer_type(expr: q_ast.Expr) -> String:
     return "i32"
 
-def type_to_string(expr: ast.Expr) -> String:
+def type_to_string(expr: q_ast.Expr) -> String:
     return RustString.new()
 
-def is_tuple(expr: ast.Expr) -> bool:
+def is_tuple(expr: q_ast.Expr) -> bool:
     return False
 
-def get_root(expr: ast.Expr) -> Option[String]:
+def get_root(expr: q_ast.Expr) -> Option[String]:
     return None
 
 def is_type_or_module(name: String) -> bool:
     if name == "self": return False
     return False
 
-def contains_name(expr: ast.Expr, name: String) -> bool:
+def contains_name(expr: q_ast.Expr, name: String) -> bool:
     return False

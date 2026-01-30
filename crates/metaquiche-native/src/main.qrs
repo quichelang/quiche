@@ -1,5 +1,5 @@
 
-from rust.quiche_parser.ast import Stmt, Parsed
+from rust.quiche_parser.ast import Stmt, QuicheModule
 
 from compiler.codegen import Codegen
 from rust.parsley_qrs import Parsley
@@ -16,8 +16,8 @@ class RustString:
 class ParseError:
     pass
 
-@extern(path="ruff_python_parser::parse_module")
-def parse_module(source: StrRef) -> Result[Parsed, ParseError]:
+@extern(path="quiche_parser::parse")
+def parse_module(source: StrRef) -> Result[QuicheModule, ParseError]:
     pass
 
 @extern(path="crate::quiche::env_args_helper")
@@ -149,13 +149,13 @@ def collect_module_exports(module_index: HashMap[String, String], module_path: S
         case Some(path):
             source = read_to_string(path.clone())
             parsed = parse_module(source.as_str())
-            module = parsed.into_syntax()
+            module = parsed
             for stmt in module.body:
                 match stmt:
                     case Stmt.ClassDef(c):
-                        exports.insert(c.name.id.to_string(), "class")
+                        exports.insert(c.name.to_string(), "class")
                     case Stmt.FunctionDef(f):
-                        exports.insert(f.name.id.to_string(), "func")
+                        exports.insert(f.name.to_string(), "func")
                     case _: pass
         case None: pass
     return exports
@@ -169,12 +169,11 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
         match stmt:
             case Stmt.Import(i):
                 for alias in i.names:
-                    module_name = alias.name.id.to_string()
+                    module_name = alias.name.to_string()
                     alias_name = module_name.clone()
                     match alias.asname.clone():
                         case Some(a):
-                            ident: ast.Identifier = a
-                            alias_name = ident.id.to_string()
+                            alias_name = a.to_string()
                         case None: pass
                     module_path = resolve_module_path(current_module_path.clone(), module_name, 0)
                     rust_path = module_to_rust_path(module_path)
@@ -184,8 +183,8 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                 base_module = ""
                 match i.module:
                     case Some(m):
-                        if m.id.to_string() == "lib.test": continue
-                        base_module = resolve_module_path(current_module_path.clone(), m.id.to_string(), i.level)
+                        if m.to_string() == "lib.test": continue
+                        base_module = resolve_module_path(current_module_path.clone(), m.to_string(), i.level)
                     case None:
                         base_module = resolve_module_path(current_module_path.clone(), "", i.level)
 
@@ -198,10 +197,10 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                         case None: pass
 
                 for alias in i.names:
-                    name = alias.name.id.to_string()
+                    name = alias.name.to_string()
                     alias_name = name.clone()
                     match alias.asname.clone():
-                        case Some(a): alias_name = a.id.to_string()
+                        case Some(a): alias_name = a.to_string()
                         case None: pass
 
                     kind = "value"
@@ -220,8 +219,8 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                             else:
                                 match exports.get(as_ref(name.clone())):
                                     case Some(k):
-                                        if deref(k) == "class": kind = "type"
-                                        elif deref(k) == "func": kind = "func"
+                                        if k == "class": kind = "type"
+                                        elif k == "func": kind = "func"
                                         else: kind = "value"
                                     case None: kind = "value"
 
@@ -244,7 +243,7 @@ def compile_source_to_string(source: String, filename: String, warn_quiche: bool
     # Ruff parse_module does not take filename in simple API
     # check! macro unwraps Result automatically for us in host compiler
     parsed = parse_module(source.as_str())
-    module = parsed.into_syntax()
+    module = parsed
     stmts = module.body
 
     root_dir = path_dirname(filename.clone())

@@ -1,4 +1,4 @@
-import rust.quiche_parser.ast as ast
+import rust.quiche_parser.ast as q_ast
 from rust.quiche_runtime import deref, as_ref
 
 
@@ -21,13 +21,13 @@ class Codegen:
     tuple_vars: HashMap[String, bool]
     defined_vars: Vec[HashMap[String, bool]]
     import_paths: HashMap[String, String]
-    def infer_expr_type(self, expr: ast.Expr) -> String:
+    def infer_expr_type(self, expr: q_ast.Expr) -> String:
         return util_infer_type(expr)
 
-    def type_to_string(self, expr: ast.Expr) -> String:
+    def type_to_string(self, expr: q_ast.Expr) -> String:
         return util_type_to_string(expr)
 
-    def is_tuple_expr(self, expr: ast.Expr) -> bool:
+    def is_tuple_expr(self, expr: q_ast.Expr) -> bool:
         return util_is_tuple(expr)
 
     def is_var_defined_in_scopes(self, name: String) -> bool:
@@ -40,11 +40,24 @@ class Codegen:
                 case None: pass
         return False
 
-    def get_root_name(self, expr: ast.Expr) -> Option[String]:
-        return util_get_root(expr)
+    def get_root_name(self, expr: q_ast.Expr) -> Option[String]:
+        match expr:
+            case q_ast.Expr.Name(n): return Some(n.to_string())
+            case q_ast.Expr.Attribute(value=v, attr=a):
+                return self.get_root_name(deref(v.clone()))
+            case q_ast.Expr.Subscript(value=v, slice=s):
+                return self.get_root_name(deref(v.clone()))
+            case q_ast.Expr.Call(func=f, args=a, keywords=k):
+                return self.get_root_name(deref(f.clone()))
+            case _: return None
 
     def is_type_or_mod(self, name: String) -> bool:
-        return util_is_type_or_module(name)
+        if name == "self": return False
+        match self.import_kinds.get(as_ref(name)):
+             case Some(k):
+                  if k == "module" or k == "type": return True
+             case None: pass
+        return False
 
     def is_var_defined(self, name: String) -> bool:
         return False
@@ -67,34 +80,37 @@ class Codegen:
     def define_var(self, name: String):
         self.mark_var_defined(name)
 
-    def expr_contains_name(self, expr: ast.Expr, name: String) -> bool:
+    def expr_contains_name(self, expr: q_ast.Expr, name: String) -> bool:
         return util_contains_name(expr, name)
 
-    def generate_pattern(self, pat: ast.Pattern):
+    def generate_pattern(self, pat: q_ast.Pattern):
         match pat:
-            case ast.Pattern.MatchValue(v): self.emit_pattern_path(deref(v.value))
-            case ast.Pattern.MatchAs(a):
-                match a.name:
-                    case Some(n): self.emit(n.id.to_string())
+            case q_ast.Pattern.MatchValue(v): self.emit_pattern_path(deref(v))
+            case q_ast.Pattern.MatchAs(pattern=pattern, name=name):
+                match name:
+                    case Some(n): self.emit(n)
                     case None: self.emit("_")
-            case ast.Pattern.MatchClass(c):
+            case q_ast.Pattern.MatchClass(c):
                 self.emit_pattern_path(deref(c.cls))
-                if c.arguments.patterns.len() > 0:
+                if c.patterns.len() > 0:
                     self.emit("(")
                     first_p = True
-                    for p in c.arguments.patterns.clone():
+                    for p in c.patterns.clone():
                         if not first_p: self.emit(", ")
                         self.generate_pattern(p)
                         first_p = False
                     self.emit(")")
-                elif c.arguments.keywords.len() > 0:
+                elif c.kwd_patterns.len() > 0:
                     self.emit(" { ")
                     idx_kw_pat = 0
-                    for kw in c.arguments.keywords.clone():
+                    for pat in c.kwd_patterns.clone():
                         if idx_kw_pat > 0: self.emit(", ")
-                        self.emit(kw.attr.id.to_string())
+                        # We need the attr name here but kwd_patterns is Vec<Pattern>
+                        # kwd_attrs is parallel Vec<String>
+                        attr_name = c.kwd_attrs[idx_kw_pat]
+                        self.emit(attr_name)
                         self.emit(": ")
-                        self.generate_pattern(kw.pattern)
+                        self.generate_pattern(pat)
                         idx_kw_pat = idx_kw_pat + 1
                     self.emit(" }")
                 else: self.emit(" { .. }")
@@ -136,47 +152,50 @@ class Codegen:
             current_class=""
         )
 
-    def generate_expr_no_clone(self, expr: ast.Expr):
+    def generate_expr_no_clone(self, expr: q_ast.Expr):
         prev = self.clone_names
         self.clone_names = False
         self.generate_expr(expr)
         self.clone_names = prev
 
-    def emit_lvalue_target(self, expr: ast.Expr):
+    def emit_lvalue_target(self, expr: q_ast.Expr):
         # Emit raw variable/expression for use as mutation target (no &mut/& prefix, no .clone())
         match expr:
-            case ast.Expr.Name(n):
-                self.emit(n.id.to_string())
-            case ast.Expr.Subscript(s):
+            case q_ast.Expr.Name(n):
+                self.emit(n.to_string())
+            case q_ast.Expr.Subscript(value=value, slice=slice):
                 # For nested subscripts like obj["y"][1], emit recursively
-                self.emit_lvalue_target(deref(s.value.clone()))
+                self.emit_lvalue_target(deref(value.clone()))
                 self.emit("[")
                 # If the slice is a string literal, it's a HashMap key - add & prefix
                 lvalue_slice_is_string = False
-                match deref(s.slice.clone()):
-                    case ast.Expr.StringLiteral(_): lvalue_slice_is_string = True
+                match deref(slice.clone()):
+                    case q_ast.Expr.Constant(c):
+                        match c:
+                            case q_ast.Constant.Str(_): lvalue_slice_is_string = True
+                            case _: pass
                     case _: pass
                 if lvalue_slice_is_string:
                     self.emit("&")
-                self.generate_expr(deref(s.slice.clone()))
+                self.generate_expr(deref(slice.clone()))
                 self.emit("]")
-            case ast.Expr.Attribute(a):
-                self.emit_lvalue_target(deref(a.value.clone()))
+            case q_ast.Expr.Attribute(value=value, attr=attr):
+                self.emit_lvalue_target(deref(value.clone()))
                 self.emit(".")
-                self.emit(a.attr.id.to_string())
+                self.emit(attr.clone())
             case _:
                 # Fallback to generate_expr_no_clone for other cases
                 self.generate_expr_no_clone(expr)
 
-    def emit_pattern_path(self, expr: ast.Expr):
+    def emit_pattern_path(self, expr: q_ast.Expr):
         # Emit type/enum path using :: for all segments (for match case patterns)
         match expr:
-            case ast.Expr.Name(n):
-                self.emit(n.id.to_string())
-            case ast.Expr.Attribute(a):
-                self.emit_pattern_path(deref(a.value.clone()))
+            case q_ast.Expr.Name(n):
+                self.emit(n.to_string())
+            case q_ast.Expr.Attribute(value=value, attr=attr):
+                self.emit_pattern_path(deref(value.clone()))
                 self.emit("::")
-                self.emit(a.attr.id.to_string())
+                self.emit(attr.clone())
             case _:
                 self.generate_expr(expr)
 
@@ -222,74 +241,75 @@ class Codegen:
     # STATEMENT EMISSION - Corresponds to stmt.rs in host compiler
     # ========================================================================
 
-    def generate_stmt(self, stmt: ast.Stmt):
+    def generate_stmt(self, stmt: q_ast.Stmt):
         match stmt:
-            case ast.Stmt.FunctionDef(f):
+            case q_ast.Stmt.FunctionDef(f):
                 self.emit_function_def(f)
-            case ast.Stmt.Expr(e):
-                self.emit_stmt_expr(e)
-            case ast.Stmt.Return(r):
+            case q_ast.Stmt.Expr(e):
+                self.emit_stmt_expr(deref(e))
+            case q_ast.Stmt.Return(r):
                 self.emit_return(r)
-            case ast.Stmt.Try(_):
-                self.emit("// Try/Except not supported in MetaQuiche\n")
-            case ast.Stmt.Assign(a):
+            case q_ast.Stmt.Assign(a):
                 self.emit_assign(a)
-            case ast.Stmt.AnnAssign(a):
+            case q_ast.Stmt.AnnAssign(a):
                 self.emit_ann_assign(a)
-            case ast.Stmt.For(f):
+            case q_ast.Stmt.For(f):
                 self.emit_for(f)
-            case ast.Stmt.If(i):
+            case q_ast.Stmt.If(i):
                 self.emit_if(i)
-            case ast.Stmt.While(w):
+            case q_ast.Stmt.While(w):
                 self.emit_while(w)
-            case ast.Stmt.ClassDef(c):
+            case q_ast.Stmt.ClassDef(c):
                 self.emit_class_def(c)
-            case ast.Stmt.Match(m):
+            case q_ast.Stmt.Match(m):
                 self.emit_match(m)
-            case ast.Stmt.Import(i):
+            case q_ast.Stmt.Import(i):
                 self.emit_import(i)
-            case ast.Stmt.ImportFrom(i):
+            case q_ast.Stmt.ImportFrom(i):
                 self.emit_import_from(i)
-            case ast.Stmt.Assert(a):
+            case q_ast.Stmt.Assert(a):
                 self.emit_assert(a)
             case _:
                 self.emit("// Unimplemented stmt\n")
 
-    def emit_assert(self, a: ast.StmtAssert):
+    def emit_assert(self, a: q_ast.AssertStmt):
         self.emit("assert!(")
         self.generate_expr(deref(a.test))
         match a.msg:
             case Some(m):
                 self.emit(", \"{:?}\", ")
-                self.generate_expr(deref(m))
+                m_expr = deref(m)
+                self.generate_expr(m_expr)
             case None: pass
         self.emit(");\n")
 
-    def emit_function_def(self, f: ast.StmtFunctionDef):
+    def emit_function_def(self, f: q_ast.FunctionDef):
         # Check for @extern
         is_extern = False
         extern_path = ""
         for dec in f.decorator_list.clone():
-            match as_ref(dec.expression):
-                case ast.Expr.Name(n):
-                    if n.id.to_string() == "extern":
+            match dec:
+                case q_ast.Expr.Name(n):
+                    if n.to_string() == "extern":
                         is_extern = True
-                case ast.Expr.Call(call):
-                    match as_ref(deref(call.func)):
-                        case ast.Expr.Name(func_node):
-                            if func_node.id.to_string() == "extern":
+                case q_ast.Expr.Call(func=func, args=args, keywords=keywords):
+                    match as_ref(deref(func)):
+                        case q_ast.Expr.Name(func_name):
+                            if func_name.to_string() == "extern":
                                 is_extern = True
-                                for kw in call.arguments.keywords.clone():
+                                for kw in keywords.clone():
                                     match as_ref(kw.arg):
-                                        case Some(ident):
-                                            arg_name: String = ident.id.to_string()
-                                            if arg_name == "path":
-                                                match as_ref(kw.value):
-                                                    case ast.Expr.StringLiteral(s):
-                                                        extern_path = s.value.to_string()
+                                        case Some(arg_name):
+                                            if arg_name.as_str() == "path":
+                                                match as_ref(deref(kw.value)):
+                                                    case q_ast.Expr.Constant(c):
+                                                        match c:
+                                                            case q_ast.Constant.Str(s):
+                                                                extern_path = s.to_string()
+                                                            case _: pass
                                                     case _: pass
-                                            elif arg_name == "no_generic":
-                                                pass
+                                            elif arg_name.as_str() == "no_generic":
+                                                 pass
                                         case _: pass
                         case _: pass
                 case _: pass
@@ -298,7 +318,9 @@ class Codegen:
         #    self.emit_function_def_decorator(f)
         #    return
 
-        func_name = f.name.id.to_string()
+        if is_extern:
+             pass
+        func_name = f.name.to_string()
         if is_extern:
             if extern_path != "":
                 self.emit("pub use ")
@@ -318,22 +340,22 @@ class Codegen:
         self.enter_var_scope()
         # Register keys and emit args
         first_arg: bool = True
-        for param_def in f.parameters.args:
+        for param in f.args.clone():
             if not first_arg:
                 self.emit(", ")
             first_arg = False
 
-            param = param_def.parameter
-            if param.name.id.to_string() == "self":
+            if param.arg.to_string() == "self":
                 self.emit("&mut self")
             else:
-                self.emit(param.name.id.to_string())
+                self.emit(param.arg.to_string())
                 self.emit(": ")
                 if param.annotation.is_some():
                     ann = param.annotation.clone().unwrap()
-                    type_name = self.type_to_string(deref(ann.clone()))
+                    ann_expr = deref(ann.clone())
+                    type_name = self.type_to_string(ann_expr)
                     self.emit(type_name.clone())
-                    self.mark_var_defined(param.name.id.to_string())
+                    self.mark_var_defined(param.arg.to_string())
                 else:
                     self.emit("Any")
                     pass
@@ -350,35 +372,39 @@ class Codegen:
         self.exit_var_scope()
         self.emit("}\n")
 
-    def emit_stmt_expr(self, e: ast.StmtExpr):
+    def emit_stmt_expr(self, e: q_ast.QuicheExpr):
         is_doc = False
-        match as_ref(deref(e.value)):
-            case ast.Expr.StringLiteral(s):
-                is_doc = True
-                self.emit("#![doc = \"")
-                self.emit(escape_rust_string(s.value.to_string()))
-                self.emit("\"]\n")
+        match e:
+            case q_ast.Expr.Constant(c):
+                match c:
+                    case q_ast.Constant.Str(s):
+                        is_doc = True
+                        self.emit("#![doc = \"")
+                        self.emit(escape_rust_string(s.to_string()))
+                        self.emit("\"]\n")
+                    case _: pass
             case _: pass
 
         if not is_doc:
-            self.generate_expr(deref(e.value))
+            self.generate_expr(e)
             self.emit(";\n")
 
-    def emit_return(self, r: ast.StmtReturn):
+    def emit_return(self, r: Option[Box[q_ast.Expr]]):
         self.emit("return ")
-        match r.value:
+        match r:
             case Some(v):
-                self.generate_expr(deref(v))
+                v_expr = deref(v)
+                self.generate_expr(v_expr)
             case None: pass
         self.emit(";\n")
 
-    def emit_assign(self, a: ast.StmtAssign):
+    def emit_assign(self, a: q_ast.Assign):
         # Simple single target assignment
         is_subscript = False
         subscript_is_map = False
         match as_ref(a.targets[0]):
-            case ast.Expr.Name(n):
-                name_assign = n.id.to_string()
+            case q_ast.Expr.Name(n):
+                name_assign = n.to_string()
                 is_existing = self.is_var_defined_in_scopes(name_assign.clone())
                 if not is_existing:
                     if self.expr_contains_name(Clone.clone(as_ref(deref(a.value))), name_assign.clone()):
@@ -392,56 +418,63 @@ class Codegen:
                     self.define_var(name_assign.clone())
                     self.mark_var_defined(name_assign.clone())
                 match as_ref(deref(a.value)):
-                    case ast.Expr.Tuple(_):
+                    case q_ast.Expr.Tuple(_):
                         self.tuple_vars.insert(name_assign.clone(), True)
                     case _: pass
-            case ast.Expr.Attribute(at):
-                self.emit_attribute_target(at.clone())
+            case q_ast.Expr.Attribute(value=value, attr=attr):
+                # Reconstruct Attribute expr for emission
+                # We can't easily clone the whole struct variant from fields, so we just construct what emit_attribute_target needs
+                # Actually helper takes expr 
+                # Let's fix emit_attribute_target later, for now inline simple emission
+                self.generate_expr(deref(value))
+                self.emit(".")
+                self.emit(attr.clone())
                 self.emit(" = ")
-            case ast.Expr.Subscript(s):
-                self.emit_lvalue_target(deref(s.value.clone()))
+            case q_ast.Expr.Subscript(value=value, slice=slice):
+                self.emit_lvalue_target(deref(value.clone()))
                 self.emit("[")
-                self.generate_expr(deref(s.slice.clone()))
+                self.generate_expr(deref(slice.clone()))
                 self.emit("] = ")
             case _: pass
         self.generate_expr(deref(a.value))
         self.emit(";\n")
 
-    def emit_ann_assign(self, a: ast.StmtAnnAssign):
+    def emit_ann_assign(self, a: q_ast.AnnAssign):
         match as_ref(deref(a.target)):
-            case ast.Expr.Name(n):
+            case q_ast.Expr.Name(n):
                 ann_type_name = self.type_to_string(Clone.clone(as_ref(deref(a.annotation.clone()))))
                 is_tuple_ann = ann_type_name.starts_with(as_ref("(")) or ann_type_name.starts_with(as_ref("Tuple"))
                 self.emit("let mut ")
-                self.emit(n.id.to_string())
+                self.emit(n.to_string())
                 self.emit(": ")
                 self.emit(ann_type_name.clone())
                 self.emit(" = ")
-                self.mark_var_defined(n.id.to_string())
+                self.mark_var_defined(n.to_string())
                 if is_tuple_ann:
-                    self.tuple_vars.insert(n.id.to_string(), True)
+                    self.tuple_vars.insert(n.to_string(), True)
             case _: pass
         match a.value:
             case Some(v):
-                self.generate_expr(deref(v))
+                v_expr = deref(v)
+                self.generate_expr(v_expr)
             case None:
                 self.emit("Default::default()")
         self.emit(";\n")
 
-    def emit_for(self, f: ast.StmtFor):
+    def emit_for(self, f: q_ast.ForStmt):
         prev_clone = self.clone_names
         self.clone_names = True
         self.emit("for __q in (")
         match as_ref(deref(f.iter)):
-            case ast.Expr.Name(n):
-                self.emit(n.id.to_string())
+            case q_ast.Expr.Name(n):
+                self.emit(n.to_string())
             case _:
                 self.generate_expr(deref(f.iter))
         self.emit(") {\n")
         self.emit("let ")
         match as_ref(deref(f.target)):
-            case ast.Expr.Name(n):
-                self.emit(n.id.to_string())
+            case q_ast.Expr.Name(n):
+                self.emit(n.to_string())
             case _:
                 self.emit("_")
         self.emit(" = __q;\n")
@@ -452,7 +485,7 @@ class Codegen:
         self.exit_var_scope()
         self.emit("}\n")
 
-    def emit_if(self, i: ast.StmtIf):
+    def emit_if(self, i: q_ast.IfStmt):
         self.emit("if ")
         self.generate_expr(deref(i.test))
         self.emit(" {\n")
@@ -461,27 +494,27 @@ class Codegen:
             self.generate_stmt(s)
         self.exit_var_scope()
         self.emit("}")
-        for clause in i.elif_else_clauses:
-            match clause.test:
-                case Some(t):
-                    self.emit(" else if ")
-                    self.generate_expr(t)
-                    self.emit(" {\n")
-                    self.enter_var_scope()
-                    for s in clause.body:
-                        self.generate_stmt(s)
-                    self.exit_var_scope()
-                    self.emit("}")
-                case None:
-                    self.emit(" else {\n")
-                    self.enter_var_scope()
-                    for s in clause.body:
-                        self.generate_stmt(s)
-                    self.exit_var_scope()
-                    self.emit("}")
+        
+        if i.orelse.len() > 0:
+            is_elif = False
+            if i.orelse.len() == 1:
+                match i.orelse[0]:
+                    case q_ast.Stmt.If(elif_stmt):
+                        is_elif = True
+                        self.emit(" else ")
+                        self.emit_if(elif_stmt)
+                    case _: pass
+            
+            if not is_elif:
+                self.emit(" else {\n")
+                self.enter_var_scope()
+                for s in i.orelse:
+                    self.generate_stmt(s)
+                self.exit_var_scope()
+                self.emit("}")
         self.emit("\n")
 
-    def emit_while(self, w: ast.StmtWhile):
+    def emit_while(self, w: q_ast.WhileStmt):
         self.emit("while ")
         self.generate_expr(deref(w.test))
         self.emit(" {\n")
@@ -491,50 +524,55 @@ class Codegen:
         self.exit_var_scope()
         self.emit("}\n")
 
-    def emit_class_def(self, c: ast.StmtClassDef):
+    def emit_class_def(self, c: q_ast.ClassDef):
         is_enum = False
         is_extern = False
         extern_path = ""
         no_generic = False
         for dec in c.decorator_list.clone():
-            match as_ref(dec.expression):
-                case ast.Expr.Name(n):
-                    if n.id.to_string() == "enum":
+            match dec:
+                case q_ast.Expr.Name(n):
+                    if n.to_string() == "enum":
                         is_enum = True
-                    if n.id.to_string() == "extern":
+                    if n.to_string() == "extern":
                         is_extern = True
-                case ast.Expr.Call(call):
-                    match as_ref(deref(call.func)):
-                        case ast.Expr.Name(func_node):
-                            if func_node.id.to_string() == "extern":
+                case q_ast.Expr.Call(func=func, args=args, keywords=keywords):
+                    match as_ref(deref(func)):
+                        case q_ast.Expr.Name(func_name):
+                            if func_name.to_string() == "extern":
                                 is_extern = True
-                                for kw in call.arguments.keywords.clone():
+                                for kw in keywords.clone():
                                     match as_ref(kw.arg):
-                                        case Some(ident):
-                                            arg_name: String = ident.id.to_string()
-                                            if arg_name == "path":
-                                                match as_ref(kw.value):
-                                                    case ast.Expr.StringLiteral(s):
-                                                        extern_path = s.value.to_string()
+                                        case Some(arg_name):
+                                            if arg_name.as_str() == "path":
+                                                match as_ref(deref(kw.value)):
+                                                    case q_ast.Expr.Constant(c):
+                                                        match c:
+                                                            case q_ast.Constant.Str(s):
+                                                                extern_path = s.to_string()
+                                                            case _: pass
                                                     case _: pass
-                                            elif arg_name == "no_generic":
-                                                match as_ref(kw.value):
-                                                    case ast.Expr.BooleanLiteral(b):
-                                                        no_generic = b.value
-                                                    case ast.Expr.Name(n):
-                                                        if n.id.to_string() == "true":
+                                            elif arg_name.as_str() == "no_generic":
+                                                match as_ref(deref(kw.value)):
+                                                    case q_ast.Expr.Constant(c):
+                                                        match c:
+                                                            case q_ast.Constant.Bool(b):
+                                                                no_generic = Clone.clone(b)
+                                                            case _: pass
+                                                    case q_ast.Expr.Name(n):
+                                                        if n.to_string() == "true":
                                                             no_generic = True
                                                     case _: pass
                                         case _: pass
                         case _: pass
                 case _: pass
 
-        class_name = c.name.id.to_string()
+        class_name = c.name.to_string()
 
         if is_extern:
             if extern_path != "":
                 self.emit("pub type ")
-                self.emit(c.name.id.to_string())
+                self.emit(c.name.to_string())
                 if no_generic:
                     self.emit(" = ")
                     self.emit(extern_path)
@@ -545,31 +583,31 @@ class Codegen:
                     self.emit("<T>;\n")
             else:
                 self.emit("// Extern class ")
-                self.emit(c.name.id.to_string())
+                self.emit(c.name.to_string())
                 self.emit("\n")
             return
 
         if is_enum:
-            self.emit("#[derive(Clone, Debug)]\n")
-            self.emit("pub enum ")
+             self.emit("#[derive(Clone, Debug)]\n")
+             self.emit("pub enum ")
         else:
-            self.emit("#[derive(Clone, Debug, Default)]\n")
-            self.emit("pub struct ")
-        self.emit(c.name.id.to_string())
+             self.emit("#[derive(Clone, Debug, Default)]\n")
+             self.emit("pub struct ")
+        self.emit(c.name.to_string())
         self.emit(" {\n")
 
         if is_enum:
             for s in c.body.clone():
                 match s:
-                    case ast.Stmt.AnnAssign(a):
+                    case q_ast.Stmt.AnnAssign(a):
                         match as_ref(deref(a.target)):
-                            case ast.Expr.Name(n):
-                                self.emit(n.id.to_string())
+                            case q_ast.Expr.Name(n):
+                                self.emit(n.to_string())
                                 self.emit("(")
                                 match deref(a.annotation):
-                                    case ast.Expr.List(l):
+                                    case q_ast.Expr.List(elts):
                                         idx_enum: usize = 0
-                                        for t in l.elts.clone():
+                                        for t in elts.clone():
                                             if idx_enum > 0: self.emit(", ")
                                             t_str_enum = self.type_to_string(t)
                                             self.emit(t_str_enum)
@@ -581,14 +619,14 @@ class Codegen:
         else:
             for s in c.body.clone():
                 match s:
-                    case ast.Stmt.AnnAssign(a):
+                    case q_ast.Stmt.AnnAssign(a):
                         match as_ref(deref(a.target)):
-                            case ast.Expr.Name(n):
+                            case q_ast.Expr.Name(n):
                                 self.emit("pub ")
-                                self.emit(n.id.to_string())
+                                self.emit(n.to_string())
                                 self.emit(": ")
                                 ann_str_f = self.type_to_string(Clone.clone(as_ref(deref(a.annotation.clone()))))
-                                self.register_class_field(class_name.clone(), n.id.to_string(), ann_str_f.clone())
+                                self.register_class_field(class_name.clone(), n.to_string(), ann_str_f.clone())
                                 self.emit(ann_str_f)
                                 self.emit(",\n")
                             case _: pass
@@ -597,18 +635,22 @@ class Codegen:
 
         if not is_enum:
             self.emit("impl ")
-            self.emit(c.name.id.to_string())
+        self.emit("}\n")
+
+        if not is_enum:
+            self.emit("impl ")
+            self.emit(c.name.to_string())
             self.emit(" {\n")
             self.set_current_class(class_name.clone())
             for s in c.body:
                 match s:
-                    case ast.Stmt.FunctionDef(_):
+                    case q_ast.Stmt.FunctionDef(_):
                         self.generate_stmt(s)
                     case _: pass
             self.clear_current_class()
             self.emit("}\n")
 
-    def emit_match(self, m: ast.StmtMatch):
+    def emit_match(self, m: q_ast.MatchStmt):
         self.emit("match ")
         self.generate_expr(deref(m.subject))
         self.emit(" {\n")
@@ -617,7 +659,8 @@ class Codegen:
             match case_.guard:
                 case Some(g):
                     self.emit(" if ")
-                    self.generate_expr(deref(g.clone()))
+                    g_expr = deref(g.clone())
+                    self.generate_expr(g_expr)
                 case None: pass
             self.emit(" => {\n")
             self.enter_var_scope()
@@ -627,17 +670,17 @@ class Codegen:
             self.emit("}\n")
         self.emit("}\n")
 
-    def emit_import(self, i: ast.StmtImport):
+    def emit_import(self, i: q_ast.Import):
         dot_imp = "."
         sep_imp = "::"
         for alias in i.names:
             is_root_module = self.current_module_path == "" or self.current_module_path == "main" or self.current_module_path == "lib"
-            alias_name_raw = alias.name.id.to_string()
+            alias_name_raw = alias.name.to_string()
             rust_p = "rust."
             std_p = "std."
-            alias_name = alias.name.id.to_string()
+            alias_name = alias.name.to_string()
             match alias.asname.clone():
-                case Some(a): alias_name: String = a.id.to_string()
+                case Some(a): alias_name: String = a.to_string()
                 case None: pass
 
             rust_path_opt: Option[String] = None
@@ -673,17 +716,17 @@ class Codegen:
             
 
 
-    def emit_import_from(self, i: ast.StmtImportFrom):
+    def emit_import_from(self, i: q_ast.ImportFrom):
         mod_sep = "."
         mod_col = "::"
         for alias in i.names:
             match i.module.clone():
                 case Some(m):
-                    if m.id.to_string() == "lib.test": return
+                    if m.to_string() == "lib.test": return
                 case None: pass
-            alias_name = alias.name.id.to_string()
+            alias_name = alias.name.to_string()
             match alias.asname.clone():
-                case Some(a): alias_name: String = a.id.to_string()
+                case Some(a): alias_name: String = a.to_string()
                 case None: pass
 
             rust_path_opt: Option[String] = None
@@ -705,7 +748,7 @@ class Codegen:
                     self.emit("use ")
                     match i.module.clone():
                         case Some(m):
-                            m_str = m.id.to_string()
+                            m_str: String = m.to_string()
                             if m_str == "lib.test": return
                             r_p = "rust."
                             s_p = "std."
@@ -719,7 +762,7 @@ class Codegen:
                         k_lvl = k_lvl + 1
                     match i.module.clone():
                         case Some(m):
-                            mod_name = m.id.to_string()
+                            mod_name: String = m.to_string()
                             if mod_name == "rust":
                                 mod_name = ""
                             elif mod_name.starts_with(as_ref("rust.")):
@@ -728,11 +771,11 @@ class Codegen:
                                 self.emit(mod_name.replace(mod_sep.as_str(), mod_col.as_str()))
                                 self.emit("::")
                         case None: pass
-                    self.emit(alias.name.id.to_string().replace(mod_sep.as_str(), mod_col.as_str()))
+                    self.emit(alias.name.to_string().replace(mod_sep.as_str(), mod_col.as_str()))
                     match alias.asname.as_ref():
                         case Some(a):
                             self.emit(" as ")
-                            self.emit(a.id.to_string())
+                            self.emit(a.to_string())
                         case None: pass
                     self.emit(";\n")
 
@@ -741,92 +784,86 @@ class Codegen:
     # EXPRESSION EMISSION - Corresponds to expr.rs in host compiler
     # ========================================================================
 
-    def generate_expr(self, expr: ast.Expr):
+    def generate_expr(self, expr: q_ast.Expr):
         match expr:
-            case ast.Expr.NumberLiteral(n): self.emit_number_literal(n)
-            case ast.Expr.StringLiteral(s): self.emit_string_literal(s)
-            case ast.Expr.BooleanLiteral(b): self.emit_boolean_literal(b)
-            case ast.Expr.NoneLiteral(_): self.emit("None")
-            case ast.Expr.Name(n):
-                name_str = n.id.to_string()
+            case q_ast.Expr.Constant(c):
+                match c:
+                    case q_ast.Constant.Str(s):
+                         self.emit("String::from(\"")
+                         self.emit(escape_rust_string(s.to_string()))
+                         self.emit("\")")
+                    case q_ast.Constant.Int(i):
+                         self.emit(i.to_string())
+                    case q_ast.Constant.Float(f):
+                         s_f = f.to_string()
+                         if not s_f.contains(".".as_str()):
+                             s_f.push_str(".0".as_str())
+                         self.emit(s_f)
+                    case q_ast.Constant.Bool(b):
+                         if b: self.emit("true")
+                         else: self.emit("false")
+                    case q_ast.Constant.NoneVal: self.emit("None")
+                    case _: self.emit("/* const */")
+            case q_ast.Expr.Name(n):
+                name_str = n.to_string()
                 if self.is_type_or_mod(name_str.clone()):
                     self.emit(name_str)
                 else:
                     self.emit(name_str)
-            case ast.Expr.Call(c): self.emit_call(c)
-            case ast.Expr.List(l): self.emit_list(l)
-            case ast.Expr.BinOp(b): self.emit_bin_op(b)
-            case ast.Expr.BoolOp(b): self.emit_bool_op(b)
-            case ast.Expr.UnaryOp(u): self.emit_unary_op(u)
-            case ast.Expr.If(i): self.emit_expr_if(i)
-            case ast.Expr.Compare(c): self.emit_compare(c)
-            case ast.Expr.Tuple(t): self.emit_expr_tuple(t)
-            case ast.Expr.Attribute(a): self.emit_attribute(a)
-            case ast.Expr.Subscript(s): self.emit_subscript(s)
-            case ast.Expr.Lambda(l): self.emit_lambda(l)
-            case ast.Expr.FString(f): self.emit_fstring(f)
-            case ast.Expr.Dict(d): self.emit_dict(d)
+            case q_ast.Expr.Call(func=func, args=args, keywords=keywords):
+                self.emit_call(func, args, keywords)
+            case q_ast.Expr.List(l): self.emit_list(l)
+            case q_ast.Expr.BinOp(left=left, op=op, right=right): self.emit_bin_op(left, op, right)
+            case q_ast.Expr.BoolOp(op=op, values=values): self.emit_bool_op(op, values)
+            case q_ast.Expr.UnaryOp(op=op, operand=operand): self.emit_unary_op(op, operand)
+            case q_ast.Expr.IfExp(test=test, body=body, orelse=orelse): self.emit_expr_if(test, body, orelse)
+            case q_ast.Expr.Compare(left=left, ops=ops, comparators=comparators): self.emit_compare(left, ops, comparators)
+            case q_ast.Expr.Tuple(t): self.emit_expr_tuple(t)
+            case q_ast.Expr.Attribute(value=value, attr=attr): self.emit_attribute(value, attr)
+            case q_ast.Expr.Subscript(value=value, slice=slice): self.emit_subscript(value, slice)
+            case q_ast.Expr.Lambda(args=args, body=body): self.emit_lambda(args, body)
             case _: self.emit("/* expr */")
 
-    def emit_number_literal(self, n: ast.ExprNumberLiteral):
-        match n.value:
-            case ast.Number.Int(i):
-                self.emit(i.to_string())
-            case ast.Number.Float(f):
-                s_f = f.to_string()
-                if not s_f.contains(as_ref(".")):
-                    s_f = s_f + as_ref(".0")
-                self.emit(s_f)
-            case _: self.emit("0")
 
-    def emit_string_literal(self, s: ast.ExprStringLiteral):
-        self.emit("String::from(\"")
-        esc = escape_rust_string(s.value.to_string())
-        self.emit(esc)
-        self.emit("\")")
 
-    def emit_boolean_literal(self, b: ast.ExprBooleanLiteral):
-        if b.value: self.emit("true")
-        else: self.emit("false")
-
-    def emit_call(self, c: ast.ExprCall):
+    def emit_call(self, func: Box[q_ast.Expr], args: Vec[q_ast.Expr], keywords: Vec[q_ast.Keyword]):
         func_name = ""
-        match as_ref(deref(c.func)):
-            case ast.Expr.Lambda(_):
-                self.generate_expr(deref(c.func))
+        match as_ref(deref(func)):
+            case q_ast.Expr.Lambda(args=l_args, body=l_body):
+                self.generate_expr(deref(func))
                 self.emit("(")
                 idx_lc = 0
-                for arg in c.arguments.args:
+                for arg in args.clone():
                     if idx_lc > 0: self.emit(", ")
                     self.generate_expr(arg)
                     idx_lc = idx_lc + 1
                 self.emit(")")
                 return
             case _: pass
-        match as_ref(deref(c.func)):
-            case ast.Expr.Name(n):
-                func_name = n.id.to_string()
+        match as_ref(deref(func)):
+            case q_ast.Expr.Name(n):
+                func_name = n.to_string()
             case _: pass
 
         if func_name == "as_ref":
-            if c.arguments.args.len() > 0:
+            if args.len() > 0:
                 self.emit("&")
-                self.generate_expr_no_clone(Clone.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr_no_clone(Clone.clone(as_ref(args[0])))
             return
         if func_name == "as_mut":
-            if c.arguments.args.len() > 0:
+            if args.len() > 0:
                 self.emit("&mut ")
-                self.generate_expr_no_clone(Clone.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr_no_clone(Clone.clone(as_ref(args[0])))
             return
         if func_name == "deref":
-            if c.arguments.args.len() > 0:
+            if args.len() > 0:
                 self.emit("*")
-                self.generate_expr_no_clone(Clone.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr_no_clone(Clone.clone(as_ref(args[0])))
             return
         if func_name == "exit":
             self.emit("std::process::exit(")
             idx_exit: usize = 0
-            for arg in c.arguments.args:
+            for arg in args.clone():
                 if idx_exit > 0: self.emit(", ")
                 self.generate_expr(arg)
                 idx_exit = idx_exit + 1
@@ -836,91 +873,87 @@ class Codegen:
         if func_name == "print":
             self.emit("println!(\"{}\", ")
             first_p = True
-            for arg in c.arguments.args:
+            for arg in args.clone():
                 if not first_p: self.emit(", ")
                 first_p = False
                 self.generate_expr(arg)
             self.emit(")")
             return
-        elif func_name == "as_ref":
-             self.emit("&")
-             if c.arguments.args.len() > 0:
-                 self.generate_expr(Clone.clone(as_ref(c.arguments.args[0])))
         elif func_name == "print_str":
             self.emit("println!(\"{}\", ")
             first_ps = True
-            for arg in c.arguments.args:
+            for arg in args.clone():
                 if not first_ps: self.emit(", ")
                 first_ps = False
                 self.generate_expr(arg)
             self.emit(")")
         elif func_name == "assert_eq" or func_name == "assert_str_eq":
             self.emit("assert_eq!(")
-            if c.arguments.args.len() >= 2:
-                self.generate_expr(Clone.clone(as_ref(c.arguments.args[0])))
+            if args.len() >= 2:
+                self.generate_expr(Clone.clone(as_ref(args[0])))
                 self.emit(", ")
-                self.generate_expr(Clone.clone(as_ref(c.arguments.args[1])))
-                if c.arguments.args.len() > 2:
+                self.generate_expr(Clone.clone(as_ref(args[1])))
+                if args.len() > 2:
                     self.emit(", \"{:?}\", ")
-                    self.generate_expr(Clone.clone(as_ref(c.arguments.args[2])))
+                    self.generate_expr(Clone.clone(as_ref(args[2])))
             self.emit(")")
         elif func_name == "assert_true":
             self.emit("assert!(")
-            if c.arguments.args.len() >= 1:
-                self.generate_expr(Clone.clone(as_ref(c.arguments.args[0])))
-                if c.arguments.args.len() > 1:
+            if args.len() >= 1:
+                self.generate_expr(Clone.clone(as_ref(args[0])))
+                if args.len() > 1:
                     self.emit(", \"{:?}\", ")
-                    self.generate_expr(Clone.clone(as_ref(c.arguments.args[1])))
+                    self.generate_expr(Clone.clone(as_ref(args[1])))
             self.emit(")")
         elif func_name == "range":
-            if c.arguments.args.len() == 1:
+            if args.len() == 1:
                 self.emit("0..")
-                self.generate_expr(Clone.clone(as_ref(c.arguments.args[0])))
-            elif c.arguments.args.len() >= 2:
-                self.generate_expr(Clone.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr(Clone.clone(as_ref(args[0])))
+            elif args.len() >= 2:
+                self.generate_expr(Clone.clone(as_ref(args[0])))
                 self.emit("..")
-                self.generate_expr(Clone.clone(as_ref(c.arguments.args[1])))
-        elif c.arguments.keywords.len() > 0:
-            self.generate_expr(deref(c.func))
+                self.generate_expr(Clone.clone(as_ref(args[1])))
+        elif keywords.len() > 0:
+            self.generate_expr(deref(func))
             self.emit(" { ")
             i_kw: usize = 0
-            for kw in c.arguments.keywords:
+            for kw in keywords:
                 if i_kw > 0: self.emit(", ")
                 match kw.arg:
                     case Some(arg_id):
-                        self.emit(arg_id.id.to_string())
+                        self.emit(arg_id)
                         self.emit(": ")
                         self.generate_expr(Clone.clone(as_ref(kw.value)))
                     case None: pass
                 i_kw = i_kw + 1
             self.emit(" }")
         else:
-            match as_ref(deref(c.func)):
-                case ast.Expr.Attribute(at):
-                    if at.attr.id.to_string() == "new":
-                        match as_ref(deref(at.value)):
-                            case ast.Expr.Name(n):
-                                base_name = n.id.to_string()
+            match as_ref(deref(func)):
+                case q_ast.Expr.Attribute(value=value, attr=attr):
+                    if attr.as_str() == "new".as_str():
+                        match as_ref(deref(value)):
+                            case q_ast.Expr.Name(n):
+                                base_name = n.to_string()
                                 if base_name == "List" or base_name == "Vec":
                                     self.emit("Vec::new()")
                                     return
                                 if base_name == "Dict" or base_name == "HashMap":
                                     self.emit("std::collections::HashMap::new()")
                                     return
-                            case ast.Expr.Subscript(s):
-                                base_name_s = self.type_to_string(Clone.clone(as_ref(deref(s.value))))
+                            case q_ast.Expr.Subscript(value=s_value, slice=s_slice):
+                                base_name_s = self.type_to_string(Clone.clone(as_ref(deref(s_value))))
                                 if base_name_s == "Vec":
-                                    inner_s = self.type_to_string(Clone.clone(as_ref(deref(s.slice))))
+                                    inner_s = self.type_to_string(Clone.clone(as_ref(deref(s_slice))))
                                     self.emit("Vec::<")
                                     self.emit(inner_s)
                                     self.emit(">::new()")
                                     return
                                 if base_name_s == "std::collections::HashMap" or base_name_s == "HashMap":
-                                    match as_ref(deref(s.slice)):
-                                        case ast.Expr.Tuple(t):
-                                            if t.elts.len() == 2:
-                                                k_s = self.type_to_string(t.elts[0])
-                                                v_s = self.type_to_string(t.elts[1])
+                                    match as_ref(deref(s_slice)):
+                                        case q_ast.Expr.Tuple(t):
+                                            if t.len() == 2:
+                                                k_s = self.type_to_string(t[0].clone())
+                                                v_s = self.type_to_string(t[1].clone())
                                                 self.emit("std::collections::HashMap::<")
                                                 self.emit(k_s)
                                                 self.emit(", ")
@@ -933,114 +966,113 @@ class Codegen:
                             case _: pass
 
                     self.emit("crate::quiche::check!(")
-                    self.generate_expr(deref(c.func))
+                    self.generate_expr(deref(func))
                     self.emit("(")
                     idx_arg_call = 0
-                    for arg_c in c.arguments.args.clone():
+                    for arg_c in args.clone():
                         if idx_arg_call > 0: self.emit(", ")
                         self.generate_expr(arg_c)
                         idx_arg_call = idx_arg_call + 1
                     self.emit("))")
                 case _:
                     self.emit("crate::quiche::check!(")
-                    self.generate_expr(deref(c.func))
+                    self.generate_expr(deref(func))
                     self.emit("(")
                     idx_arg_call = 0
-                    for arg_c in c.arguments.args.clone():
+                    for arg_c in args.clone():
                         if idx_arg_call > 0: self.emit(", ")
                         self.generate_expr(arg_c)
                         idx_arg_call = idx_arg_call + 1
                     self.emit("))")
 
-    def emit_list(self, l: ast.ExprList):
+    def emit_list(self, l: Vec[q_ast.Expr]):
         self.emit("vec![")
         idx_l: usize = 0
-        for e in l.elts:
+        for e in l.clone():
             if idx_l > 0: self.emit(", ")
             self.generate_expr(e)
             idx_l = idx_l + 1
         self.emit("]")
 
-    def emit_bin_op(self, b: ast.ExprBinOp):
-        self.generate_expr(deref(b.left))
-        match b.op:
-            case ast.Operator.Add: self.emit(" + ")
-            case ast.Operator.Sub: self.emit(" - ")
-            case ast.Operator.Mult: self.emit(" * ")
-            case ast.Operator.Div: self.emit(" / ")
+    def emit_bin_op(self, left: Box[q_ast.Expr], op: q_ast.Operator, right: Box[q_ast.Expr]):
+        self.generate_expr(deref(left))
+        match op:
+            case q_ast.Operator.Add: self.emit(" + ")
+            case q_ast.Operator.Sub: self.emit(" - ")
+            case q_ast.Operator.Mult: self.emit(" * ")
+            case q_ast.Operator.Div: self.emit(" / ")
             case _: self.emit(" + ")
-        self.generate_expr(deref(b.right))
+        self.generate_expr(deref(right))
 
-    def emit_bool_op(self, b: ast.ExprBoolOp):
+    def emit_bool_op(self, op: q_ast.BoolOperator, values: Vec[q_ast.Expr]):
         op_str_b = " && "
-        match b.op:
-            case ast.BoolOp.Or: op_str_b = " || "
+        match op:
+            case q_ast.BoolOperator.Or: op_str_b = " || "
             case _: pass
         idx_b: usize = 0
-        for v in b.values.clone():
+        for v in values.clone():
             if idx_b > 0: self.emit(op_str_b.clone())
             self.emit("(")
             self.generate_expr(v)
             self.emit(")")
             idx_b = idx_b + 1
 
-    def emit_unary_op(self, u: ast.ExprUnaryOp):
-        match u.op:
-            case ast.UnaryOp.Not: self.emit("!")
-            case ast.UnaryOp.Invert: self.emit("!")
-            case ast.UnaryOp.UAdd: self.emit("+")
-            case ast.UnaryOp.USub: self.emit("-")
-        self.generate_expr(deref(u.operand))
+    def emit_unary_op(self, op: q_ast.UnaryOperator, operand: Box[q_ast.Expr]):
+        match op:
+            case q_ast.UnaryOperator.Not: self.emit("!")
+            case q_ast.UnaryOperator.Invert: self.emit("!")
+            case q_ast.UnaryOperator.UAdd: self.emit("+")
+            case q_ast.UnaryOperator.USub: self.emit("-")
+        self.generate_expr(deref(operand))
 
-    def emit_expr_if(self, i: ast.ExprIf):
+    def emit_expr_if(self, test: Box[q_ast.Expr], body: Box[q_ast.Expr], orelse: Box[q_ast.Expr]):
         self.emit("if ")
-        self.generate_expr(deref(i.test))
+        self.generate_expr(deref(test))
         self.emit(" { ")
-        self.generate_expr(deref(i.body))
+        self.generate_expr(deref(body))
         self.emit(" } else { ")
-        self.generate_expr(deref(i.orelse))
+        self.generate_expr(deref(orelse))
         self.emit(" }")
 
-    def emit_compare(self, c: ast.ExprCompare):
-        self.generate_expr(deref(c.left))
+    def emit_compare(self, left: Box[q_ast.Expr], ops: Vec[q_ast.CmpOperator], comparators: Vec[q_ast.Expr]):
+        self.generate_expr(deref(left))
         idx_c: usize = 0
-        while idx_c < c.ops.len():
-            op = c.ops[idx_c]
+        while idx_c < ops.len():
+            op = ops[idx_c]
             self.emit(" ")
             match op:
-                case ast.CmpOp.Eq: self.emit("==")
-                case ast.CmpOp.NotEq: self.emit("!=")
-                case ast.CmpOp.Lt: self.emit("<")
-                case ast.CmpOp.LtE: self.emit("<=")
-                case ast.CmpOp.Gt: self.emit(">")
-                case ast.CmpOp.GtE: self.emit(">=")
+                case q_ast.CmpOperator.Eq: self.emit("==")
+                case q_ast.CmpOperator.NotEq: self.emit("!=")
+                case q_ast.CmpOperator.Lt: self.emit("<")
+                case q_ast.CmpOperator.LtE: self.emit("<=")
+                case q_ast.CmpOperator.Gt: self.emit(">")
+                case q_ast.CmpOperator.GtE: self.emit(">=")
                 case _: self.emit("?")
             self.emit(" ")
-            self.generate_expr(Clone.clone(as_ref(c.comparators[idx_c])))
+            self.generate_expr(Clone.clone(as_ref(comparators[idx_c])))
             idx_c = idx_c + 1
 
-    def emit_expr_tuple(self, t: ast.ExprTuple):
+    def emit_expr_tuple(self, elts: Vec[q_ast.Expr]):
         self.emit("(")
         idx_t: usize = 0
-        for e in t.elts:
+        for e in elts:
             if idx_t > 0: self.emit(", ")
             self.generate_expr(e)
             idx_t = idx_t + 1
         self.emit(")")
 
-    def emit_attribute(self, a: ast.ExprAttribute):
-        target_attr = deref(a.value)
+    def emit_attribute(self, value: Box[q_ast.Expr], attr: String):
+        target_attr = deref(value)
         is_static_attr = False
         match self.get_root_name(Clone.clone(as_ref(target_attr))):
             case Some(root_name):
                 if self.is_type_or_mod(root_name.clone()):
                     is_static_attr = True
             case None: pass
-            case None: pass
-        if a.attr.id.to_string() == "new": is_static_attr = True
+        if attr.as_str() == "new".as_str(): is_static_attr = True
         
         match as_ref(target_attr):
-            case ast.Expr.Subscript(s):
+            case q_ast.Expr.Subscript(value=s_val, slice=s_slice):
                 if is_static_attr:
                     full_expr = Clone.clone(as_ref(target_attr))
                     base_type = self.type_to_string(full_expr)
@@ -1056,45 +1088,44 @@ class Codegen:
                     self.emit_lvalue_target(Clone.clone(as_ref(target_attr)))
         if is_static_attr: self.emit("::")
         else: self.emit(".")
-        self.emit(a.attr.id.to_string())
+        self.emit(attr)
 
-    def emit_attribute_target(self, a: ast.ExprAttribute):
-        target_attr = deref(a.value)
+    def emit_attribute_target(self, value: Box[q_ast.Expr], attr: String):
+        target_attr = deref(value)
         is_static_attr = False
         match self.get_root_name(Clone.clone(as_ref(target_attr))):
             case Some(root_name):
                 if self.is_type_or_mod(root_name.clone()):
                     is_static_attr = True
             case None: pass
-            case None: pass
-        if a.attr.id.to_string() == "new": is_static_attr = True
+        if attr.as_str() == "new".as_str(): is_static_attr = True
 
         match as_ref(target_attr):
-            case ast.Expr.Attribute(inner):
-                self.emit_attribute_target(inner.clone())
-            case ast.Expr.Name(n):
-                self.emit(n.id.to_string())
+            case q_ast.Expr.Attribute(value=inner_val, attr=inner_attr):
+                self.emit_attribute_target(inner_val.clone(), inner_attr.clone())
+            case q_ast.Expr.Name(n):
+                self.emit(n.to_string())
             case _:
                 self.generate_expr_no_clone(Clone.clone(as_ref(target_attr)))
         if is_static_attr: self.emit("::")
         else: self.emit(".")
-        self.emit(a.attr.id.to_string())
+        self.emit(attr)
 
-    def emit_subscript(self, s: ast.ExprSubscript):
+    def emit_subscript(self, value: Box[q_ast.Expr], slice: Box[q_ast.Expr]):
         is_neg_s = False
-        target_type_s = self.infer_expr_type(Clone.clone(as_ref(s.value)))
-        is_tuple_target = self.is_tuple_expr(Clone.clone(as_ref(s.value)))
+        target_type_s = self.infer_expr_type(Clone.clone(as_ref(value)))
+        is_tuple_target = self.is_tuple_expr(Clone.clone(as_ref(value)))
         tuple_via_registry = False
-        match as_ref(deref(s.value)):
-            case ast.Expr.Name(n):
-                match self.tuple_vars.get(as_ref(n.id.to_string())):
+        match as_ref(deref(value)):
+            case q_ast.Expr.Name(n):
+                match self.tuple_vars.get(as_ref(n.to_string())):
                     case Some(_):
                         tuple_via_registry = True
                     case None: pass
-            case ast.Expr.Subscript(inner):
-                match as_ref(deref(inner.value)):
-                    case ast.Expr.Name(n):
-                        match self.tuple_vars.get(as_ref(n.id.to_string())):
+            case q_ast.Expr.Subscript(value=inner_value, slice=inner_slice):
+                match as_ref(deref(inner_value)):
+                    case q_ast.Expr.Name(n):
+                        match self.tuple_vars.get(as_ref(n.to_string())):
                             case Some(_):
                                 tuple_via_registry = True
                             case None: pass
@@ -1102,92 +1133,49 @@ class Codegen:
             case _: pass
 
         if tuple_via_registry or is_tuple_target or target_type_s == "Tuple" or target_type_s.starts_with(as_ref("Tuple")) or target_type_s.starts_with(as_ref("(")):
-            self.generate_expr(deref(s.value))
+            self.generate_expr(deref(value))
             self.emit(".")
-            match deref(s.slice):
-                case ast.Expr.NumberLiteral(n):
-                    match n.value:
-                        case ast.Number.Int(i):
+            match deref(slice):
+                case q_ast.Expr.Constant(c):
+                    match c:
+                        case q_ast.Constant.Int(i):
                             self.emit(i.to_string())
                         case _: self.emit("0")
                 case _: self.emit("0")
         else:
-            sl_s = deref(s.slice)
+            sl_s = deref(slice)
             match sl_s.clone():
-                case ast.Expr.UnaryOp(u):
-                    match u.op:
-                        case ast.UnaryOp.USub: is_neg_s = True
+                case q_ast.Expr.UnaryOp(op=op, operand=operand):
+                     match op:
+                        case q_ast.UnaryOperator.USub: is_neg_s = True
                         case _: pass
                 case _: pass
 
             if is_neg_s:
                 match sl_s:
-                    case ast.Expr.UnaryOp(u):
-                        self.generate_expr(Clone.clone(as_ref(deref(s.value))))
+                    case q_ast.Expr.UnaryOp(op=op, operand=operand):
+                        self.generate_expr(Clone.clone(as_ref(deref(value))))
                         self.emit("[")
-                        self.generate_expr(Clone.clone(as_ref(deref(s.value))))
+                        self.generate_expr(Clone.clone(as_ref(deref(value))))
                         self.emit(".len() - ")
-                        self.generate_expr(deref(u.operand))
+                        self.generate_expr(deref(operand))
                         self.emit("].clone()")
                     case _: pass
             else:
-                self.generate_expr(deref(s.value))
+                self.generate_expr(deref(value))
                 self.emit("[")
                 self.generate_expr(sl_s)
                 self.emit("].clone()")
 
-    def emit_lambda(self, l: ast.ExprLambda):
+    def emit_lambda(self, args: Vec[String], body: Box[q_ast.Expr]):
         self.emit("(|")
-        match l.parameters:
-            case Some(p):
-                idx_lam = 0
-                for arg_def in p.args.clone():
-                    if idx_lam > 0: self.emit(", ")
-                    self.emit(arg_def.parameter.name.id.to_string())
-                    idx_lam = idx_lam + 1
-            case None: pass
+        idx_lam = 0
+        for arg in args.clone():
+            if idx_lam > 0: self.emit(", ")
+            self.emit(arg)
+            idx_lam = idx_lam + 1
         self.emit("| ")
-        self.generate_expr_no_clone(deref(l.body))
+        self.generate_expr_no_clone(deref(body))
         self.emit(")")
-
-    def emit_fstring(self, f: ast.ExprFString):
-        self.emit("format!(\"")
-        f_args: Vec[ast.Expr] = []
-        for part in as_ref(f.value):
-            match part:
-                case ast.FStringPart.Literal(lit):
-                    self.emit(lit.value.to_string())
-                case ast.FStringPart.FString(fs):
-                    for element in as_ref(fs.elements):
-                        match element:
-                            case ast.InterpolatedStringElement.Literal(l):
-                                self.emit(l.value.to_string())
-                            case ast.InterpolatedStringElement.Interpolation(i):
-                                self.emit("{}")
-                                f_args.push(Clone.clone(as_ref(deref(i.expression))))
-        self.emit("\"")
-        for arg in f_args:
-            self.emit(", ")
-            self.generate_expr(arg)
-        self.emit(")")
-
-    def emit_dict(self, d: ast.ExprDict):
-        self.emit("std::collections::HashMap::from([")
-        idx_dict = 0
-        for item in d.items:
-            if idx_dict > 0: self.emit(", ")
-            key_val = as_ref(item).key.clone()
-            val_val = as_ref(as_ref(item).value)
-            match key_val:
-                case Some(k):
-                    self.emit("(")
-                    self.generate_expr(Clone.clone(as_ref(k)))
-                    self.emit(", ")
-                    self.generate_expr(Clone.clone(as_ref(val_val)))
-                    self.emit(")")
-                case None:
-                    self.emit("/* **kwargs */")
-            idx_dict = idx_dict + 1
-        self.emit("])")
 
 

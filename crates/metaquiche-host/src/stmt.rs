@@ -474,7 +474,7 @@ impl Codegen {
             }
             ast::Pattern::MatchSingleton(c) => {
                 match c {
-                    ast::Constant::None => self.output.push_str("None"),
+                    ast::Constant::NoneVal => self.output.push_str("None"),
                     ast::Constant::Bool(b) => self.output.push_str(&b.to_string()),
                     ast::Constant::Str(s) => self.output.push_str(&format!("\"{}\"", s)), // Match patterns need literals usually
                     ast::Constant::Int(i) => self.output.push_str(&i.to_string()),
