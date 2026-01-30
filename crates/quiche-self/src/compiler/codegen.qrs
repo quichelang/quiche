@@ -333,8 +333,18 @@ class Codegen:
         self.emit("}\n")
 
     def emit_stmt_expr(self, e: ast.StmtExpr):
-        self.generate_expr(deref(e.value))
-        self.emit(";\n")
+        is_doc = False
+        match as_ref(deref(e.value)):
+            case ast.Expr.StringLiteral(s):
+                is_doc = True
+                self.emit("#![doc = \"")
+                self.emit(escape_rust_string(s.value.to_string()))
+                self.emit("\"]\n")
+            case _: pass
+
+        if not is_doc:
+            self.generate_expr(deref(e.value))
+            self.emit(";\n")
 
     def emit_return(self, r: ast.StmtReturn):
         self.emit("return ")
