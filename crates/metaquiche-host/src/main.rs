@@ -373,6 +373,8 @@ mod quiche {
         if !output.status.success() {
             std::process::exit(output.status.code().unwrap_or(1));
         }
+    } else {
+        std::process::exit(1);
     }
 }
 

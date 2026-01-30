@@ -1,5 +1,5 @@
-use ruff_python_ast as ast;
-use ruff_python_parser::parse_module;
+use quiche_parser::ast;
+use quiche_parser::parse;
 use std::collections::{HashMap, HashSet};
 
 pub mod expr;
@@ -13,8 +13,10 @@ pub struct Codegen {
     pub(crate) defined_vars: Vec<HashSet<String>>,
     pub(crate) foreign_symbols: HashSet<String>,
     pub(crate) linked_modules: HashSet<String>,
+    pub(crate) import_kinds: HashMap<String, String>,
     pub(crate) class_fields: HashMap<String, HashMap<String, String>>,
     pub(crate) current_class: Option<String>,
+    pub(crate) source_stack: Vec<String>,
 }
 
 impl Codegen {
@@ -26,12 +28,14 @@ impl Codegen {
             defined_vars: vec![HashSet::new()],
             foreign_symbols: HashSet::new(),
             linked_modules: HashSet::new(),
+            import_kinds: HashMap::new(),
             class_fields: HashMap::new(),
             current_class: None,
+            source_stack: Vec::new(),
         }
     }
 
-    pub fn generate_module(&mut self, module: &ast::ModModule) -> String {
+    pub fn generate_module(&mut self, module: &ast::QuicheModule) -> String {
         {
             {
                 let mut linked = HashSet::new();
@@ -39,9 +43,10 @@ impl Codegen {
 
                 for stmt in &module.body {
                     let mut is_hint = false;
-                    if let ast::Stmt::Expr(e) = &stmt {
-                        if let ast::Expr::StringLiteral(s) = &*e.value {
-                            let s = s.value.to_str();
+                    /* Link Hint Logic removed/TODO: If we need linker hints, we need QuicheStmt support or dedicated field */
+                    /* Re-implementing simplified hint check if QuicheStmt::Expr(StringLiteral) exists */
+                    if let ast::QuicheStmt::Expr(e) = stmt {
+                        if let ast::QuicheExpr::Constant(ast::Constant::Str(s)) = &**e {
                             if s.starts_with("quiche:link=") {
                                 let links = &s["quiche:link=".len()..];
                                 for link in links.split(',') {
@@ -51,6 +56,7 @@ impl Codegen {
                             }
                         }
                     }
+
                     if !is_hint {
                         filtered_body.push(stmt);
                     }
@@ -108,11 +114,28 @@ impl Codegen {
     }
 
     pub(crate) fn is_type_or_mod(&self, base_str: &str) -> bool {
-        if base_str == "self" {
-            false
-        } else if base_str == "ast"
+        // Check import_kinds map first
+        if let Some(kind) = self.import_kinds.get(base_str) {
+            if kind == "mod" {
+                return true;
+            }
+        }
+
+        // Simple heuristic: if it looks like a type (Capitalized)
+        if base_str.chars().next().map_or(false, |c| c.is_uppercase()) {
+            return true;
+        }
+
+        // Also check if it's in linked_modules (which are crates/modules)
+        if self.linked_modules.contains(base_str) {
+            return true;
+        }
+
+        // Explicit list of known modules/types for legacy support
+        if base_str == "ast"
             || base_str == "compiler"
             || base_str == "types"
+            || base_str == "extern_defs"
             || base_str == "rustpython_parser"
             || base_str == "ruff_python_parser"
             || base_str == "ruff_python_ast"
@@ -120,14 +143,10 @@ impl Codegen {
             || base_str.starts_with("crate::")
             || base_str.contains("::")
         {
-            true
-        } else {
-            base_str
-                .chars()
-                .next()
-                .map(|c| c.is_uppercase())
-                .unwrap_or(false)
+            return true;
         }
+
+        false
     }
 
     pub(crate) fn register_class_field(&mut self, class: &str, field: &str, ty: String) {
@@ -154,14 +173,17 @@ impl Codegen {
 }
 
 pub fn compile(source: &str) -> Option<String> {
-    match parse_module(source) {
+    match parse(source) {
         Ok(parsed) => {
             let mut cg = Codegen::new();
-            let rust_code = cg.generate_module(parsed.syntax());
+            let rust_code = cg.generate_module(&parsed);
             // println!("Successfully generated Rust code:\n{}", rust_code);
             Some(dedup_shadowed_let_mut(&rust_code))
         }
-        Err(_e) => None,
+        Err(_e) => {
+            eprintln!("Parse Error: {:?}", _e);
+            None
+        }
     }
 }
 

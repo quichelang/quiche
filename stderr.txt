@@ -1,0 +1,107 @@
+warning: unused variable: `p`
+   --> crates/quiche-parser/src/parser.rs:141:38
+    |
+141 |         ast::Pattern::MatchSingleton(p) => {
+    |                                      ^ help: if this is intentional, prefix it with an underscore: `_p`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `first`
+   --> crates/quiche-parser/src/parser.rs:227:17
+    |
+227 |     if let Some(first) = i.elif_else_clauses.first() {
+    |                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_first`
+
+warning: `quiche-parser` (lib) generated 2 warnings (run `cargo fix --lib -p quiche-parser` to apply 2 suggestions)
+warning: unused variable: `keywords`
+  --> crates/metaquiche-host/src/expr.rs:99:17
+   |
+99 |                 keywords,
+   |                 ^^^^^^^^ help: try ignoring the field: `keywords: _`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `first`
+   --> crates/metaquiche-host/src/expr.rs:205:33
+    |
+205 |                     if let Some(first) = args.first() {
+    |                                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_first`
+
+warning: unused variable: `fmt`
+   --> crates/metaquiche-host/src/expr.rs:212:29
+    |
+212 |                         let fmt = std::iter::repeat("{}")
+    |                             ^^^ help: if this is intentional, prefix it with an underscore: `_fmt`
+
+warning: unused variable: `keys`
+   --> crates/metaquiche-host/src/stmt.rs:519:17
+    |
+519 |                 keys,
+    |                 ^^^^ help: try ignoring the field: `keys: _`
+
+warning: unused variable: `patterns`
+   --> crates/metaquiche-host/src/stmt.rs:520:17
+    |
+520 |                 patterns,
+    |                 ^^^^^^^^ help: try ignoring the field: `patterns: _`
+
+warning: unused variable: `args`
+   --> crates/metaquiche-host/src/stmt.rs:648:17
+    |
+648 |                 args,
+    |                 ^^^^ help: try ignoring the field: `args: _`
+
+warning: fields `foreign_symbols`, `class_fields`, and `current_class` are never read
+  --> crates/metaquiche-host/src/lib.rs:14:16
+   |
+ 9 | pub struct Codegen {
+   |            ------- fields in this struct
+...
+14 |     pub(crate) foreign_symbols: HashSet<String>,
+   |                ^^^^^^^^^^^^^^^
+15 |     pub(crate) linked_modules: HashSet<String>,
+16 |     pub(crate) class_fields: HashMap<String, HashMap<String, String>>,
+   |                ^^^^^^^^^^^^
+17 |     pub(crate) current_class: Option<String>,
+   |                ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `register_class_field`, `set_current_class`, `clear_current_class`, and `get_self_field_type` are never used
+   --> crates/metaquiche-host/src/lib.rs:137:19
+    |
+ 20 | impl Codegen {
+    | ------------ methods in this implementation
+...
+137 |     pub(crate) fn register_class_field(&mut self, class: &str, field: &str, ty: String) {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+144 |     pub(crate) fn set_current_class(&mut self, class: &str) {
+    |                   ^^^^^^^^^^^^^^^^^
+...
+148 |     pub(crate) fn clear_current_class(&mut self) {
+    |                   ^^^^^^^^^^^^^^^^^^^
+...
+152 |     pub(crate) fn get_self_field_type(&self, field: &str) -> Option<String> {
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: method `self_field_type` is never used
+ --> crates/metaquiche-host/src/expr.rs:5:19
+  |
+4 | impl Codegen {
+  | ------------ method in this implementation
+5 |     pub(crate) fn self_field_type(&self, attr: &str, value: &ast::QuicheExpr) -> Option<String> {
+  |                   ^^^^^^^^^^^^^^^
+
+warning: method `get_expr_type` is never used
+   --> crates/metaquiche-host/src/types.rs:119:19
+    |
+  4 | impl Codegen {
+    | ------------ method in this implementation
+...
+119 |     pub(crate) fn get_expr_type(&self, expr: &ast::QuicheExpr) -> Option<String> {
+    |                   ^^^^^^^^^^^^^
+
+warning: `metaquiche-host` (lib) generated 10 warnings (run `cargo fix --lib -p metaquiche-host` to apply 6 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running `target/debug/metaquiche-host crates/metaquiche-native/src/main.qrs --emit-rust`

@@ -63,7 +63,7 @@ def set_env_var(key: String, value: String): pass
 def current_exe_path() -> String: pass
 
 @extern(path="crate::quiche::run_cargo_command")
-def run_cargo_command(cmd: String, args: Vec[String]) -> i32: pass
+def run_cargo_command(cmd: String, args: Vec[String]) -> bool: pass
 
 @extern(path="crate::quiche::run_rust_code")
 def run_rust_code(user_code: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool) -> i32: pass
@@ -93,12 +93,6 @@ def get_flag_bool(flags: HashMap[String, bool], key: String) -> bool:
     return False
 
 
-@extern(path="parsley_qrs::ParseResult", no_generic=True)
-class ParseResult:
-    flags: HashMap[String, bool]
-    options: HashMap[String, String]
-    positionals: Vec[String]
-    errors: Vec[String]
     command: String
     subargs: Vec[String]
 
@@ -109,15 +103,19 @@ class WarnFlags:
     warn_quiche: bool
 
     def new(warn: bool, strict: bool, warn_all: bool, warn_quiche: bool) -> WarnFlags:
-        return WarnFlags(warn=warn, strict=strict, warn_all=warn_all, warn_quiche=warn_quiche)
+        return create_WarnFlags(warn, strict, warn_all, warn_quiche)
 
 
+@extern(path="crate::quiche::ImportMaps", no_generic=True)
 class ImportMaps:
     paths: HashMap[String, String]
     kinds: HashMap[String, String]
 
     def new(paths: HashMap[String, String], kinds: HashMap[String, String]) -> ImportMaps:
-        return ImportMaps(paths=paths, kinds=kinds)
+        return create_ImportMaps(paths, kinds)
+
+@extern(path="crate::quiche::create_ImportMaps")
+def create_ImportMaps(paths: HashMap[String, String], kinds: HashMap[String, String]) -> ImportMaps: pass
 
 
 def module_to_rust_path(module_path: String) -> String:
@@ -155,9 +153,9 @@ def collect_module_exports(module_index: HashMap[String, String], module_path: S
             for stmt in module.body:
                 match stmt:
                     case Stmt.ClassDef(c):
-                        exports.insert(c.name.as_str().to_string(), "class")
+                        exports.insert(c.name.id.to_string(), "class")
                     case Stmt.FunctionDef(f):
-                        exports.insert(f.name.as_str().to_string(), "func")
+                        exports.insert(f.name.id.to_string(), "func")
                     case _: pass
         case None: pass
     return exports
@@ -171,10 +169,12 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
         match stmt:
             case Stmt.Import(i):
                 for alias in i.names:
-                    module_name = alias.name.as_str().to_string()
+                    module_name = alias.name.id.to_string()
                     alias_name = module_name.clone()
                     match alias.asname.clone():
-                        case Some(a): alias_name = a.as_str().to_string()
+                        case Some(a):
+                            ident: ast.Identifier = a
+                            alias_name = ident.id.to_string()
                         case None: pass
                     module_path = resolve_module_path(current_module_path.clone(), module_name, 0)
                     rust_path = module_to_rust_path(module_path)
@@ -184,8 +184,8 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                 base_module = ""
                 match i.module:
                     case Some(m):
-                        if m.as_str().to_string() == "lib.test": continue
-                        base_module = resolve_module_path(current_module_path.clone(), m.as_str().to_string(), i.level)
+                        if m.id.to_string() == "lib.test": continue
+                        base_module = resolve_module_path(current_module_path.clone(), m.id.to_string(), i.level)
                     case None:
                         base_module = resolve_module_path(current_module_path.clone(), "", i.level)
 
@@ -198,10 +198,10 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                         case None: pass
 
                 for alias in i.names:
-                    name = alias.name.as_str().to_string()
+                    name = alias.name.id.to_string()
                     alias_name = name.clone()
                     match alias.asname.clone():
-                        case Some(a): alias_name = a.as_str().to_string()
+                        case Some(a): alias_name = a.id.to_string()
                         case None: pass
 
                     kind = "value"
@@ -264,7 +264,7 @@ def compile_source_to_string(source: String, filename: String, warn_quiche: bool
 
 def compile_source(source: String, filename: String, warn_quiche: bool, strict: bool):
     code = compile_source_to_string(source, filename, warn_quiche, strict)
-    print_str(code)
+    print_stdout(code)
 
 def print_usage():
     print("Usage:")
@@ -337,7 +337,7 @@ def template_main_rs() -> String:
 
 def create_new_project(name: String, is_lib: bool):
     if path_exists(name.clone()):
-        print(f"Error: Directory '{name}' already exists")
+        print(concat3("Error: Directory '", as_ref(name), "' already exists"))
         return
 
     create_dir_all(name.clone() + as_ref("/src"))
@@ -353,12 +353,16 @@ def create_new_project(name: String, is_lib: bool):
         write_string(name.clone() + as_ref("/src/main.qrs"), template_main_qrs())
         write_string(name.clone() + as_ref("/src/main.rs"), template_main_rs())
 
-    print(f"Created new project: {name}")
+    print(concat2("Created new project: ", as_ref(name)))
 
 def run_transpiled_file(filename: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool):
     source = read_to_string(filename.clone())
     rust_code = compile_source_to_string(source, filename.clone(), warn_quiche, strict)
-    exit_code = run_rust_code(rust_code, script_args, quiet, suppress_output, raw_output, warn, strict)
+    # The original instruction had a syntax error and undefined 'success'.
+    # Assuming the intent was to ensure exit_code is an i32, and run_rust_code returns an i32.
+    # If `run_rust_code` returns a boolean or similar, this would need adjustment.
+    # For now, we keep the original call and add a type hint.
+    exit_code: i32 = run_rust_code(rust_code, script_args, quiet, suppress_output, raw_output, warn, strict)
     if exit_code != 0:
         exit(exit_code)
 
@@ -418,9 +422,9 @@ def main():
                     print(e)
                 print_usage()
                 exit(1)
-            exit_code = run_cargo_command("build".to_string(), result.positionals)
-            if exit_code != 0:
-                exit(exit_code)
+            success: bool = run_cargo_command("build", result.positionals)
+            if not success:
+                exit(1)
             return
 
         if cmd == "run":
@@ -432,9 +436,9 @@ def main():
                 print_usage()
                 exit(1)
             if path_exists("Cargo.toml"):
-                exit_code = run_cargo_command("run".to_string(), result.positionals)
-                if exit_code != 0:
-                    exit(exit_code)
+                success_run: bool = run_cargo_command("run", result.positionals)
+                if not success_run:
+                    exit(1)
             else:
                 print("Error: No Cargo.toml found in current directory.")
                 print("To run a single script, use: quiche-self <file.qrs>")
@@ -462,9 +466,9 @@ def main():
                     set_env_var("QUICHE_WARN_QUICHE", "1")
                 run_transpiled_file("tests/runner.qrs", result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche)
             elif path_exists("Cargo.toml"):
-                exit_code = run_cargo_command("test".to_string(), result.positionals)
-                if exit_code != 0:
-                    exit(exit_code)
+                success_test: bool = run_cargo_command("test", result.positionals)
+                if not success_test:
+                    exit(1)
             else:
                 print("Error: No tests/runner.qrs or Cargo.toml found.")
                 exit(1)
@@ -476,16 +480,16 @@ def main():
             date = version_get_date()
             kind = version_get_build_kind()
             
-            print(f"quiche-self {stage}")
-            print(f"  stage:   {stage}")
-            print(f"  commit:  {commit}")
-            print(f"  built:   {date}")
-            print(f"  profile: {kind}")
+            print(concat2("quiche-self ", as_ref(stage)))
+            print(concat2("  stage:   ", as_ref(stage)))
+            print(concat2("  commit:  ", as_ref(commit)))
+            print(concat2("  built:   ", as_ref(date)))
+            print(concat2("  profile: ", as_ref(kind)))
             return
 
     if cmd.ends_with(as_ref(".qrs")):
         if not path_exists(cmd.clone()):
-            print(f"Error: File '{cmd}' not found.")
+            print(concat3("Error: File '", as_ref(cmd), "' not found."))
             exit(1)
         parser = build_flag_parser(False)
         rest: Vec[String] = []
@@ -517,7 +521,7 @@ def main():
         run_transpiled_file(cmd.clone(), result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche)
         return
 
-    print(f"Error: Unrecognized command or file '{cmd}'")
+    print(concat3("Error: Unrecognized command or file '", as_ref(cmd), "'"))
     print("")
     print_usage()
     exit(1)

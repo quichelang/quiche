@@ -1,4 +1,3 @@
-use ruff_python_ast as ast;
 #[derive(Debug, Clone)]
 pub struct QuicheModule {
     pub body: Vec<QuicheStmt>,
@@ -25,6 +24,10 @@ pub enum QuicheStmt {
     While(WhileStmt),
     For(ForStmt),
     Expr(Box<QuicheExpr>),
+    Import(Import),
+    ImportFrom(ImportFrom),
+    Match(MatchStmt),
+    Assert(AssertStmt),
     Pass,
     Break,
     Continue,
@@ -236,4 +239,68 @@ pub struct ImplDef {
     pub trait_name: Option<String>,
     pub target_type: String,
     pub body: Vec<QuicheStmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Import {
+    pub names: Vec<Alias>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImportFrom {
+    pub module: Option<String>,
+    pub names: Vec<Alias>,
+    pub level: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct Alias {
+    pub name: String,
+    pub asname: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchStmt {
+    pub subject: Box<QuicheExpr>,
+    pub cases: Vec<MatchCase>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchCase {
+    pub pattern: Pattern,
+    pub guard: Option<Box<QuicheExpr>>,
+    pub body: Vec<QuicheStmt>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    MatchValue(Box<QuicheExpr>),
+    MatchSingleton(Constant),
+    MatchSequence(Vec<Pattern>),
+    MatchMapping {
+        keys: Vec<Box<QuicheExpr>>,
+        patterns: Vec<Pattern>,
+        rest: Option<String>,
+    },
+    MatchClass(MatchClassPattern), // Refactored to struct for cleaner enum
+    MatchStar(Option<String>),
+    MatchAs {
+        pattern: Option<Box<Pattern>>,
+        name: Option<String>,
+    },
+    MatchOr(Vec<Pattern>),
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchClassPattern {
+    pub cls: Box<QuicheExpr>,
+    pub patterns: Vec<Pattern>,
+    pub kwd_attrs: Vec<String>,
+    pub kwd_patterns: Vec<Pattern>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AssertStmt {
+    pub test: Box<QuicheExpr>,
+    pub msg: Option<Box<QuicheExpr>>,
 }

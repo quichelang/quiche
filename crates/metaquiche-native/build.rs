@@ -168,16 +168,19 @@ fn main() {
 
         let mut final_code = rust_code;
 
-        // If this is the root file, inject `mod` declarations for linking
-        if let Some((_, root_stem)) = root_file {
-            if stem == root_stem {
-                let mod_decls: String = top_modules
-                    .iter()
-                    .map(|m| format!("pub mod {};\n", m))
-                    .collect();
-                final_code = format!("{}\n{}", mod_decls, final_code);
-            }
-        }
+        // NOTE: We no longer inject mod declarations for the root file.
+        // The generated main.rs is included inside generated_main module,
+        // and should use the existing crate::compiler and crate::ast modules
+        // rather than creating duplicate modules.
+        // if let Some((_, root_stem)) = root_file {
+        //     if stem == root_stem {
+        //         let mod_decls: String = top_modules
+        //             .iter()
+        //             .map(|m| format!("pub mod {};\n", m))
+        //             .collect();
+        //         final_code = format!("{}\n{}", mod_decls, final_code);
+        //     }
+        // }
 
         if is_mod {
             if let Some(children) = module_children.get(&module_path) {

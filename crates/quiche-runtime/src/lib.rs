@@ -147,3 +147,37 @@ impl<T> QuicheIterable for Box<[T]> {
         self.into_vec().into_iter()
     }
 }
+
+pub trait QuicheDeref {
+    type Target;
+    fn quiche_deref(&self) -> Self::Target;
+}
+
+impl<T: Clone> QuicheDeref for Box<T> {
+    type Target = T;
+    fn quiche_deref(&self) -> T {
+        (**self).clone()
+    }
+}
+
+impl<T: Clone> QuicheDeref for Option<Box<T>> {
+    type Target = T;
+    fn quiche_deref(&self) -> T {
+        self.as_ref().expect("deref None").as_ref().clone()
+    }
+}
+
+#[macro_export]
+macro_rules! deref {
+    ($e:expr) => {{
+        use $crate::QuicheDeref;
+        ($e).quiche_deref()
+    }};
+}
+
+#[macro_export]
+macro_rules! as_ref {
+    ($e:expr) => {
+        &($e)
+    };
+}

@@ -1,80 +1,91 @@
+@extern(path="crate::impl_construct_flag_spec")
+def construct_flag_spec(name: String, aliases: Vec[String], takes_value: bool, default_bool: bool, default_value: String, has_default: bool) -> FlagSpec: pass
+
+@extern(path="crate::impl_construct_parse_result")
+def construct_parse_result(flags: HashMap[String, bool], options: HashMap[String, String], positionals: Vec[String], errors: Vec[String], command: String, subargs: Vec[String]) -> ParseResult: pass
+
+@extern(path="crate::impl_construct_parsley")
+def construct_parsley(specs: Vec[FlagSpec], by_name: HashMap[String, FlagSpec], alias_map: HashMap[String, String], commands: Vec[String]) -> Parsley: pass
+
+@dataclass
 class FlagSpec:
     name: String
-    aliases: List[String]
+    aliases: Vec[String]
     takes_value: bool
     default_bool: bool
     default_value: String
     has_default: bool
 
-    def new_flag(name: String, aliases: List[String], default_bool: bool) -> FlagSpec:
-        return FlagSpec(
-            name=name,
-            aliases=aliases,
-            takes_value=False,
-            default_bool=default_bool,
-            default_value="",
-            has_default=True,
-        )
-
-    def new_option(name: String, aliases: List[String], default_value: String, has_default: bool) -> FlagSpec:
-        return FlagSpec(
-            name=name,
-            aliases=aliases,
-            takes_value=True,
-            default_bool=False,
-            default_value=default_value,
-            has_default=has_default,
-        )
+    @staticmethod
+    def new(name: String, aliases: Vec[String], takes_value: bool, default_bool: bool, default_value: String, has_default: bool) -> FlagSpec:
+        return construct_flag_spec(name, aliases, takes_value, default_bool, default_value, has_default)
 
     def clone(self) -> FlagSpec:
-        return FlagSpec(
-            name=self.name.clone(),
-            aliases=self.aliases.clone(),
-            takes_value=self.takes_value,
-            default_bool=self.default_bool,
-            default_value=self.default_value.clone(),
-            has_default=self.has_default,
-        )
+        return FlagSpec.new(self.name.clone(), self.aliases.clone(), self.takes_value, self.default_bool, self.default_value.clone(), self.has_default)
 
+    @staticmethod
+    def new_flag(name: String, aliases: Vec[String], default_bool: bool) -> FlagSpec:
+        return FlagSpec.new(name, aliases, False, default_bool, "".to_string(), True)
+
+    @staticmethod
+    def new_option(name: String, aliases: Vec[String], default_value: String, has_default: bool) -> FlagSpec:
+        return FlagSpec.new(name, aliases, True, False, default_value, has_default)
+
+def flag(name: String, aliases: Vec[String]) -> FlagSpec:
+    return FlagSpec.new(name, aliases, False, False, "".to_string(), False)
+
+def flag_bool(name: String, aliases: Vec[String], default_bool: bool) -> FlagSpec:
+    return FlagSpec.new(name, aliases, False, default_bool, "".to_string(), True)
+
+def option(name: String, aliases: Vec[String], default_value: String, has_default: bool) -> FlagSpec:
+    return FlagSpec.new(name, aliases, True, False, default_value, has_default)
+
+@dataclass
 class ParseResult:
-    flags: Dict[String, bool]
-    options: Dict[String, String]
-    positionals: List[String]
+    flags: HashMap[String, bool]
+    options: HashMap[String, String]
+    positionals: Vec[String]
     command: String
-    subargs: List[String]
-    errors: List[String]
+    subargs: Vec[String]
+    errors: Vec[String]
 
+    @staticmethod
     def new() -> ParseResult:
-        return ParseResult(
-            flags=Dict[String, bool].new(),
-            options=Dict[String, String].new(),
-            positionals=[],
-            command="",
-            subargs=[],
-            errors=[],
+        return construct_parse_result(
+            HashMap[String, bool].new(),
+            HashMap[String, String].new(),
+            Vec[String].new(),
+            Vec[String].new(),
+            "".to_string(),
+            Vec[String].new()
         )
 
+    def has_error(self) -> bool:
+         return self.errors.len() > 0
+
+@dataclass
 class Parsley:
-    specs: List[FlagSpec]
-    by_name: Dict[String, FlagSpec]
-    alias_map: Dict[String, String]
-    commands: List[String]
+    specs: Vec[FlagSpec]
+    by_name: HashMap[String, FlagSpec]
+    alias_map: HashMap[String, String]
+    commands: Vec[String]
 
+    @staticmethod
     def new() -> Parsley:
-        return Parsley(
-            specs=[],
-            by_name=Dict[String, FlagSpec].new(),
-            alias_map=Dict[String, String].new(),
-            commands=[],
+        return construct_parsley(
+            Vec[FlagSpec].new(),
+            HashMap[String, FlagSpec].new(),
+            HashMap[String, String].new(),
+            Vec[String].new()
         )
 
-    def add_flag(self: Parsley, name: String, aliases: List[String], default_bool: bool):
+    def add_flag(self: Parsley, name: String, aliases: Vec[String], default_bool: bool):
         spec = FlagSpec.new_flag(name.clone(), aliases.clone(), default_bool)
         self.specs.push(spec.clone())
         self.by_name.insert(name.clone(), spec)
         self.register_aliases(name, aliases)
 
-    def add_option(self: Parsley, name: String, aliases: List[String], default_value: String, has_default: bool):
+    def add_option(self: Parsley, name: String, aliases: Vec[String], default_value: String, has_default: bool):
         spec = FlagSpec.new_option(name.clone(), aliases.clone(), default_value.clone(), has_default)
         self.specs.push(spec.clone())
         self.by_name.insert(name.clone(), spec)
@@ -83,7 +94,7 @@ class Parsley:
     def add_command(self: Parsley, name: String):
         self.commands.push(name)
 
-    def register_aliases(self: Parsley, name: String, aliases: List[String]):
+    def register_aliases(self: Parsley, name: String, aliases: Vec[String]):
         self.alias_map.insert(name.clone(), name.clone())
         self.alias_map.insert("--".to_string() + as_ref(name.clone()), name.clone())
         if name.clone().len() == 1:
@@ -91,7 +102,7 @@ class Parsley:
         for a in aliases:
             self.alias_map.insert(a.clone(), name.clone())
 
-    def parse(self: Parsley, args: List[String]) -> ParseResult:
+    def parse(self: Parsley, args: Vec[String]) -> ParseResult:
         result: ParseResult = ParseResult.new()
 
         # defaults
@@ -146,7 +157,7 @@ class Parsley:
                         case None:
                             result.errors.push("Unknown option: " + as_ref(arg))
                 case None:
-                    result.errors.push("Unknown option: " + as_ref(arg))
+                     result.errors.push("Unknown option: " + as_ref(arg))
 
             i = i + 1
 
