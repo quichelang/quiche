@@ -104,9 +104,8 @@ impl Codegen {
         // If val is HashMap, this fails in Rust (use .insert).
         // User must write d.insert(k, v) in Quiche.
 
-        self.output.push_str("std::rc::Rc::make_mut(&mut ");
         self.generate_expr(*sub.value.clone());
-        self.output.push_str(")[");
+        self.output.push_str("[");
         self.generate_expr(*sub.slice.clone());
         self.output.push_str("] = ");
         self.generate_expr(value.clone());

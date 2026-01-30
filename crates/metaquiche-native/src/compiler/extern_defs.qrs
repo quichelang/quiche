@@ -1,0 +1,17 @@
+# External Rust bindings for codegen
+# These are @extern declarations that bind to Rust functions/types
+
+@extern(path="std::string::String", no_generic=True)
+class RustString:
+    def new() -> RustString: pass
+    def self.len() -> usize: pass
+    def as_str(self) -> StrRef: pass
+
+@extern(path="crate::quiche::push_str_wrapper")
+def q_push(s: RustString, val: String) -> RustString: pass
+
+@extern(path="crate::quiche::escape_rust_string")
+def escape_rust_string(s: String) -> String: pass
+
+@extern(path="crate::quiche::vec_to_list")
+def vec_to_list(v: Vec[ast.Stmt]) -> Vec[ast.Stmt]: pass

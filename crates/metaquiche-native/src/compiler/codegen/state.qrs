@@ -1,0 +1,192 @@
+import ast
+import types
+from compiler.extern_defs import RustString, q_push, escape_rust_string, vec_to_list
+
+from compiler.type_utils import infer_type as util_infer_type
+from compiler.type_utils import type_to_string as util_type_to_string
+from compiler.type_utils import is_tuple as util_is_tuple
+from compiler.type_utils import get_root as util_get_root
+from compiler.type_utils import is_type_or_module as util_is_type_or_module
+from compiler.type_utils import contains_name as util_contains_name
+
+class CodegenState:
+    output: RustString
+    symbols: types.SymbolTable
+    tuple_vars: HashMap[String, bool]
+    defined_vars: Vec[HashMap[String, bool]]
+    import_paths: HashMap[String, String]
+    import_kinds: HashMap[String, String]
+    clone_names: bool
+    current_module_path: String
+    class_fields: HashMap[String, HashMap[String, String]]
+    current_class: String
+    usage_ledger: HashMap[String, types.UsageInfo]
+    current_stmt_idx: i32
+
+    def __init__(self):
+        self.output = RustString.new()
+        self.symbols = types.SymbolTable.new()
+        self.tuple_vars = HashMap[String, bool].new()
+        self.defined_vars = [HashMap[String, bool].new()]
+        self.import_paths = HashMap[String, String].new()
+        self.import_kinds = HashMap[String, String].new()
+        self.clone_names = True
+        self.current_module_path = ""
+        self.class_fields = HashMap[String, HashMap[String, String]].new()
+        self.current_class = ""
+        self.usage_ledger = HashMap[String, types.UsageInfo].new()
+        self.current_stmt_idx = 0
+
+    def new() -> CodegenState:
+        return CodegenState(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=HashMap[String, bool].new(), defined_vars=[HashMap[String, bool].new()], import_paths=HashMap[String, String].new(), import_kinds=HashMap[String, String].new(), clone_names=True, current_module_path="", class_fields=HashMap[String, HashMap[String, String]].new(), current_class="", usage_ledger=HashMap[String, types.UsageInfo].new(), current_stmt_idx=0)
+
+    def new_with_imports(import_paths: HashMap[String, String], import_kinds: HashMap[String, String]) -> CodegenState:
+        return CodegenState(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=HashMap[String, bool].new(), defined_vars=[HashMap[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path="", class_fields=HashMap[String, HashMap[String, String]].new(), current_class="", usage_ledger=HashMap[String, types.UsageInfo].new(), current_stmt_idx=0)
+
+    def new_with_imports_and_module(import_paths: HashMap[String, String], import_kinds: HashMap[String, String], current_module_path: String) -> CodegenState:
+        return CodegenState(output=RustString.new(), symbols=types.SymbolTable.new(), tuple_vars=HashMap[String, bool].new(), defined_vars=[HashMap[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path=current_module_path, class_fields=HashMap[String, HashMap[String, String]].new(), current_class="", usage_ledger=HashMap[String, types.UsageInfo].new(), current_stmt_idx=0)
+
+    def emit(self, s: String):
+        self.output = q_push(self.output.clone(), s)
+
+    def register_class_field(self, class_name: String, field_name: String, field_type: String):
+        match self.class_fields.get(class_name.clone()):
+            case Some(cf_untyped):
+                class_fields_map: HashMap[String, String] = cf_untyped
+                class_fields_map.insert(field_name.clone(), field_type.clone())
+            case None:
+                class_fields_map: HashMap[String, String] = HashMap[String, String].new()
+                class_fields_map.insert(field_name.clone(), field_type.clone())
+                self.class_fields.insert(class_name.clone(), class_fields_map)
+
+    def set_current_class(self, class_name: String):
+        self.current_class = class_name
+
+    def clear_current_class(self):
+        self.current_class = ""
+
+    def get_self_field_type(self, field_name: String) -> String:
+        if self.current_class == "": return ""
+        match self.class_fields.get(self.current_class.clone()):
+            case Some(cf_untyped):
+                class_fields_map: HashMap[String, String] = cf_untyped
+                match class_fields_map.get(field_name.clone()):
+                    case Some(t): return t
+                    case None: return ""
+            case None: return ""
+
+    def register_import_symbol(self, name: String):
+        match self.import_kinds.get(name.clone()):
+            case Some(kind):
+                if kind == "module":
+                    self.symbols.insert(name.clone(), types.Symbol.module(name.clone()))
+                elif kind == "type":
+                    self.symbols.insert(name.clone(), types.Symbol.clazz(name.clone(), False))
+                elif kind == "func":
+                    self.symbols.insert(name.clone(), types.Symbol.func(name.clone(), False))
+                else:
+                    self.symbols.insert(name.clone(), types.Symbol.var(name.clone(), "inferred"))
+            case None:
+                self.symbols.insert(name.clone(), types.Symbol.module(name.clone()))
+
+    def infer_expr_type(self, expr: ast.Expr) -> String:
+        return util_infer_type(self.symbols.clone(), expr)
+
+    def type_to_string(self, expr: ast.Expr) -> String:
+        return util_type_to_string(expr)
+
+    def is_tuple_expr(self, expr: ast.Expr) -> bool:
+        return util_is_tuple(self.symbols.clone(), expr)
+
+    def get_root_name(self, expr: ast.Expr) -> Option[String]:
+        return util_get_root(expr)
+
+    def is_type_or_mod(self, name: String) -> bool:
+        return util_is_type_or_module(self.symbols.clone(), name)
+
+    def is_var_defined(self, name: String) -> bool:
+        match self.symbols.lookup(name):
+            case Some(_): return True
+            case None: return False
+
+    def is_var_defined_in_scopes(self, name: String) -> bool:
+        i = self.defined_vars.len()
+        while i > 0:
+            i = i - 1
+            scope = as_ref(self.defined_vars[i.clone()])
+            match scope.get(as_ref(name.clone())):
+                case Some(_): return True
+                case None: pass
+        return False
+
+    def enter_var_scope(self):
+        self.defined_vars.push(HashMap[String, bool].new())
+
+    def exit_var_scope(self):
+        sz = self.defined_vars.len()
+        if sz > 1:
+            self.defined_vars.pop()
+
+    def mark_var_defined(self, name: String):
+        sz = self.defined_vars.len()
+        idx = sz - 1
+        current_scope: HashMap[String, bool] = self.defined_vars[idx.clone()].clone()
+        current_scope.insert(name, True)
+        self.defined_vars[idx.clone()] = current_scope
+    
+    def define_var(self, name: String):
+        self.symbols.insert(name.clone(), types.Symbol.var(name.clone(), "inferred"))
+        self.mark_var_defined(name)
+
+    def expr_contains_name(self, expr: ast.Expr, name: String) -> bool:
+        return util_contains_name(expr, name)
+
+    def is_list_like_expr(self, expr: ast.Expr) -> bool:
+        match expr:
+            case ast.Expr.List(_): return True
+            case ast.Expr.Name(_):
+                t = self.infer_expr_type(expr)
+                return t.contains(as_ref("Vec")) or t.contains(as_ref("List"))
+            case ast.Expr.Attribute(a):
+                match as_ref(deref(a.value)):
+                    case ast.Expr.Name(n):
+                        if n.id.as_str().to_string() == "self":
+                            t = self.get_self_field_type(a.attr.as_str().to_string())
+                            return t.contains(as_ref("Vec")) or t.contains(as_ref("List"))
+                        base_type = self.infer_expr_type(ast.Expr.Name(n.clone()))
+                        match self.class_fields.get(base_type):
+                            case Some(cf_untyped):
+                                class_fields_map: HashMap[String, String] = cf_untyped
+                                match class_fields_map.get(a.attr.as_str().to_string()):
+                                    case Some(ft):
+                                        return ft.contains(as_ref("Vec")) or ft.contains(as_ref("List"))
+                                    case None: pass
+                            case None: pass
+                    case _: pass
+                return False
+            case _: return False
+
+    def is_dict_like_expr(self, expr: ast.Expr) -> bool:
+        match expr:
+            case ast.Expr.Dict(_): return True
+            case ast.Expr.Name(_):
+                t = self.infer_expr_type(expr)
+                return t.starts_with(as_ref("std::collections::HashMap")) or t.starts_with(as_ref("std::rc::Rc<std::collections::HashMap")) or t.starts_with(as_ref("Dict")) or t.starts_with(as_ref("HashMap"))
+            case ast.Expr.Attribute(a):
+                match as_ref(deref(a.value)):
+                    case ast.Expr.Name(n):
+                        if n.id.as_str().to_string() == "self":
+                            t = self.get_self_field_type(a.attr.as_str().to_string())
+                            return t.starts_with(as_ref("std::collections::HashMap")) or t.starts_with(as_ref("std::rc::Rc<std::collections::HashMap")) or t.starts_with(as_ref("Dict")) or t.starts_with(as_ref("HashMap"))
+                        base_type = self.infer_expr_type(ast.Expr.Name(n.clone()))
+                        match self.class_fields.get(base_type):
+                            case Some(cf_untyped):
+                                class_fields_map: HashMap[String, String] = cf_untyped
+                                match class_fields_map.get(a.attr.as_str().to_string()):
+                                    case Some(ft):
+                                        return ft.starts_with(as_ref("std::collections::HashMap")) or ft.starts_with(as_ref("std::rc::Rc<std::collections::HashMap")) or ft.starts_with(as_ref("Dict")) or ft.starts_with(as_ref("HashMap"))
+                                    case None: pass
+                            case None: pass
+                    case _: pass
+                return False
+            case _: return False

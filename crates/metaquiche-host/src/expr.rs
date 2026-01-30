@@ -95,13 +95,11 @@ impl Codegen {
                         match &*attr.value {
                             ast::Expr::Name(n) => match n.id.as_str() {
                                 "List" | "Vec" => {
-                                    self.output.push_str("std::rc::Rc::new(Vec::new())");
+                                    self.output.push_str("Vec::new()");
                                     return;
                                 }
                                 "Dict" | "HashMap" => {
-                                    self.output.push_str(
-                                        "std::rc::Rc::new(std::collections::HashMap::new())",
-                                    );
+                                    self.output.push_str("std::collections::HashMap::new()");
                                     return;
                                 }
                                 _ => {}
@@ -110,9 +108,9 @@ impl Codegen {
                                 let base = self.expr_to_string(&s.value);
                                 if base == "List" || base == "Vec" {
                                     let inner = self.map_type(&s.slice);
-                                    self.output.push_str("std::rc::Rc::new(Vec::<");
+                                    self.output.push_str("Vec::<");
                                     self.output.push_str(&inner);
-                                    self.output.push_str(">::new())");
+                                    self.output.push_str(">::new()");
                                     return;
                                 }
                                 if base == "Dict" || base == "HashMap" {
@@ -120,19 +118,15 @@ impl Codegen {
                                         if t.elts.len() == 2 {
                                             let k = self.map_type(&t.elts[0]);
                                             let v = self.map_type(&t.elts[1]);
-                                            self.output.push_str(
-                                                "std::rc::Rc::new(std::collections::HashMap::<",
-                                            );
+                                            self.output.push_str("std::collections::HashMap::<");
                                             self.output.push_str(&k);
                                             self.output.push_str(", ");
                                             self.output.push_str(&v);
-                                            self.output.push_str(">::new())");
+                                            self.output.push_str(">::new()");
                                             return;
                                         }
                                     }
-                                    self.output.push_str(
-                                        "std::rc::Rc::new(std::collections::HashMap::new())",
-                                    );
+                                    self.output.push_str("std::collections::HashMap::new()");
                                     return;
                                 }
                             }
@@ -457,18 +451,17 @@ impl Codegen {
                 self.output.push_str(if b.value { "true" } else { "false" })
             }
             ast::Expr::List(l) => {
-                self.output.push_str("std::rc::Rc::new(vec![");
+                self.output.push_str("vec![");
                 for (i, elt) in l.elts.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
                     self.generate_expr(elt.clone());
                 }
-                self.output.push_str("])");
+                self.output.push_str("]");
             }
             ast::Expr::Dict(d) => {
-                self.output
-                    .push_str("std::rc::Rc::new(std::collections::HashMap::from([");
+                self.output.push_str("std::collections::HashMap::from([");
                 for (i, item) in d.items.iter().enumerate() {
                     if let Some(key) = &item.key {
                         if i > 0 {
@@ -484,7 +477,7 @@ impl Codegen {
                         self.output.push_str("/* **kwargs not supported */");
                     }
                 }
-                self.output.push_str("]))");
+                self.output.push_str("])");
             }
             ast::Expr::Subscript(s) => {
                 // Check for tuple/map access via symbol table
