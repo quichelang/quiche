@@ -86,7 +86,7 @@ class Parsley:
     def register_aliases(self: Parsley, name: String, aliases: List[String]):
         self.alias_map.insert(name.clone(), name.clone())
         self.alias_map.insert("--".to_string() + as_ref(name.clone()), name.clone())
-        if len(name.clone()) == 1:
+        if name.clone().len() == 1:
             self.alias_map.insert("-".to_string() + as_ref(name.clone()), name.clone())
         for a in aliases:
             self.alias_map.insert(a.clone(), name.clone())
@@ -96,7 +96,7 @@ class Parsley:
 
         # defaults
         idx_spec: usize = 0
-        while idx_spec < len(self.specs):
+        while idx_spec < self.specs.len():
             spec: FlagSpec = self.specs[idx_spec].clone()
             if spec.takes_value:
                 if spec.has_default:
@@ -106,12 +106,12 @@ class Parsley:
             idx_spec = idx_spec + 1
 
         i: usize = 0
-        while i < len(args):
+        while i < args.len():
             arg: String = args[i].clone()
 
             if arg == "--":
                 j = i + 1
-                while j < len(args):
+                while j < args.len():
                     result.positionals.push(args[j].clone())
                     j = j + 1
                 break
@@ -121,7 +121,7 @@ class Parsley:
                 if result.command == "" and self.is_command(arg.clone()):
                     result.command = arg.clone()
                     j2 = i + 1
-                    while j2 < len(args):
+                    while j2 < args.len():
                         result.subargs.push(args[j2].clone())
                         j2 = j2 + 1
                     break
@@ -134,7 +134,7 @@ class Parsley:
                     match self.by_name.get(as_ref(name.clone())):
                         case Some(spec):
                             if spec.takes_value:
-                                if i + 1 < len(args):
+                                if i + 1 < args.len():
                                     value: String = args[i + 1].clone()
                                     result.options.insert(spec.name.clone(), value)
                                     i = i + 2
@@ -154,7 +154,7 @@ class Parsley:
 
     def is_command(self: Parsley, name: String) -> bool:
         i = 0
-        while i < len(self.commands):
+        while i < self.commands.len():
             if self.commands[i] == name: return True
             i = i + 1
         return False

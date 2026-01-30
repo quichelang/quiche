@@ -91,7 +91,7 @@ class Codegen:
     def register_class_field(self, class_name: String, field_name: String, field_type: String):
         match self.class_fields.get(as_ref(class_name.clone())):
             case Some(cf_untyped):
-                class_fields_map: HashMap[String, String] = cf_untyped
+                class_fields_map: HashMap[String, String] = cf_untyped.clone()
                 class_fields_map.insert(field_name.clone(), field_type.clone())
             case None:
                 class_fields_map: HashMap[String, String] = HashMap[String, String].new()

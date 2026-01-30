@@ -145,7 +145,7 @@ def resolve_module_path(current_module_path: String, module_name: String, level:
 
 def collect_module_exports(module_index: HashMap[String, String], module_path: String) -> HashMap[String, String]:
     exports = HashMap[String, String].new()
-    match module_index.get(module_path):
+    match module_index.get(as_ref(module_path)):
         case Some(path):
             source = read_to_string(path.clone())
             parsed = parse_module(source.as_str())
@@ -190,7 +190,7 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                 is_external = base_module.starts_with(as_ref("rust.")) or base_module.starts_with(as_ref("std."))
                 exports = HashMap[String, String].new()
                 if not is_external:
-                    match module_index.get(base_module.clone()):
+                    match module_index.get(as_ref(base_module.clone())):
                         case Some(_):
                             exports = collect_module_exports(module_index.clone(), base_module.clone())
                         case None: pass
@@ -205,7 +205,7 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                     kind = "value"
                     item_module = module_join(base_module.clone(), name.clone())
                     rust_path = ""
-                    match module_index.get(item_module.clone()):
+                    match module_index.get(as_ref(item_module.clone())):
                         case Some(_):
                             kind = "module"
                             rust_path = module_to_rust_path(item_module)
@@ -216,10 +216,10 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                             if is_external:
                                 kind = "module"
                             else:
-                                match exports.get(name.clone()):
+                                match exports.get(as_ref(name.clone())):
                                     case Some(k):
-                                        if k == "class": kind = "type"
-                                        elif k == "func": kind = "func"
+                                        if deref(k) == "class": kind = "type"
+                                        elif deref(k) == "func": kind = "func"
                                         else: kind = "value"
                                     case None: kind = "value"
 
@@ -247,8 +247,7 @@ def compile_source_to_string(source: String, filename: String, warn_quiche: bool
 
     root_dir = path_dirname(filename.clone())
     module_index = build_module_index(root_dir.clone())
-    current_module_path = normalize_module_path(module_path_for_file(root_dir, filename.clone()))
-    current_module_path = normalize_module_path(module_path_for_file(root_dir, filename.clone()))
+    current_module_path = normalize_module_path(module_path_for_file(root_dir.clone(), filename.clone()))
     import_maps = build_import_maps(stmts.clone(), module_index, current_module_path.clone())
     
     # Codegen
