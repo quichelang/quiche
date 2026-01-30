@@ -247,8 +247,17 @@ impl Codegen {
                     return;
                 }
 
-                let is_intrinsic =
-                    func_name == "as_ref" || func_name == "as_mut" || func_name == "deref";
+                let is_intrinsic = func_name == "as_ref"
+                    || func_name == "as_mut"
+                    || func_name == "deref"
+                    || func_name == "print"
+                    || func_name == "print_str"
+                    || func_name == "assert"
+                    || func_name == "assert_eq"
+                    || func_name == "assert_str_eq"
+                    || func_name == "assert_true"
+                    || func_name == "range"
+                    || func_name == "len";
                 if !is_intrinsic {
                     self.output.push_str("crate::quiche::check!(");
                 }

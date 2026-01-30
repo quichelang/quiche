@@ -48,7 +48,7 @@ def type_to_string(expr: ast.Expr) -> String:
             return s
         case ast.Expr.Subscript(s):
             base = type_to_string(deref(s.value))
-            if base == "std::collections::HashMap":
+            if base == "std::collections::HashMap" or base == "HashMap":
                 match deref(s.slice):
                     case ast.Expr.Tuple(t):
                         res = RustString.new()
@@ -98,6 +98,16 @@ def type_to_string(expr: ast.Expr) -> String:
             res_attr = q_push(res_attr, "::")
             res_attr = q_push(res_attr, a.attr.as_str().to_string())
             return res_attr
+        case ast.Expr.Tuple(t):
+            res_t = RustString.new()
+            res_t = q_push(res_t, "(")
+            idx_t: usize = 0
+            for e in t.elts:
+                if idx_t > 0: res_t = q_push(res_t, ", ")
+                res_t = q_push(res_t, type_to_string(e))
+                idx_t = idx_t + 1
+            res_t = q_push(res_t, ")")
+            return res_t
         case _: return "Any"
 
 def is_tuple(expr: ast.Expr) -> bool:

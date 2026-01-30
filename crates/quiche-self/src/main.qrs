@@ -3,6 +3,8 @@ from ast import Stmt, Parsed
 
 from compiler.codegen import Codegen
 from rust.parsley_qrs import Parsley
+from std.collections import HashMap
+from std.any import Any
 
 @extern(path="std::string::String", no_generic=True)
 class RustString:

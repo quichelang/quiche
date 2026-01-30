@@ -569,7 +569,7 @@ class Codegen:
                 case Some(a): alias_name = a.as_str().to_string()
                 case None: pass
 
-            rust_path_opt = None
+            rust_path_opt: Option[String] = None
             match self.import_paths.get(as_ref(alias_name.clone())):
                 case Some(p): rust_path_opt = Some(p.clone())
                 case None: pass
@@ -615,7 +615,7 @@ class Codegen:
                 case Some(a): alias_name = a.as_str().to_string()
                 case None: pass
 
-            rust_path_opt = None
+            rust_path_opt: Option[String] = None
             match self.import_paths.get(as_ref(alias_name.clone())):
                 case Some(p): rust_path_opt = Some(p.clone())
                 case None: pass
@@ -770,7 +770,7 @@ class Codegen:
                 first_p = False
                 self.generate_expr(arg)
             self.emit(")")
-            self.emit(")")
+            return
         elif func_name == "as_ref":
              self.emit("&")
              if c.arguments.args.len() > 0:
@@ -861,6 +861,7 @@ class Codegen:
                                     return
                             case _: pass
 
+                    self.emit("crate::quiche::check!(")
                     self.generate_expr(deref(c.func))
                     self.emit("(")
                     idx_arg_call = 0
@@ -868,8 +869,9 @@ class Codegen:
                         if idx_arg_call > 0: self.emit(", ")
                         self.generate_expr(arg_c)
                         idx_arg_call = idx_arg_call + 1
-                    self.emit(")")
+                    self.emit("))")
                 case _:
+                    self.emit("crate::quiche::check!(")
                     self.generate_expr(deref(c.func))
                     self.emit("(")
                     idx_arg_call = 0
@@ -877,7 +879,7 @@ class Codegen:
                         if idx_arg_call > 0: self.emit(", ")
                         self.generate_expr(arg_c)
                         idx_arg_call = idx_arg_call + 1
-                    self.emit(")")
+                    self.emit("))")
 
     def emit_list(self, l: ast.ExprList):
         self.emit("vec![")
@@ -1080,12 +1082,12 @@ class Codegen:
     def emit_fstring(self, f: ast.ExprFString):
         self.emit("format!(\"")
         f_args: Vec[ast.Expr] = []
-        for part in f.value:
+        for part in as_ref(f.value):
             match part:
                 case ast.FStringPart.Literal(lit):
                     self.emit(lit.value.to_string())
                 case ast.FStringPart.FString(fs):
-                    for element in fs.elements:
+                    for element in as_ref(fs.elements):
                         match element:
                             case ast.InterpolatedStringElement.Literal(l):
                                 self.emit(l.value.to_string())
