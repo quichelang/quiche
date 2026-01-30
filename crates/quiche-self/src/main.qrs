@@ -316,8 +316,6 @@ def parse_warn_flags(flags: Dict[String, bool]) -> WarnFlags:
     warn_quiche = False
     strict = False
     k1 = "warn-all"
-    k1 = "warn-all"
-    k1 = "warn-all"
     warn_all = get_flag_bool(flags.clone(), k1)
     k2 = "warn-quiche"
     warn_quiche = get_flag_bool(flags.clone(), k2)

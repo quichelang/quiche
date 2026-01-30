@@ -4,6 +4,6 @@ members = [
     "crates/quiche-host",
     "crates/quiche-self",
     "crates/quiche-runtime",
-    "crates/parsley-qrs",
+    "crates/parsley-qrs", "crates/metaquiche-host",
 ]
 resolver = "2"

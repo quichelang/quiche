@@ -1,4 +1,4 @@
-use quiche_compiler::compile;
+use metaquiche_host::compile;
 use std::env;
 use std::fs;
 use std::path::Path;
