@@ -110,7 +110,7 @@ fn main() {
 
     // 3. Compile all files
     let bootstrap_bin =
-        env::var("QUICHE_BOOTSTRAP_BIN").expect("QUICHE_BOOTSTRAP_BIN env var must be set");
+        env::var("QUICHE_COMPILER_BIN").expect("QUICHE_COMPILER_BIN env var must be set");
 
     for path in &qrs_files {
         let stem = path.file_stem().unwrap().to_str().unwrap();

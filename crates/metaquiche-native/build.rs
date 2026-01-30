@@ -148,7 +148,7 @@ fn main() {
 
         // --- External Binary Transpilation ---
         let bootstrap_bin =
-            env::var("QUICHE_BOOTSTRAP_BIN").expect("QUICHE_BOOTSTRAP_BIN env var must be set");
+            env::var("QUICHE_COMPILER_BIN").expect("QUICHE_COMPILER_BIN env var must be set");
         let output = std::process::Command::new(&bootstrap_bin)
             .arg(path)
             .arg("--emit-rust")

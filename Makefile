@@ -19,12 +19,12 @@ stage0:
 
 stage1: stage0
 	@echo "Building Stage 1 (Host -> Self)..."
-	QUICHE_STAGE=stage1 QUICHE_BOOTSTRAP_BIN=$(abspath $(HOST_BIN)) CARGO_TARGET_DIR=$(STAGE1_TARGET_DIR) cargo build -p metaquiche-native
+	QUICHE_STAGE=stage1 QUICHE_COMPILER_BIN=$(abspath $(HOST_BIN)) CARGO_TARGET_DIR=$(STAGE1_TARGET_DIR) cargo build -p metaquiche-native
 	@ln -sf $(STAGE1_BIN) stage1
 
 stage2: stage1
 	@echo "Building Stage 2 (Stage 1 -> Self)..."
-	QUICHE_STAGE=stage2 QUICHE_BOOTSTRAP_BIN=$(abspath $(STAGE1_BIN)) CARGO_TARGET_DIR=$(STAGE2_TARGET_DIR) cargo build -p metaquiche-native
+	QUICHE_STAGE=stage2 QUICHE_COMPILER_BIN=$(abspath $(STAGE1_BIN)) CARGO_TARGET_DIR=$(STAGE2_TARGET_DIR) cargo build -p metaquiche-native
 	@ln -sf $(STAGE2_BIN) stage2
 
 verify: stage2
