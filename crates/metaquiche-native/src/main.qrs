@@ -313,6 +313,7 @@ def template_cargo_toml(name: String, is_lib: bool, compiler_path: String) -> St
     s = s + as_ref("# Break out of any parent workspace\n[workspace]\n\n")
     s = s + as_ref("[build-dependencies]\nquiche_compiler = { path = \"") + compiler_path.as_str() + as_ref("\" }\n\n")
     s = s + as_ref("[dependencies]\n")
+    s = s + as_ref("quiche-runtime = { path = \"../quiche-runtime\" }\n")  # TODO: Make relative path smarter or use registry
     if is_lib:
         s = s + as_ref("\n[lib]\npath = \"src/lib.rs\"\n")
     else:
@@ -325,14 +326,14 @@ def template_build_rs() -> String:
 def template_lib_qrs() -> String:
     return "\ndef hello():\n    print(\"Hello from Lib!\")\n"
 
-def template_lib_rs() -> String:
-    return "\n#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n\nmod quiche {\n    #![allow(unused_macros, unused_imports)]\n    \n    // High Priority: Consumes Self (Result/Option)\n    pub trait QuicheResult {\n        type Output;\n        fn quiche_handle(self) -> Self::Output;\n    }\n    \n    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {\n        type Output = T;\n        fn quiche_handle(self) -> T {\n            self.expect(\"Quiche Exception\")\n        }\n    }\n    \n\n    \n    // Low Priority: Takes &Self (Clone fallback)\n    pub trait QuicheGeneric {\n        fn quiche_handle(&self) -> Self;\n    }\n    \n    impl<T: Clone> QuicheGeneric for T {\n        fn quiche_handle(&self) -> Self {\n            self.clone()\n        }\n    }\n\n    macro_rules! check {\n        ($val:expr) => {\n            {\n                use crate::quiche::{QuicheResult, QuicheGeneric};\n                ($val).quiche_handle()\n            }\n        };\n    }\n    pub(crate) use check;\n    pub(crate) use check as call;\n}\n\n// Re-export everything from the transpiled module\ninclude!(concat!(env!(\"OUT_DIR\"), \"/lib.rs\"));\n"
-
 def template_main_qrs() -> String:
     return "\ndef main():\n    print(\"Hello, Quiche!\")\n"
 
+def template_lib_rs() -> String:
+    return "\n#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n\nuse quiche_runtime::*;\nuse quiche_runtime::check;\n\n// Re-export everything from the transpiled module\ninclude!(concat!(env!(\"OUT_DIR\"), \"/lib.rs\"));\n"
+
 def template_main_rs() -> String:
-    return "\n#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n\nmod quiche {\n    #![allow(unused_macros, unused_imports)]\n    \n    // High Priority: Consumes Self (Result/Option)\n    pub trait QuicheResult {\n        type Output;\n        fn quiche_handle(self) -> Self::Output;\n    }\n    \n    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {\n        type Output = T;\n        fn quiche_handle(self) -> T {\n            self.expect(\"Quiche Exception\")\n        }\n    }\n    \n\n    \n    // Low Priority: Takes &Self (Clone fallback)\n    pub trait QuicheGeneric {\n        fn quiche_handle(&self) -> Self;\n    }\n    \n    impl<T: Clone> QuicheGeneric for T {\n        fn quiche_handle(&self) -> Self {\n            self.clone()\n        }\n    }\n\n    macro_rules! check {\n        ($val:expr) => {\n            {\n                use crate::quiche::{QuicheResult, QuicheGeneric};\n                ($val).quiche_handle()\n            }\n        };\n    }\n    pub(crate) use check;\n    pub(crate) use check as call;\n}\n\ninclude!(concat!(env!(\"OUT_DIR\"), \"/main.rs\"));\n"
+    return "\n#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n\nuse quiche_runtime::*;\nuse quiche_runtime::check;\n\ninclude!(concat!(env!(\"OUT_DIR\"), \"/main.rs\"));\n"
 
 def create_new_project(name: String, is_lib: bool):
     if path_exists(name.clone()):

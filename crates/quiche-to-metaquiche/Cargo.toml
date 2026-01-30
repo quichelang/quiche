@@ -1,0 +1,8 @@
+[package]
+name = "quiche-to-metaquiche"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ruff_python_ast = { git = "https://github.com/astral-sh/ruff" }
+metaquiche-host = { path = "../metaquiche-host" }
