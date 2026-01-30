@@ -1,6 +1,6 @@
 
 from ast import Stmt, Parsed
-from types import TypeChecker
+
 from compiler.codegen import Codegen
 from rust.parsley_qrs import Parsley
 
@@ -85,16 +85,11 @@ def version_get_date() -> String: pass
 def version_get_build_kind() -> String: pass
 
 def get_flag_bool(flags: HashMap[String, bool], key: String) -> bool:
-    for k in flags.keys():
-        if k == key:
-            match flags.get(k):
-                case Some(v): return v
-                case None: pass
+    match flags.get(as_ref(key)):
+        case Some(v): return v.clone()
+        case None: pass
     return False
 
-
-@extern(path="crate::quiche::vec_to_list")
-def vec_to_list(v: Vec[Stmt]) -> Vec[Stmt]: pass 
 
 @extern(path="parsley_qrs::ParseResult", no_generic=True)
 class ParseResult:
@@ -253,33 +248,16 @@ def compile_source_to_string(source: String, filename: String, warn_quiche: bool
     root_dir = path_dirname(filename.clone())
     module_index = build_module_index(root_dir.clone())
     current_module_path = normalize_module_path(module_path_for_file(root_dir, filename.clone()))
-    import_maps = build_import_maps(vec_to_list(stmts.clone()), module_index, current_module_path.clone())
+    current_module_path = normalize_module_path(module_path_for_file(root_dir, filename.clone()))
+    import_maps = build_import_maps(stmts.clone(), module_index, current_module_path.clone())
     
-    # Type Check
-    checker = TypeChecker.new()
-    for stmt in stmts.clone():
-        checker.check_stmt(stmt)
-
-    if warn_quiche and checker.warnings.len() > 0:
-        print("Warnings:")
-        for w in checker.warnings:
-            print(w)
-        if strict:
-            exit(1)
+    # Codegen
+    codegen = Codegen.new_with_imports_and_module(import_maps.paths, import_maps.kinds, current_module_path)
+    for stmt in stmts:
+        codegen.generate_stmt(stmt)
     
-    if checker.errors.len() > 0:
-        print("Type Errors found:")
-        for err in checker.errors:
-            print(err)
-        exit(1)
-    else:
-        # Codegen
-        codegen = Codegen.new_with_imports_and_module(import_maps.paths, import_maps.kinds, current_module_path)
-        for stmt in stmts:
-            codegen.generate_stmt(stmt)
-        
-        cleaned = dedup_shadowed_let_mut(codegen.output)
-        return cleaned
+    cleaned = dedup_shadowed_let_mut(codegen.output)
+    return cleaned
 
     return ""
 

@@ -9,7 +9,7 @@
     unused_variables
 )]
 
-mod quiche {
+pub mod quiche {
     #![allow(unused_macros, unused_imports)]
 
     use std::cell::RefCell;
@@ -42,8 +42,8 @@ mod quiche {
         }
     }
 
-    pub fn vec_to_list<T>(v: Vec<T>) -> std::rc::Rc<Vec<T>> {
-        std::rc::Rc::new(v)
+    pub fn vec_to_list<T>(v: Vec<T>) -> Vec<T> {
+        v
     }
 
     macro_rules! check {
@@ -55,8 +55,8 @@ mod quiche {
     pub(crate) use check;
     pub(crate) use check as call;
 
-    pub fn env_args_helper() -> Rc<Vec<String>> {
-        Rc::new(std::env::args().collect())
+    pub fn env_args_helper() -> Vec<String> {
+        std::env::args().collect()
     }
 
     pub fn push_str_wrapper(mut s: String, val: String) -> String {
@@ -82,7 +82,7 @@ mod quiche {
         }
     }
 
-    pub fn list_test_files() -> Rc<Vec<String>> {
+    pub fn list_test_files() -> Vec<String> {
         let mut tests = Vec::new();
         if let Ok(entries) = std::fs::read_dir("tests") {
             for entry in entries.flatten() {
@@ -94,7 +94,7 @@ mod quiche {
             }
         }
         tests.sort();
-        Rc::new(tests)
+        tests
     }
 
     pub fn path_exists(path: String) -> bool {
@@ -136,7 +136,7 @@ mod quiche {
         compiler_path.to_str().unwrap_or("").replace("\\", "/")
     }
 
-    pub fn run_cargo_command(cmd: String, args: Rc<Vec<String>>) -> i32 {
+    pub fn run_cargo_command(cmd: String, args: Vec<String>) -> i32 {
         let status = Command::new("cargo")
             .arg(cmd)
             .args(args.iter())
@@ -151,7 +151,7 @@ mod quiche {
 
     pub fn run_rust_code(
         user_code: String,
-        script_args: Rc<Vec<String>>,
+        script_args: Vec<String>,
         quiet: bool,
         suppress_output: bool,
         raw_output: bool,
@@ -452,7 +452,7 @@ mod quiche {
         }
     }
 
-    pub fn build_module_index(root: String) -> Rc<HashMap<String, String>> {
+    pub fn build_module_index(root: String) -> HashMap<String, String> {
         let root_path = PathBuf::from(root);
         let mut files = Vec::new();
         collect_qrs_files(&root_path, &mut files);
@@ -465,7 +465,7 @@ mod quiche {
             let module_path = module_path_from_relative(rel);
             index.insert(module_path, file.to_string_lossy().into_owned());
         }
-        Rc::new(index)
+        index
     }
 
     pub fn module_path_for_file(root: String, filename: String) -> String {

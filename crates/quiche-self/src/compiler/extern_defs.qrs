@@ -14,4 +14,4 @@ def q_push(s: RustString, val: String) -> RustString: pass
 def escape_rust_string(s: String) -> String: pass
 
 @extern(path="crate::quiche::vec_to_list")
-def vec_to_list(v: List[ast.Stmt]) -> List[ast.Stmt]: pass
+def vec_to_list(v: Vec[ast.Stmt]) -> Vec[ast.Stmt]: pass

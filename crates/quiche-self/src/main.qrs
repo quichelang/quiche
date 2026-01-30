@@ -1,6 +1,6 @@
 
 from ast import Stmt, Parsed
-from types import TypeChecker
+
 from compiler.codegen import Codegen
 from rust.parsley_qrs import Parsley
 
@@ -19,7 +19,7 @@ def parse_module(source: StrRef) -> Result[Parsed, ParseError]:
     pass
 
 @extern(path="crate::quiche::env_args_helper")
-def env_args() -> List[String]: pass
+def env_args() -> Vec[String]: pass
 
 @extern(path="std::fs::read_to_string")
 def read_to_string(path: String) -> String: pass 
@@ -31,7 +31,7 @@ def exit(code: i32): pass
 def path_dirname(path: String) -> String: pass
 
 @extern(path="crate::quiche::build_module_index")
-def build_module_index(root: String) -> Dict[String, String]: pass
+def build_module_index(root: String) -> HashMap[String, String]: pass
 
 @extern(path="crate::quiche::module_path_for_file")
 def module_path_for_file(root: String, filename: String) -> String: pass
@@ -61,10 +61,10 @@ def set_env_var(key: String, value: String): pass
 def current_exe_path() -> String: pass
 
 @extern(path="crate::quiche::run_cargo_command")
-def run_cargo_command(cmd: String, args: List[String]) -> i32: pass
+def run_cargo_command(cmd: String, args: Vec[String]) -> i32: pass
 
 @extern(path="crate::quiche::run_rust_code")
-def run_rust_code(user_code: String, script_args: List[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool) -> i32: pass
+def run_rust_code(user_code: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool) -> i32: pass
 
 @extern(path="crate::quiche::compiler_path_for_new")
 def compiler_path_for_new() -> String: pass
@@ -84,26 +84,21 @@ def version_get_date() -> String: pass
 @extern(path="crate::version_info::get_build_kind")
 def version_get_build_kind() -> String: pass
 
-def get_flag_bool(flags: Dict[String, bool], key: String) -> bool:
-    for k in flags.keys():
-        if k == key:
-            match flags.get(k):
-                case Some(v): return v
-                case None: pass
+def get_flag_bool(flags: HashMap[String, bool], key: String) -> bool:
+    match flags.get(as_ref(key)):
+        case Some(v): return v.clone()
+        case None: pass
     return False
 
 
-@extern(path="crate::quiche::vec_to_list")
-def vec_to_list(v: List[Stmt]) -> List[Stmt]: pass 
-
 @extern(path="parsley_qrs::ParseResult", no_generic=True)
 class ParseResult:
-    flags: Dict[String, bool]
-    options: Dict[String, String]
-    positionals: List[String]
-    errors: List[String]
+    flags: HashMap[String, bool]
+    options: HashMap[String, String]
+    positionals: Vec[String]
+    errors: Vec[String]
     command: String
-    subargs: List[String]
+    subargs: Vec[String]
 
 class WarnFlags:
     warn: bool
@@ -116,10 +111,10 @@ class WarnFlags:
 
 
 class ImportMaps:
-    paths: Dict[String, String]
-    kinds: Dict[String, String]
+    paths: HashMap[String, String]
+    kinds: HashMap[String, String]
 
-    def new(paths: Dict[String, String], kinds: Dict[String, String]) -> ImportMaps:
+    def new(paths: HashMap[String, String], kinds: HashMap[String, String]) -> ImportMaps:
         return ImportMaps(paths=paths, kinds=kinds)
 
 
@@ -148,8 +143,8 @@ def resolve_module_path(current_module_path: String, module_name: String, level:
     return module_name
 
 
-def collect_module_exports(module_index: Dict[String, String], module_path: String) -> Dict[String, String]:
-    exports = Dict[String, String].new()
+def collect_module_exports(module_index: HashMap[String, String], module_path: String) -> HashMap[String, String]:
+    exports = HashMap[String, String].new()
     match module_index.get(module_path):
         case Some(path):
             source = read_to_string(path.clone())
@@ -166,9 +161,9 @@ def collect_module_exports(module_index: Dict[String, String], module_path: Stri
     return exports
 
 
-def build_import_maps(stmts: List[Stmt], module_index: Dict[String, String], current_module_path: String) -> ImportMaps:
-    import_paths = Dict[String, String].new()
-    import_kinds = Dict[String, String].new()
+def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], current_module_path: String) -> ImportMaps:
+    import_paths = HashMap[String, String].new()
+    import_kinds = HashMap[String, String].new()
 
     for stmt in stmts:
         match stmt:
@@ -193,7 +188,7 @@ def build_import_maps(stmts: List[Stmt], module_index: Dict[String, String], cur
                         base_module = resolve_module_path(current_module_path.clone(), "", i.level)
 
                 is_external = base_module.starts_with(as_ref("rust.")) or base_module.starts_with(as_ref("std."))
-                exports = Dict[String, String].new()
+                exports = HashMap[String, String].new()
                 if not is_external:
                     match module_index.get(base_module.clone()):
                         case Some(_):
@@ -253,33 +248,16 @@ def compile_source_to_string(source: String, filename: String, warn_quiche: bool
     root_dir = path_dirname(filename.clone())
     module_index = build_module_index(root_dir.clone())
     current_module_path = normalize_module_path(module_path_for_file(root_dir, filename.clone()))
-    import_maps = build_import_maps(vec_to_list(stmts.clone()), module_index, current_module_path.clone())
+    current_module_path = normalize_module_path(module_path_for_file(root_dir, filename.clone()))
+    import_maps = build_import_maps(stmts.clone(), module_index, current_module_path.clone())
     
-    # Type Check
-    checker = TypeChecker.new()
-    for stmt in stmts.clone():
-        checker.check_stmt(stmt)
-
-    if warn_quiche and checker.warnings.len() > 0:
-        print("Warnings:")
-        for w in checker.warnings:
-            print(w)
-        if strict:
-            exit(1)
+    # Codegen
+    codegen = Codegen.new_with_imports_and_module(import_maps.paths, import_maps.kinds, current_module_path)
+    for stmt in stmts:
+        codegen.generate_stmt(stmt)
     
-    if checker.errors.len() > 0:
-        print("Type Errors found:")
-        for err in checker.errors:
-            print(err)
-        exit(1)
-    else:
-        # Codegen
-        codegen = Codegen.new_with_imports_and_module(import_maps.paths, import_maps.kinds, current_module_path)
-        for stmt in stmts:
-            codegen.generate_stmt(stmt)
-        
-        cleaned = dedup_shadowed_let_mut(codegen.output)
-        return cleaned
+    cleaned = dedup_shadowed_let_mut(codegen.output)
+    return cleaned
 
     return ""
 
@@ -311,7 +289,7 @@ def build_flag_parser(include_lib: bool) -> Parsley:
         parser.add_flag("lib", [], False)
     return parser
 
-def parse_warn_flags(flags: Dict[String, bool]) -> WarnFlags:
+def parse_warn_flags(flags: HashMap[String, bool]) -> WarnFlags:
     warn_all = False
     warn_quiche = False
     strict = False
@@ -375,7 +353,7 @@ def create_new_project(name: String, is_lib: bool):
 
     print(f"Created new project: {name}")
 
-def run_transpiled_file(filename: String, script_args: List[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool):
+def run_transpiled_file(filename: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool):
     source = read_to_string(filename.clone())
     rust_code = compile_source_to_string(source, filename.clone(), warn_quiche, strict)
     exit_code = run_rust_code(rust_code, script_args, quiet, suppress_output, raw_output, warn, strict)
@@ -383,15 +361,15 @@ def run_transpiled_file(filename: String, script_args: List[String], quiet: bool
         exit(exit_code)
 
 def main():
-    cli_args: List[String] = env_args()
-    args: List[String] = []
+    cli_args: Vec[String] = env_args()
+    args: Vec[String] = []
     i = 0
     for arg in cli_args:
         if i > 0:
-            args.append(arg)
+            args.push(arg)
         i = i + 1
 
-    if len(args) == 0:
+    if args.len() == 0:
         print("Error: No command specified.")
         print_usage()
         exit(1)
@@ -404,9 +382,9 @@ def main():
             has_command = True
 
     if has_command:
-        subargs: List[String] = []
+        subargs: Vec[String] = []
         j = 1
-        while j < len(args):
+        while j < args.len():
             subargs.push(args[j].clone())
             j = j + 1
 
@@ -418,7 +396,7 @@ def main():
                     print(e)
                 print_usage()
                 exit(1)
-            if len(result.positionals) < 1:
+            if result.positionals.len() < 1:
                 print("Error: Missing project name.")
                 print("Usage: quiche-self new [--lib] <project_name>")
                 exit(1)
@@ -508,10 +486,10 @@ def main():
             print(f"Error: File '{cmd}' not found.")
             exit(1)
         parser = build_flag_parser(False)
-        rest: List[String] = []
+        rest: Vec[String] = []
         k = 1
-        while k < len(args):
-            rest.append(args[k].clone())
+        while k < args.len():
+            rest.push(args[k].clone())
             k = k + 1
         result = parser.parse(rest)
         if result.errors.len() > 0:

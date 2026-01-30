@@ -169,13 +169,11 @@ impl Codegen {
                         match &*attr.value {
                             ast::Expr::Name(n) => match n.id.as_str() {
                                 "List" | "Vec" => {
-                                    self.output.push_str("std::rc::Rc::new(Vec::new())");
+                                    self.output.push_str("Vec::new()");
                                     return;
                                 }
                                 "Dict" | "HashMap" => {
-                                    self.output.push_str(
-                                        "std::rc::Rc::new(std::collections::HashMap::new())",
-                                    );
+                                    self.output.push_str("std::collections::HashMap::new()");
                                     return;
                                 }
                                 _ => {}
@@ -184,7 +182,7 @@ impl Codegen {
                                 let base = self.expr_to_string(&s.value);
                                 if base == "List" || base == "Vec" {
                                     let inner = self.map_type(&s.slice);
-                                    self.output.push_str("std::rc::Rc::new(Vec::<");
+                                    self.output.push_str("Vec::<");
                                     self.output.push_str(&inner);
                                     self.output.push_str(">::new())");
                                     return;
@@ -194,9 +192,7 @@ impl Codegen {
                                         if t.elts.len() == 2 {
                                             let k = self.map_type(&t.elts[0]);
                                             let v = self.map_type(&t.elts[1]);
-                                            self.output.push_str(
-                                                "std::rc::Rc::new(std::collections::HashMap::<",
-                                            );
+                                            self.output.push_str("std::collections::HashMap::<");
                                             self.output.push_str(&k);
                                             self.output.push_str(", ");
                                             self.output.push_str(&v);
@@ -204,9 +200,7 @@ impl Codegen {
                                             return;
                                         }
                                     }
-                                    self.output.push_str(
-                                        "std::rc::Rc::new(std::collections::HashMap::new())",
-                                    );
+                                    self.output.push_str("std::collections::HashMap::new()");
                                     return;
                                 }
                             }
@@ -292,9 +286,7 @@ impl Codegen {
                             );
 
                             if is_mutating {
-                                self.output.push_str("std::rc::Rc::make_mut(&mut ");
                                 self.generate_expr(*attr.value.clone());
-                                self.output.push_str(")");
                             } else {
                                 self.generate_expr(*attr.value.clone());
                             }
@@ -321,9 +313,7 @@ impl Codegen {
                             self.output.push_str("crate::quiche::check!(");
 
                             if is_mutating {
-                                self.output.push_str("std::rc::Rc::make_mut(&mut ");
                                 self.generate_expr(*attr.value.clone());
-                                self.output.push_str(")");
                             } else if method_name == "items" {
                                 self.generate_expr(*attr.value.clone());
                                 self.output.push_str(".iter()"); // items() -> iter()

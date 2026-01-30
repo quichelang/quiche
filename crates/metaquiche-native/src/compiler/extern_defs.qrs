@@ -4,7 +4,7 @@
 @extern(path="std::string::String", no_generic=True)
 class RustString:
     def new() -> RustString: pass
-    def self.len() -> usize: pass
+    def len(self) -> usize: pass
     def as_str(self) -> StrRef: pass
 
 @extern(path="crate::quiche::push_str_wrapper")

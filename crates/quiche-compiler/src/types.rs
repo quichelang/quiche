@@ -56,18 +56,15 @@ impl Codegen {
                 };
 
                 if rust_base == "Vec" {
-                    format!("std::rc::Rc{}<Vec{}<{}>>", sep, sep, final_inner)
+                    format!("/* VEC_DEBUG */ std::vec::Vec{}<{}>", sep, final_inner)
                 } else if rust_base == "std::collections::HashMap" {
-                    format!(
-                        "std::rc::Rc{}<std::collections::HashMap{}<{}>>",
-                        sep, sep, final_inner
-                    )
+                    format!("std::collections::HashMap{}<{}>", sep, final_inner)
                 } else if rust_base == "&" {
                     format!("&{}", final_inner)
                 } else if rust_base == "&mut" {
                     format!("&mut {}", final_inner)
                 } else {
-                    format!("{}{}<{}>", rust_base, sep, final_inner)
+                    format!("/* GENERIC_DEBUG */ {}{}<{}>", rust_base, sep, final_inner)
                 }
             }
             ast::Expr::Tuple(t) => {

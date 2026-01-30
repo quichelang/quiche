@@ -4,15 +4,14 @@
 
 from std.cell import Ref
 import ast
-import types
+
 from compiler.extern_defs import RustString, q_push
 
 # Forward declaration - Codegen will be imported by files that use this
 # The cg parameter is typed as &Codegen in the generated Rust
 
-def infer_type(cg: types.SymbolTable, expr: ast.Expr) -> String:
+def infer_type(expr: ast.Expr) -> String:
     """Infer the type of an expression."""
-    mut_cg: types.SymbolTable = cg
     match expr:
         case ast.Expr.NumberLiteral(_): return "i32"
         case ast.Expr.StringLiteral(_): return "String"
@@ -35,12 +34,7 @@ def infer_type(cg: types.SymbolTable, expr: ast.Expr) -> String:
                 case _: pass
             return "unknown"
         case ast.Expr.Name(n):
-            match mut_cg.lookup(n.id.as_str().to_string()):
-                case Some(s):
-                    if s.type_name.starts_with(as_ref("(")): return "Tuple"
-                    if s.type_name.starts_with(as_ref("Tuple")): return "Tuple"
-                    return s.type_name
-                case None: return "unknown"
+            return "unknown"
         case _: return "unknown"
 
 def type_to_string(expr: ast.Expr) -> String:
@@ -58,13 +52,13 @@ def type_to_string(expr: ast.Expr) -> String:
                 match deref(s.slice):
                     case ast.Expr.Tuple(t):
                         res = RustString.new()
-                        res = q_push(res, "std::rc::Rc<std::collections::HashMap<")
+                        res = q_push(res, "std::collections::HashMap<")
                         idx_h: usize = 0
                         for e in t.elts:
                             if idx_h > 0: res = q_push(res, ", ")
                             res = q_push(res, type_to_string(e))
                             idx_h = idx_h + 1
-                        res = q_push(res, ">>")
+                        res = q_push(res, ">")
                         return res
                     case _: pass
             if base == "Tuple":
@@ -88,9 +82,9 @@ def type_to_string(expr: ast.Expr) -> String:
             inner = type_to_string(deref(s.slice))
             res = RustString.new()
             if base == "Vec":
-                res = q_push(res, "std::rc::Rc<Vec<")
+                res = q_push(res, "Vec<")
                 res = q_push(res, inner)
-                res = q_push(res, ">>")
+                res = q_push(res, ">")
                 return res
             res = q_push(res, base)
             res = q_push(res, "<")
@@ -106,19 +100,13 @@ def type_to_string(expr: ast.Expr) -> String:
             return res_attr
         case _: return "Any"
 
-def is_tuple(cg: types.SymbolTable, expr: ast.Expr) -> bool:
+def is_tuple(expr: ast.Expr) -> bool:
     """Check if expression represents a tuple type."""
-    mut_cg: types.SymbolTable = cg
     match expr:
         case ast.Expr.Tuple(_): return True
         case ast.Expr.Name(n):
-            match mut_cg.lookup(n.id.as_str().to_string()):
-                case Some(s):
-                    if s.type_name.starts_with(as_ref("(")): return True
-                    if s.type_name.starts_with(as_ref("Tuple")): return True
-                case None: pass
             return False
-        case ast.Expr.Subscript(s): return is_tuple(mut_cg, deref(s.value))
+        case ast.Expr.Subscript(s): return is_tuple(deref(s.value))
         case _: return False
 
 def get_root(expr: ast.Expr) -> Option[String]:
@@ -128,16 +116,10 @@ def get_root(expr: ast.Expr) -> Option[String]:
         case ast.Expr.Attribute(a): return get_root(deref(a.value))
         case _: return None
 
-def is_type_or_module(cg: types.SymbolTable, name: String) -> bool:
+def is_type_or_module(name: String) -> bool:
     """Check if a name refers to a type or module."""
     if name == "self": return False
-    mut_cg: types.SymbolTable = cg
-    match mut_cg.lookup(name.clone()):
-        case Some(s):
-            if s.is_module: return True
-            if s.is_class: return True
-            if s.is_extern: return True
-        case None: pass
+
     if name == "ast": return True
     if name == "compiler": return True
     if name == "types": return True

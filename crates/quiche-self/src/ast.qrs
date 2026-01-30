@@ -8,7 +8,7 @@ class Identifier:
 
 @extern(path="ruff_python_ast::ModModule", no_generic=True)
 class ModModule:
-    body: List[Stmt]
+    body: Vec[Stmt]
 
 @extern(path="ruff_python_ast::Mod", no_generic=True)
 class Mod:
@@ -42,7 +42,7 @@ class Int:
 
 @extern(path="ruff_python_ast::Parameters", no_generic=True)
 class Parameters:
-    args: List[ParameterWithDefault]
+    args: Vec[ParameterWithDefault]
 
 @extern(path="ruff_python_ast::ParameterWithDefault", no_generic=True)
 class ParameterWithDefault:
@@ -62,7 +62,7 @@ class ExprName:
 class StmtFunctionDef:
     name: Identifier
     parameters: Box[Parameters]
-    body: List[Stmt]
+    body: Vec[Stmt]
     returns: Option[Box[Expr]]
 
 @extern(path="ruff_python_ast::StmtReturn", no_generic=True)
@@ -71,7 +71,7 @@ class StmtReturn:
 
 @extern(path="ruff_python_ast::StmtAssign", no_generic=True)
 class StmtAssign:
-    targets: List[Expr]
+    targets: Vec[Expr]
     value: Box[Expr]
 
 @extern(path="ruff_python_ast::StmtExpr", no_generic=True)
@@ -111,7 +111,7 @@ class ExprBinOp:
 @extern(path="ruff_python_ast::ExprBoolOp", no_generic=True)
 class ExprBoolOp:
     op: BoolOp
-    values: List[Expr]
+    values: Vec[Expr]
 
 @extern(path="ruff_python_ast::ExprUnaryOp", no_generic=True)
 class ExprUnaryOp:
@@ -130,8 +130,8 @@ class ExprCall:
 
 @extern(path="ruff_python_ast::Arguments", no_generic=True)
 class Arguments:
-    args: List[Expr]
-    keywords: List[Keyword]
+    args: Vec[Expr]
+    keywords: Vec[Keyword]
 
 @extern(path="ruff_python_ast::ExprSubscript", no_generic=True)
 class ExprSubscript:
@@ -145,11 +145,11 @@ class ExprLambda:
 
 @extern(path="ruff_python_ast::ExprTuple", no_generic=True)
 class ExprTuple:
-    elts: List[Expr]
+    elts: Vec[Expr]
 
 @extern(path="ruff_python_ast::ExprList", no_generic=True)
 class ExprList:
-    elts: List[Expr]
+    elts: Vec[Expr]
 
 @extern(path="ruff_python_ast::ExprIf", no_generic=True)
 class ExprIf:
@@ -160,19 +160,19 @@ class ExprIf:
 @extern(path="ruff_python_ast::StmtIf", no_generic=True)
 class StmtIf:
     test: Box[Expr]
-    body: List[Stmt]
-    elif_else_clauses: List[ElifElseClause]
+    body: Vec[Stmt]
+    elif_else_clauses: Vec[ElifElseClause]
 
 @extern(path="ruff_python_ast::ElifElseClause", no_generic=True)
 class ElifElseClause:
     test: Option[Expr]
-    body: List[Stmt]
+    body: Vec[Stmt]
 
 @extern(path="ruff_python_ast::ExprCompare", no_generic=True)
 class ExprCompare:
     left: Box[Expr]
-    ops: List[CmpOp]
-    comparators: List[Expr]
+    ops: Vec[CmpOp]
+    comparators: Vec[Expr]
 
 @extern(path="ruff_python_ast::CmpOp", no_generic=True)
 class CmpOp:
@@ -192,10 +192,10 @@ class Decorator:
 @extern(path="ruff_python_ast::StmtClassDef", no_generic=True)
 class StmtClassDef:
     name: Identifier
-    bases: List[Expr]
-    keywords: List[Keyword]
-    body: List[Stmt]
-    decorator_list: List[Decorator]
+    bases: Vec[Expr]
+    keywords: Vec[Keyword]
+    body: Vec[Stmt]
+    decorator_list: Vec[Decorator]
 
 @extern(path="ruff_python_ast::Keyword", no_generic=True)
 class Keyword:
@@ -205,22 +205,22 @@ class Keyword:
 @extern(path="ruff_python_ast::StmtMatch", no_generic=True)
 class StmtMatch:
     subject: Box[Expr]
-    cases: List[MatchCase]
+    cases: Vec[MatchCase]
 
 @extern(path="ruff_python_ast::MatchCase", no_generic=True)
 class MatchCase:
     pattern: Box[Pattern]
     guard: Option[Box[Expr]]
-    body: List[Stmt]
+    body: Vec[Stmt]
 
 @extern(path="ruff_python_ast::StmtImport", no_generic=True)
 class StmtImport:
-    names: List[Alias]
+    names: Vec[Alias]
 
 @extern(path="ruff_python_ast::StmtImportFrom", no_generic=True)
 class StmtImportFrom:
     module: Option[Identifier]
-    names: List[Alias]
+    names: Vec[Alias]
     level: u32
 
 @extern(path="ruff_python_ast::Alias", no_generic=True)
@@ -243,8 +243,8 @@ class PatternMatchClass:
 
 @extern(path="ruff_python_ast::PatternArguments", no_generic=True)
 class PatternArguments:
-    patterns: List[Pattern]
-    keywords: List[PatternKeyword]
+    patterns: Vec[Pattern]
+    keywords: Vec[PatternKeyword]
 
 @extern(path="ruff_python_ast::PatternKeyword", no_generic=True)
 class PatternKeyword:
@@ -258,7 +258,7 @@ class PatternMatchAs:
     
 @extern(path="ruff_python_ast::PatternMatchOr", no_generic=True)
 class PatternMatchOr:
-    patterns: List[Pattern]
+    patterns: Vec[Pattern]
 
 @extern(path="ruff_python_parser::ParseError", no_generic=True)
 class ParseError:
@@ -283,18 +283,18 @@ class InterpolatedStringElement:
 
 @extern(path="ruff_python_ast::ExprFString", no_generic=True)
 class ExprFString:
-    value: List[FStringPart]
+    value: Vec[FStringPart]
 
 # Dict literal support
 @extern(path="ruff_python_ast::ExprDict", no_generic=True)
 class ExprDict:
-    items: List[Any]
+    items: Vec[Any]
 
 # Try-Except support
 @extern(path="ruff_python_ast::StmtTry", no_generic=True)
 class StmtTry:
-    body: List[Stmt]
-    handlers: List[ExceptHandler]
+    body: Vec[Stmt]
+    handlers: Vec[ExceptHandler]
 
 @extern(path="ruff_python_ast::ExceptHandler", no_generic=True)
 class ExceptHandler:
@@ -304,14 +304,14 @@ class ExceptHandler:
 class StmtFor:
     target: Box[Expr]
     iter: Box[Expr]
-    body: List[Stmt]
-    orelse: List[Stmt]
+    body: Vec[Stmt]
+    orelse: Vec[Stmt]
 
 @extern(path="ruff_python_ast::StmtWhile", no_generic=True)
 class StmtWhile:
     test: Box[Expr]
-    body: List[Stmt]
-    orelse: List[Stmt]
+    body: Vec[Stmt]
+    orelse: Vec[Stmt]
 
 @extern(path="ruff_python_ast::StmtAssert", no_generic=True)
 class StmtAssert:
