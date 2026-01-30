@@ -2,7 +2,7 @@
 members = [
     "crates/quiche-compiler",
     "crates/quiche-host",
-    "crates/quiche-self",
+    "crates/metaquiche-native",
     "crates/quiche-runtime",
     "crates/parsley-qrs", "crates/metaquiche-host",
 ]
