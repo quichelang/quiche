@@ -408,6 +408,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "quiche-parser"
+version = "0.1.0"
+dependencies = [
+ "ruff_python_ast",
+ "ruff_python_parser",
+ "thiserror",
+]
+
+[[package]]
 name = "quiche-runtime"
 version = "0.1.0"
 
