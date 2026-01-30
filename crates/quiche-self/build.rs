@@ -62,6 +62,31 @@ fn clean_generated_rs(dir: &Path) {
 
 fn main() {
     println!("cargo:rerun-if-changed=src");
+
+    let stage = env::var("QUICHE_STAGE").unwrap_or_else(|_| "stage0".to_string());
+    println!("cargo:rustc-env=QUICHE_STAGE={}", stage);
+
+    let commit = std::process::Command::new("git")
+        .args(&["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=QUICHE_COMMIT={}", commit);
+
+    let date = std::process::Command::new("date")
+        .arg("-u")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=QUICHE_DATE={}", date);
+
+    let profile = env::var("PROFILE").unwrap_or_else(|_| "unknown".to_string());
+    println!("cargo:rustc-env=QUICHE_BUILD_KIND={}", profile);
+
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = Path::new(&out_dir);
     clean_generated_rs(out_path);

@@ -17,14 +17,17 @@ all: verify
 
 stage0:
 	cargo build -p quiche-host
+	@ln -sf $(HOST_BIN) stage0
 
 stage1: stage0
 	@echo "Building Stage 1 (Host -> Self)..."
-	QUICHE_BOOTSTRAP_BIN=$(abspath $(HOST_BIN)) CARGO_TARGET_DIR=$(STAGE1_TARGET_DIR) cargo build -p quiche_self
+	QUICHE_STAGE=stage1 QUICHE_BOOTSTRAP_BIN=$(abspath $(HOST_BIN)) CARGO_TARGET_DIR=$(STAGE1_TARGET_DIR) cargo build -p quiche_self
+	@ln -sf $(STAGE1_BIN) stage1
 
 stage2: stage1
 	@echo "Building Stage 2 (Stage 1 -> Self)..."
-	QUICHE_BOOTSTRAP_BIN=$(abspath $(STAGE1_BIN)) CARGO_TARGET_DIR=$(STAGE2_TARGET_DIR) cargo build -p quiche_self
+	QUICHE_STAGE=stage2 QUICHE_BOOTSTRAP_BIN=$(abspath $(STAGE1_BIN)) CARGO_TARGET_DIR=$(STAGE2_TARGET_DIR) cargo build -p quiche_self
+	@ln -sf $(STAGE2_BIN) stage2
 
 verify: stage2
 	@echo "Verifying Stage 1 output matches Stage 2 output..."

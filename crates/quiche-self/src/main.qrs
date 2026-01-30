@@ -72,6 +72,18 @@ def compiler_path_for_new() -> String: pass
 @extern(path="crate::quiche::print_stdout")
 def print_stdout(s: String): pass
 
+@extern(path="crate::version_info::get_stage")
+def version_get_stage() -> String: pass
+
+@extern(path="crate::version_info::get_commit")
+def version_get_commit() -> String: pass
+
+@extern(path="crate::version_info::get_date")
+def version_get_date() -> String: pass
+
+@extern(path="crate::version_info::get_build_kind")
+def version_get_build_kind() -> String: pass
+
 def get_flag_bool(flags: Dict[String, bool], key: String) -> bool:
     for k in flags.keys():
         if k == key:
@@ -386,7 +398,7 @@ def main():
         print_usage()
         exit(1)
 
-    commands = ["new", "build", "run", "test"]
+    commands = ["new", "build", "run", "test", "version"]
     cmd = args[0].clone()
     has_command = False
     for c in commands:
@@ -478,6 +490,19 @@ def main():
             else:
                 print("Error: No tests/runner.qrs or Cargo.toml found.")
                 exit(1)
+            return
+        
+        if cmd == "version":
+            stage = version_get_stage()
+            commit = version_get_commit()
+            date = version_get_date()
+            kind = version_get_build_kind()
+            
+            print(f"compiler path/name: {stage}")
+            print(f"active version stage: {stage}")
+            print(f"commit #: {commit}")
+            print(f"datetime of build: {date}")
+            print(f"build kind: {kind}")
             return
 
     if cmd.ends_with(as_ref(".qrs")):

@@ -479,6 +479,21 @@ mod quiche {
     }
 }
 
+mod version_info {
+    pub fn get_stage() -> &'static str {
+        option_env!("QUICHE_STAGE").unwrap_or("unknown")
+    }
+    pub fn get_commit() -> &'static str {
+        option_env!("QUICHE_COMMIT").unwrap_or("unknown")
+    }
+    pub fn get_date() -> &'static str {
+        option_env!("QUICHE_DATE").unwrap_or("unknown")
+    }
+    pub fn get_build_kind() -> &'static str {
+        option_env!("QUICHE_BUILD_KIND").unwrap_or("unknown")
+    }
+}
+
 #[cfg(feature = "bootstrap")]
 include!("main_gen.rs");
 
