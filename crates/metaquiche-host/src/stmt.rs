@@ -608,7 +608,7 @@ impl Codegen {
             }
             _ => {
                 self.push_indent();
-                self.output.push_str("// Unimplemented statement\n");
+                self.output.push_str("// Unimplemented stmt\n");
             }
         }
     }
@@ -732,8 +732,7 @@ impl Codegen {
 
             // Detect if this method needs &mut self or can use &self
             let needs_mut_self = method_mutates_self(&f.body);
-            self.output
-                .push_str(&format!("// method_mutates_self: {}\n", needs_mut_self));
+            // self.output.push_str(&format!("// method_mutates_self: {}\n", needs_mut_self)); // Removed to match native output
             self.push_indent();
 
             // Generate arguments
@@ -812,7 +811,20 @@ impl Codegen {
             }
         }
 
-        for stmt in f.body {
+        for (i, stmt) in f.body.clone().into_iter().enumerate() {
+            if i == 0 {
+                // Check for docstring
+                if let ast::Stmt::Expr(e) = &stmt {
+                    if let ast::Expr::StringLiteral(s) = &*e.value {
+                        self.push_indent();
+                        self.output.push_str("#![doc = \"");
+                        self.output
+                            .push_str(&s.value.to_str().replace("\"", "\\\""));
+                        self.output.push_str("\"]\n");
+                        continue;
+                    }
+                }
+            }
             self.generate_stmt(stmt);
         }
 

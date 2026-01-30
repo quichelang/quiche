@@ -165,9 +165,9 @@ impl Codegen {
                 };
 
                 if let Some(path) = foreign_name {
-                    self.output.push_str("crate::quiche::check!((");
+                    self.output.push_str("crate::quiche::check!(");
                     self.output.push_str(&path);
-                    self.output.push_str(")(");
+                    self.output.push_str("(");
                     for (i, arg) in c.arguments.args.iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");
@@ -257,7 +257,7 @@ impl Codegen {
                     || func_name == "assert_str_eq"
                     || func_name == "assert_true"
                     || func_name == "range"
-                    || func_name == "len";
+                    || func_name == "exit";
                 if !is_intrinsic {
                     self.output.push_str("crate::quiche::check!(");
                 }
@@ -302,6 +302,15 @@ impl Codegen {
                         }
                     }
                     self.output.push_str(")");
+                } else if func_name == "exit" {
+                    self.output.push_str("std::process::exit(");
+                    for (i, arg) in c.arguments.args.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.generate_expr(arg.clone());
+                    }
+                    self.output.push_str(")");
                 } else if func_name == "assert_true" {
                     self.output.push_str("assert!(");
                     if let Some(arg) = c.arguments.args.first() {
@@ -320,23 +329,6 @@ impl Codegen {
                         self.generate_expr(c.arguments.args[0].clone());
                         self.output.push_str("..");
                         self.generate_expr(c.arguments.args[1].clone());
-                    }
-                } else if func_name == "len" {
-                    // Strict 1:1 len() mapping? No, len() is a pythonism.
-                    // User said: "Rename len(x) -> x.len() ... same - auto imported".
-                    // This implies strict mapping keeps len() as len().
-                    // BUT len() is not a default Rust function.
-                    // If we want 1:1, we should probably output x.len() IF the user wrote x.len(),
-                    // but if they wrote len(x), we output len(x).
-                    // However, standard Rust does not have global len().
-                    // For now, let's keep the len() -> .len() transform as a special builtin convenience
-                    // OR we force user to write x.len().
-                    // Given "MetaQuiche", let's force x.len().
-                    // But to avoid breaking valid Python syntax too much, maybe we keep len(x) -> x.len() helper.
-                    // Let's keep it for now as a "macro" expansion.
-                    if let Some(arg) = c.arguments.args.first() {
-                        self.generate_expr(arg.clone());
-                        self.output.push_str(".len()");
                     }
                 } else if func_name == "deref" {
                     if let Some(arg) = c.arguments.args.first() {
@@ -453,7 +445,7 @@ impl Codegen {
                 ast::Number::Complex { .. } => self.output.push_str("/* complex number */"),
             },
             ast::Expr::StringLiteral(s) => self.output.push_str(&format!(
-                "std::string::String::from(\"{}\")",
+                "String::from(\"{}\")",
                 s.value.to_str().replace("\"", "\\\"")
             )),
             ast::Expr::BooleanLiteral(b) => {

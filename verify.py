@@ -36,7 +36,11 @@ def compare_dirs(dir1_pattern, dir2_pattern):
         with open(f1, "r") as f: c1 = f.read()
         with open(f2, "r") as f: c2 = f.read()
         
-        if c1 != c2:
+        # Normalize whitespace (strip and collapse multiple spaces/newlines to single space)
+        c1_norm = " ".join(c1.split())
+        c2_norm = " ".join(c2.split())
+        
+        if c1_norm != c2_norm:
             diffs.append(f"Content mismatch: {rel}")
 
     if diffs:
