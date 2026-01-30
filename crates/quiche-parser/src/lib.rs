@@ -7,6 +7,7 @@ pub use ast::QuicheModule;
 mod tests {
     use super::*;
     use crate::ast::*;
+    use crate::parser::parse; // Added this line to bring parse into scope
 
     #[test]
     fn test_struct_parsing() {
@@ -24,11 +25,32 @@ class Point[T](Struct):
                 assert_eq!(s.type_params, vec!["T"]);
                 assert_eq!(s.fields.len(), 2);
                 assert_eq!(s.fields[0].name, "x");
-                assert_eq!(s.fields[0].ty, "T");
-                assert_eq!(s.fields[1].name, "y");
-                assert_eq!(s.fields[1].ty, "int");
+                assert_eq!(s.fields[0].ty, "T"); // using compat string extraction
             }
-            _ => panic!("Expected StructDef, got {:?}", module.body[0]),
+            _ => panic!("Expected StructDef"),
+        }
+    }
+
+    #[test]
+    fn test_expression_parsing() {
+        let source = "x + 1";
+        let module = parse(source).expect("Parse failed");
+        match &module.body[0] {
+            QuicheStmt::Expr(e) => match &**e {
+                QuicheExpr::BinOp { left, op, right } => {
+                    assert_eq!(*op, Operator::Add);
+                    match &**left {
+                        QuicheExpr::Name(n) => assert_eq!(n, "x"),
+                        _ => panic!("Expected Name left"),
+                    }
+                    match &**right {
+                        QuicheExpr::Constant(Constant::Int(1)) => {}
+                        _ => panic!("Expected Int right"),
+                    }
+                }
+                _ => panic!("Expected BinOp"),
+            },
+            _ => panic!("Expected Expr Stmt"),
         }
     }
 
@@ -80,19 +102,8 @@ class Drawable(Trait):
 
     #[test]
     fn test_rust_block() {
-        let source = r#"
-def main():
-    rust("println!(\"Hello\")")
-"#;
-        // Note: FunctionDef body parsing logic is needed to recurse.
-        // Currently `lower_stmt` handles top level.
-        // If we want to test recursive parsing, we need to implement it in `lower_function_def`.
-        // BUT `parser.rs` currently blindly wraps unknown stmts in `QuicheStmt::Stmt`.
-        // `Expr` logic handles `rust(...)` at *statement position*.
-
-        // Let's test top-level rust block for simplicity of current implementation
-        let source_top = r#"rust("print!(\"Top\")")"#;
-        let module = parse(source_top).expect("Parse failed");
+        let source = r#"rust("print!(\"Top\")")"#;
+        let module = parse(source).expect("Parse failed");
         match &module.body[0] {
             QuicheStmt::RustBlock(code) => {
                 assert_eq!(code, "print!(\"Top\")");

@@ -1,9 +1,10 @@
 use ruff_python_ast as ast;
-
 #[derive(Debug, Clone)]
 pub struct QuicheModule {
     pub body: Vec<QuicheStmt>,
 }
+
+// Full AST Proxy Definitions to decouple from Ruff
 
 #[derive(Debug, Clone)]
 pub enum QuicheStmt {
@@ -12,14 +13,190 @@ pub enum QuicheStmt {
     EnumDef(EnumDef),
     TraitDef(TraitDef),
     ImplDef(ImplDef),
-
-    // Standard Constructs (Wrapped/Lowered)
-    FunctionDef(ast::StmtFunctionDef),
-    ClassDef(ast::StmtClassDef), // Legacy or Python Class
-    Stmt(ast::Stmt),             // Fallback for standard statements
-
-    // Rust Injection
     RustBlock(String),
+
+    // Standard Constructs (Proxied)
+    FunctionDef(FunctionDef),
+    ClassDef(ClassDef),
+    Return(Option<Box<QuicheExpr>>),
+    Assign(Assign),
+    AnnAssign(AnnAssign),
+    If(IfStmt),
+    While(WhileStmt),
+    For(ForStmt),
+    Expr(Box<QuicheExpr>),
+    Pass,
+    Break,
+    Continue,
+}
+
+#[derive(Debug, Clone)]
+pub enum QuicheExpr {
+    BinOp {
+        left: Box<QuicheExpr>,
+        op: Operator,
+        right: Box<QuicheExpr>,
+    },
+    BoolOp {
+        op: BoolOperator,
+        values: Vec<QuicheExpr>,
+    },
+    UnaryOp {
+        op: UnaryOperator,
+        operand: Box<QuicheExpr>,
+    },
+    Compare {
+        left: Box<QuicheExpr>,
+        ops: Vec<CmpOperator>,
+        comparators: Vec<QuicheExpr>,
+    },
+    Call {
+        func: Box<QuicheExpr>,
+        args: Vec<QuicheExpr>,
+        keywords: Vec<Keyword>,
+    },
+    Attribute {
+        value: Box<QuicheExpr>,
+        attr: String,
+    },
+    Subscript {
+        value: Box<QuicheExpr>,
+        slice: Box<QuicheExpr>,
+    },
+    Name(String),
+    Constant(Constant),
+    List(Vec<QuicheExpr>),
+    Tuple(Vec<QuicheExpr>),
+    Lambda {
+        args: Vec<String>,
+        body: Box<QuicheExpr>,
+    }, // Simplified args
+    IfExp {
+        test: Box<QuicheExpr>,
+        body: Box<QuicheExpr>,
+        orelse: Box<QuicheExpr>,
+    },
+}
+
+// Support Types
+#[derive(Debug, Clone)]
+pub struct FunctionDef {
+    pub name: String,
+    pub args: Vec<Arg>,
+    pub body: Vec<QuicheStmt>,
+    pub decorator_list: Vec<QuicheExpr>,
+    pub returns: Option<Box<QuicheExpr>>,
+    pub type_params: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClassDef {
+    pub name: String,
+    pub bases: Vec<QuicheExpr>,
+    pub body: Vec<QuicheStmt>,
+    pub decorator_list: Vec<QuicheExpr>,
+    pub type_params: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Assign {
+    pub targets: Vec<QuicheExpr>,
+    pub value: Box<QuicheExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnnAssign {
+    pub target: Box<QuicheExpr>,
+    pub annotation: Box<QuicheExpr>,
+    pub value: Option<Box<QuicheExpr>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IfStmt {
+    pub test: Box<QuicheExpr>,
+    pub body: Vec<QuicheStmt>,
+    pub orelse: Vec<QuicheStmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhileStmt {
+    pub test: Box<QuicheExpr>,
+    pub body: Vec<QuicheStmt>,
+    pub orelse: Vec<QuicheStmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ForStmt {
+    pub target: Box<QuicheExpr>,
+    pub iter: Box<QuicheExpr>,
+    pub body: Vec<QuicheStmt>,
+    pub orelse: Vec<QuicheStmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Arg {
+    pub arg: String,
+    pub annotation: Option<Box<QuicheExpr>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Keyword {
+    pub arg: Option<String>,
+    pub value: Box<QuicheExpr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Operator {
+    Add,
+    Sub,
+    Mult,
+    Div,
+    Mod,
+    Pow,
+    LShift,
+    RShift,
+    BitOr,
+    BitXor,
+    BitAnd,
+    FloorDiv,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BoolOperator {
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOperator {
+    Invert,
+    Not,
+    UAdd,
+    USub,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CmpOperator {
+    Eq,
+    NotEq,
+    Lt,
+    LtE,
+    Gt,
+    GtE,
+    Is,
+    IsNot,
+    In,
+    NotIn,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Constant {
+    None,
+    Bool(bool),
+    Str(String),
+    Int(i64),
+    Float(f64),
+    Ellipsis,
 }
 
 #[derive(Debug, Clone)]
