@@ -65,11 +65,7 @@ impl Codegen {
         self.output.clone()
     }
 
-    pub(crate) fn push_indent(&mut self) {
-        for _ in 0..self.indent_level {
-            self.output.push_str("    ");
-        }
-    }
+    pub(crate) fn push_indent(&mut self) {}
 
     pub(crate) fn enter_scope(&mut self) {
         self.scopes.push(HashMap::new());

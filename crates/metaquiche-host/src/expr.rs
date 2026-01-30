@@ -258,7 +258,10 @@ impl Codegen {
                     || func_name == "assert_true"
                     || func_name == "range"
                     || func_name == "exit";
-                if !is_intrinsic {
+
+                let is_struct_init = !c.arguments.keywords.is_empty();
+
+                if !is_intrinsic && !is_struct_init {
                     self.output.push_str("crate::quiche::check!(");
                 }
 
@@ -381,7 +384,7 @@ impl Codegen {
                     self.output.push_str(")");
                 }
 
-                if !is_intrinsic {
+                if !is_intrinsic && !is_struct_init {
                     self.output.push_str(")"); // End check!
                 }
             }
@@ -462,7 +465,8 @@ impl Codegen {
                 self.output.push_str("]");
             }
             ast::Expr::Dict(d) => {
-                self.output.push_str("std::collections::HashMap::from([");
+                self.output
+                    .push_str("crate::quiche::check!(std::collections::HashMap::from([");
                 for (i, item) in d.items.iter().enumerate() {
                     if let Some(key) = &item.key {
                         if i > 0 {
@@ -478,7 +482,7 @@ impl Codegen {
                         self.output.push_str("/* **kwargs not supported */");
                     }
                 }
-                self.output.push_str("])");
+                self.output.push_str("]))");
             }
             ast::Expr::Subscript(s) => {
                 // Check for tuple/map access via symbol table
@@ -506,6 +510,9 @@ impl Codegen {
                 self.output.push_str("[");
                 self.generate_expr(*s.slice.clone());
                 self.output.push_str("]");
+                if !is_tuple {
+                    self.output.push_str(".clone()");
+                }
             }
             ast::Expr::Tuple(t) => {
                 self.output.push_str("(");

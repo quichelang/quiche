@@ -55,9 +55,7 @@ impl Codegen {
                     _ => &base,
                 };
 
-                if rust_base == "Vec" {
-                    format!("std::vec::Vec{}<{}>", sep, final_inner)
-                } else if rust_base == "std::collections::HashMap" {
+                if rust_base == "std::collections::HashMap" {
                     format!("std::collections::HashMap{}<{}>", sep, final_inner)
                 } else if rust_base == "&" {
                     format!("&{}", final_inner)

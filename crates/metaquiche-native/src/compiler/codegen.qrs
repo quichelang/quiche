@@ -740,17 +740,17 @@ class Codegen:
         if func_name == "as_ref":
             if c.arguments.args.len() > 0:
                 self.emit("&")
-                self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0].clone())))
             return
         if func_name == "as_mut":
             if c.arguments.args.len() > 0:
                 self.emit("&mut ")
-                self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0].clone())))
             return
         if func_name == "deref":
             if c.arguments.args.len() > 0:
                 self.emit("*")
-                self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr_no_clone(ast.Expr.clone(as_ref(c.arguments.args[0].clone())))
             return
         if func_name == "exit":
             self.emit("std::process::exit(")
@@ -786,29 +786,29 @@ class Codegen:
         elif func_name == "assert_eq" or func_name == "assert_str_eq":
             self.emit("assert_eq!(")
             if c.arguments.args.len() >= 2:
-                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0].clone())))
                 self.emit(", ")
-                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[1])))
+                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[1].clone())))
                 if c.arguments.args.len() > 2:
                     self.emit(", \"{:?}\", ")
-                    self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[2])))
+                    self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[2].clone())))
             self.emit(")")
         elif func_name == "assert_true":
             self.emit("assert!(")
             if c.arguments.args.len() >= 1:
-                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0].clone())))
                 if c.arguments.args.len() > 1:
                     self.emit(", \"{:?}\", ")
-                    self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[1])))
+                    self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[1].clone())))
             self.emit(")")
         elif func_name == "range":
             if c.arguments.args.len() == 1:
                 self.emit("0..")
-                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0].clone())))
             elif c.arguments.args.len() >= 2:
-                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0])))
+                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[0].clone())))
                 self.emit("..")
-                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[1])))
+                self.generate_expr(ast.Expr.clone(as_ref(c.arguments.args[1].clone())))
         elif c.arguments.keywords.len() > 0:
             self.generate_expr(deref(c.func))
             self.emit(" { ")
@@ -934,7 +934,7 @@ class Codegen:
         self.generate_expr(deref(c.left))
         idx_c: usize = 0
         while idx_c < c.ops.len():
-            op = c.ops[idx_c]
+            op = c.ops[idx_c].clone()
             self.emit(" ")
             match op:
                 case ast.CmpOp.Eq: self.emit("==")
@@ -945,7 +945,7 @@ class Codegen:
                 case ast.CmpOp.GtE: self.emit(">=")
                 case _: self.emit("?")
             self.emit(" ")
-            self.generate_expr(ast.Expr.clone(as_ref(c.comparators[idx_c])))
+            self.generate_expr(ast.Expr.clone(as_ref(c.comparators[idx_c].clone())))
             idx_c = idx_c + 1
 
     def emit_expr_tuple(self, t: ast.ExprTuple):
@@ -1145,7 +1145,7 @@ class Codegen:
         i = self.defined_vars.len()
         while i > 0:
             i = i - 1
-            scope = as_ref(self.defined_vars[i.clone()])
+            scope = as_ref(self.defined_vars[i.clone()].clone())
             match scope.get(as_ref(name.clone())):
                 case Some(_): return True
                 case None: pass

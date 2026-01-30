@@ -376,7 +376,7 @@ def main():
         exit(1)
 
     commands = ["new", "build", "run", "test", "version"]
-    cmd = args[0].clone()
+    cmd = args[0]
     has_command = False
     for c in commands:
         if c == cmd:
@@ -386,7 +386,7 @@ def main():
         subargs: Vec[String] = []
         j = 1
         while j < args.len():
-            subargs.push(args[j].clone())
+            subargs.push(args[j])
             j = j + 1
 
         if cmd == "new":
@@ -401,7 +401,7 @@ def main():
                 print("Error: Missing project name.")
                 print("Usage: quiche-self new [--lib] <project_name>")
                 exit(1)
-            name = result.positionals[0].clone()
+            name = result.positionals[0]
             is_lib = False
             k_lib = "lib"
             k_lib = "lib"
@@ -490,7 +490,7 @@ def main():
         rest: Vec[String] = []
         k = 1
         while k < args.len():
-            rest.push(args[k].clone())
+            rest.push(args[k])
             k = k + 1
         result = parser.parse(rest)
         if result.errors.len() > 0:

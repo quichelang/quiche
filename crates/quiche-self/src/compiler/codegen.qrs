@@ -844,12 +844,12 @@ class Codegen:
                                     self.emit(inner_s)
                                     self.emit(">::new()")
                                     return
-                                if base_name_s == "std::collections::HashMap":
+                                if base_name_s == "std::collections::HashMap" or base_name_s == "HashMap":
                                     match as_ref(deref(s.slice)):
                                         case ast.Expr.Tuple(t):
                                             if t.elts.len() == 2:
-                                                k_s = self.type_to_string(t.elts[0].clone())
-                                                v_s = self.type_to_string(t.elts[1].clone())
+                                                k_s = self.type_to_string(t.elts[0])
+                                                v_s = self.type_to_string(t.elts[1])
                                                 self.emit("std::collections::HashMap::<")
                                                 self.emit(k_s)
                                                 self.emit(", ")
@@ -1163,7 +1163,7 @@ class Codegen:
         sz = self.defined_vars.len()
         idx = sz - 1
         idx = sz - 1
-        current_scope: HashMap[String, bool] = self.defined_vars[idx.clone()].clone()
+        current_scope: HashMap[String, bool] = self.defined_vars[idx.clone()]
         current_scope.insert(name, True)
         self.defined_vars[idx.clone()] = current_scope
     
