@@ -296,6 +296,7 @@ version = "0.1.0"
 dependencies = [
  "ruff_python_ast",
  "ruff_python_parser",
+ "tempfile",
 ]
 
 [[package]]
@@ -407,16 +408,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "quiche-host"
+name = "quiche-runtime"
+version = "0.1.0"
+
+[[package]]
+name = "quiche-to-metaquiche"
 version = "0.1.0"
 dependencies = [
  "metaquiche-host",
- "tempfile",
+ "ruff_python_ast",
 ]
-
-[[package]]
-name = "quiche-runtime"
-version = "0.1.0"
 
 [[package]]
 name = "quote"

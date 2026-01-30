@@ -2,7 +2,7 @@
 
 # Host compiler binary (quiche-host)
 HOST_BIN_DIR := target/debug
-HOST_BIN := $(HOST_BIN_DIR)/quiche-host
+HOST_BIN := $(HOST_BIN_DIR)/metaquiche-host
 
 # Stage 1 (built with host)
 STAGE1_TARGET_DIR := target/stage1
@@ -14,7 +14,7 @@ STAGE2_BIN := $(STAGE2_TARGET_DIR)/debug/metaquiche-native
 all: verify
 
 stage0:
-	cargo build -p quiche-host
+	cargo build -p metaquiche-host
 	@ln -sf $(HOST_BIN) stage0
 
 stage1: stage0

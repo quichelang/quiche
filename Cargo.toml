@@ -1,9 +1,10 @@
 [workspace]
 members = [
     "crates/quiche-compiler",
-    "crates/quiche-host",
     "crates/metaquiche-native",
     "crates/quiche-runtime",
-    "crates/parsley-qrs", "crates/metaquiche-host",
+    "crates/parsley-qrs",
+    "crates/metaquiche-host",
+    "crates/quiche-to-metaquiche",
 ]
 resolver = "2"

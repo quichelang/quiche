@@ -220,7 +220,7 @@ fn run_single_file_with_options(
             return;
         }
 
-        let rust_code = rust_code.replace("#[test]", "");
+        let rust_code: String = rust_code.replace("#[test]", "");
 
         let quiche_module = r#"
 mod quiche {

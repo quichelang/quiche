@@ -6,3 +6,12 @@ edition = "2021"
 [dependencies]
 ruff_python_parser = { git = "https://github.com/astral-sh/ruff" }
 ruff_python_ast = { git = "https://github.com/astral-sh/ruff" }
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "metaquiche-host"
+path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3.24.0"

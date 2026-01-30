@@ -156,7 +156,7 @@ mod quiche {
     }
     
 
-    
+
     // Low Priority: Takes &Self (Clone fallback)
     pub trait QuicheGeneric {
         fn quiche_handle(&self) -> Self;
