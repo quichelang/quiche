@@ -87,7 +87,7 @@ def version_get_date() -> String: pass
 def version_get_build_kind() -> String: pass
 
 def get_flag_bool(flags: HashMap[String, bool], key: String) -> bool:
-    match flags.get(as_ref(key)):
+    match flags.get(ref(key)):
         case Some(v): return v.clone()
         case None: pass
     return False
@@ -122,14 +122,14 @@ def module_to_rust_path(module_path: String) -> String:
     if module_path == "": return "crate"
     is_external = False
     res = module_path.clone()
-    if res.starts_with(as_ref("rust.")):
-        res = res.replace(as_ref("rust."), as_ref(""))
+    if res.starts_with(ref("rust.")):
+        res = res.replace(ref("rust."), ref(""))
         is_external = True
-    elif res.starts_with(as_ref("std.")):
+    elif res.starts_with(ref("std.")):
         is_external = True
     if not is_external:
-        res = "crate.".to_string() + as_ref(res)
-    return res.replace(as_ref("."), as_ref("::"))
+        res = "crate.".to_string() + ref(res)
+    return res.replace(ref("."), ref("::"))
 
 
 def resolve_module_path(current_module_path: String, module_name: String, level: u32) -> String:
@@ -145,7 +145,7 @@ def resolve_module_path(current_module_path: String, module_name: String, level:
 
 def collect_module_exports(module_index: HashMap[String, String], module_path: String) -> HashMap[String, String]:
     exports = HashMap[String, String].new()
-    match module_index.get(as_ref(module_path)):
+    match module_index.get(ref(module_path)):
         case Some(path):
             source = read_to_string(path.clone())
             parsed = parse_module(source.as_str())
@@ -188,10 +188,10 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                     case None:
                         base_module = resolve_module_path(current_module_path.clone(), "", i.level)
 
-                is_external = base_module.starts_with(as_ref("rust.")) or base_module.starts_with(as_ref("std."))
+                is_external = base_module.starts_with(ref("rust.")) or base_module.starts_with(ref("std."))
                 exports = HashMap[String, String].new()
                 if not is_external:
-                    match module_index.get(as_ref(base_module.clone())):
+                    match module_index.get(ref(base_module.clone())):
                         case Some(_):
                             exports = collect_module_exports(module_index.clone(), base_module.clone())
                         case None: pass
@@ -206,18 +206,18 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                     kind = "value"
                     item_module = module_join(base_module.clone(), name.clone())
                     rust_path = ""
-                    match module_index.get(as_ref(item_module.clone())):
+                    match module_index.get(ref(item_module.clone())):
                         case Some(_):
                             kind = "module"
                             rust_path = module_to_rust_path(item_module)
                         case None:
                             rust_path = module_to_rust_path(base_module.clone())
-                            rust_path = rust_path + as_ref("::")
-                            rust_path = rust_path + as_ref(name)
+                            rust_path = rust_path + ref("::")
+                            rust_path = rust_path + ref(name)
                             if is_external:
                                 kind = "module"
                             else:
-                                match exports.get(as_ref(name.clone())):
+                                match exports.get(ref(name.clone())):
                                     case Some(k):
                                         if k.as_str() == "class": kind = "type"
                                         elif k.as_str() == "func": kind = "func"
@@ -305,18 +305,18 @@ def parse_warn_flags(flags: HashMap[String, bool]) -> WarnFlags:
     return WarnFlags.new(warn, strict, warn_all, warn_quiche)
 
 def template_quiche_toml(name: String) -> String:
-    return "[package]\nname = \"" + name.as_str() + as_ref("\"\nversion = \"0.1.0\"\n")
+    return "[package]\nname = \"" + name.as_str() + ref("\"\nversion = \"0.1.0\"\n")
 
 def template_cargo_toml(name: String, is_lib: bool, compiler_path: String) -> String:
-    s = "[package]\nname = \"" + name.as_str() + as_ref("\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n")
-    s = s + as_ref("# Break out of any parent workspace\n[workspace]\n\n")
-    s = s + as_ref("[build-dependencies]\nquiche_compiler = { path = \"") + compiler_path.as_str() + as_ref("\" }\n\n")
-    s = s + as_ref("[dependencies]\n")
-    s = s + as_ref("quiche-runtime = { path = \"../quiche-runtime\" }\n")  # TODO: Make relative path smarter or use registry
+    s = "[package]\nname = \"" + name.as_str() + ref("\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n")
+    s = s + ref("# Break out of any parent workspace\n[workspace]\n\n")
+    s = s + ref("[build-dependencies]\nquiche_compiler = { path = \"") + compiler_path.as_str() + ref("\" }\n\n")
+    s = s + ref("[dependencies]\n")
+    s = s + ref("quiche-runtime = { path = \"../quiche-runtime\" }\n")  # TODO: Make relative path smarter or use registry
     if is_lib:
-        s = s + as_ref("\n[lib]\npath = \"src/lib.rs\"\n")
+        s = s + ref("\n[lib]\npath = \"src/lib.rs\"\n")
     else:
-        s = s + as_ref("\n[[bin]]\nname = \"") + name.as_str() + as_ref("\"\npath = \"src/main.rs\"\n")
+        s = s + ref("\n[[bin]]\nname = \"") + name.as_str() + ref("\"\npath = \"src/main.rs\"\n")
     return s
 
 def template_build_rs() -> String:
@@ -336,23 +336,23 @@ def template_main_rs() -> String:
 
 def create_new_project(name: String, is_lib: bool):
     if path_exists(name.clone()):
-        print(concat3("Error: Directory '", as_ref(name), "' already exists"))
+        print(concat3("Error: Directory '", ref(name), "' already exists"))
         return
 
-    create_dir_all(name.clone() + as_ref("/src"))
-    write_string(name.clone() + as_ref("/Quiche.toml"), template_quiche_toml(name.clone()))
+    create_dir_all(name.clone() + ref("/src"))
+    write_string(name.clone() + ref("/Quiche.toml"), template_quiche_toml(name.clone()))
     compiler_path = compiler_path_for_new()
-    write_string(name.clone() + as_ref("/Cargo.toml"), template_cargo_toml(name.clone(), is_lib, compiler_path))
-    write_string(name.clone() + as_ref("/build.rs"), template_build_rs())
+    write_string(name.clone() + ref("/Cargo.toml"), template_cargo_toml(name.clone(), is_lib, compiler_path))
+    write_string(name.clone() + ref("/build.rs"), template_build_rs())
 
     if is_lib:
-        write_string(name.clone() + as_ref("/src/lib.qrs"), template_lib_qrs())
-        write_string(name.clone() + as_ref("/src/lib.rs"), template_lib_rs())
+        write_string(name.clone() + ref("/src/lib.qrs"), template_lib_qrs())
+        write_string(name.clone() + ref("/src/lib.rs"), template_lib_rs())
     else:
-        write_string(name.clone() + as_ref("/src/main.qrs"), template_main_qrs())
-        write_string(name.clone() + as_ref("/src/main.rs"), template_main_rs())
+        write_string(name.clone() + ref("/src/main.qrs"), template_main_qrs())
+        write_string(name.clone() + ref("/src/main.rs"), template_main_rs())
 
-    print(concat2("Created new project: ", as_ref(name)))
+    print(concat2("Created new project: ", ref(name)))
 
 def run_transpiled_file(filename: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool):
     source = read_to_string(filename.clone())
@@ -479,16 +479,16 @@ def main():
             date = version_get_date()
             kind = version_get_build_kind()
             
-            print(concat2("quiche-self ", as_ref(stage)))
-            print(concat2("  stage:   ", as_ref(stage)))
-            print(concat2("  commit:  ", as_ref(commit)))
-            print(concat2("  built:   ", as_ref(date)))
-            print(concat2("  profile: ", as_ref(kind)))
+            print(concat2("quiche-self ", ref(stage)))
+            print(concat2("  stage:   ", ref(stage)))
+            print(concat2("  commit:  ", ref(commit)))
+            print(concat2("  built:   ", ref(date)))
+            print(concat2("  profile: ", ref(kind)))
             return
 
-    if cmd.ends_with(as_ref(".qrs")):
+    if cmd.ends_with(ref(".qrs")):
         if not path_exists(cmd.clone()):
-            print(concat3("Error: File '", as_ref(cmd), "' not found."))
+            print(concat3("Error: File '", ref(cmd), "' not found."))
             exit(1)
         parser = build_flag_parser(False)
         rest: Vec[String] = []
@@ -520,7 +520,7 @@ def main():
         run_transpiled_file(cmd.clone(), result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche)
         return
 
-    print(concat3("Error: Unrecognized command or file '", as_ref(cmd), "'"))
+    print(concat3("Error: Unrecognized command or file '", ref(cmd), "'"))
     print("")
     print_usage()
     exit(1)

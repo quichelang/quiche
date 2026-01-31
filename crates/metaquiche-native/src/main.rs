@@ -15,7 +15,7 @@
 
 pub mod compiler;
 pub mod quiche {
-    pub use quiche_runtime::{QuicheGeneric, QuicheResult, as_ref, check};
+    pub use quiche_runtime::{QuicheGeneric, QuicheResult, check, deref, mutref, qref};
 
     pub fn as_str_helper<T: AsRef<str> + ?Sized>(s: &T) -> String {
         s.as_ref().to_string()
@@ -393,6 +393,21 @@ mod quiche {
     }
     pub(crate) use call;
 
+    macro_rules! qref {
+        ($e:expr) => { &($e) };
+    }
+    pub(crate) use qref;
+
+    macro_rules! mutref {
+        ($e:expr) => { &mut ($e) };
+    }
+    pub(crate) use mutref;
+
+    macro_rules! deref {
+        ($e:expr) => { *($e) };
+    }
+    pub(crate) use deref;
+
     pub fn run_test_cmd(exe: String, test_path: String) -> bool {
         let mut cmd = std::process::Command::new(exe);
         cmd.arg(test_path);
@@ -703,7 +718,7 @@ pub mod generated_main {
     use super::quiche::*;
     use super::{concat2, concat3, concat4};
     use crate::compiler;
-    use quiche_runtime::as_ref;
+    use quiche_runtime::qref;
 
     // Re-export ast from quiche_parser so generated code can reference ast::
     pub use quiche_parser::ast;

@@ -2,10 +2,10 @@
 
 // Alias for compatibility with generated code that uses crate::quiche::*
 mod quiche {
-    pub use quiche_runtime::{QuicheGeneric, QuicheResult, call, check};
+    pub use quiche_runtime::{QuicheGeneric, QuicheResult, call, check, deref, mutref, qref};
 }
 
-use quiche_runtime::as_ref;
+use quiche_runtime::{deref, mutref, qref};
 
 // Re-export everything from the transpiled module
 include!(concat!(env!("OUT_DIR"), "/lib.rs"));

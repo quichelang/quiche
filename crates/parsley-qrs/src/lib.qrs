@@ -96,9 +96,9 @@ class Parsley:
 
     def register_aliases(self: Parsley, name: String, aliases: Vec[String]):
         self.alias_map.insert(name.clone(), name.clone())
-        self.alias_map.insert("--".to_string() + as_ref(name.clone()), name.clone())
+        self.alias_map.insert("--".to_string() + ref(name.clone()), name.clone())
         if name.clone().len() == 1:
-            self.alias_map.insert("-".to_string() + as_ref(name.clone()), name.clone())
+            self.alias_map.insert("-".to_string() + ref(name.clone()), name.clone())
         for a in aliases:
             self.alias_map.insert(a.clone(), name.clone())
 
@@ -127,7 +127,7 @@ class Parsley:
                     j = j + 1
                 break
 
-            is_flag = arg.starts_with(as_ref("-"))
+            is_flag = arg.starts_with(ref("-"))
             if not is_flag:
                 if result.command == "" and self.is_command(arg.clone()):
                     result.command = arg.clone()
@@ -140,9 +140,9 @@ class Parsley:
                 i = i + 1
                 continue
 
-            match self.alias_map.get(as_ref(arg.clone())):
+            match self.alias_map.get(ref(arg.clone())):
                 case Some(name):
-                    match self.by_name.get(as_ref(name.clone())):
+                    match self.by_name.get(ref(name.clone())):
                         case Some(spec):
                             if spec.takes_value:
                                 if i + 1 < args.len():
@@ -151,13 +151,13 @@ class Parsley:
                                     i = i + 2
                                     continue
                                 else:
-                                    result.errors.push("Missing value for option: " + as_ref(arg))
+                                    result.errors.push("Missing value for option: " + ref(arg))
                             else:
                                 result.flags.insert(spec.name.clone(), True)
                         case None:
-                            result.errors.push("Unknown option: " + as_ref(arg))
+                            result.errors.push("Unknown option: " + ref(arg))
                 case None:
-                     result.errors.push("Unknown option: " + as_ref(arg))
+                     result.errors.push("Unknown option: " + ref(arg))
 
             i = i + 1
 

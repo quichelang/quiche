@@ -1,5 +1,5 @@
 import rust.quiche_parser.ast as q_ast
-from rust.quiche_runtime import deref, as_ref
+from rust.quiche_runtime import deref, qref
 
 
 # extern_defs is provided by the wrapper module
@@ -34,8 +34,8 @@ class Codegen:
         i = self.defined_vars.len()
         while i > 0:
             i = i - 1
-            scope = as_ref(self.defined_vars[i.clone()])
-            match scope.get(as_ref(name.clone())):
+            scope = ref(self.defined_vars[i.clone()])
+            match scope.get(ref(name.clone())):
                 case Some(_): return True
                 case None: pass
         return False
@@ -56,7 +56,7 @@ class Codegen:
         # Check for known module names
         if name == "extern_defs": return True
         # Check import registry
-        match self.import_kinds.get(as_ref(name)):
+        match self.import_kinds.get(ref(name)):
              case Some(k):
                   if k.as_str() == "module" or k.as_str() == "type": return True
              case None: pass
@@ -122,8 +122,20 @@ class Codegen:
                         self.emit(": ")
                         self.generate_pattern(pat)
                         idx_kw_pat = idx_kw_pat + 1
-                    self.emit(" }")
+                    self.emit(", .. }")
                 else: self.emit(" { .. }")
+            case q_ast.Pattern.MatchSingleton(c):
+                match c:
+                    case q_ast.Constant.NoneVal: self.emit("None")
+                    case q_ast.Constant.Bool(b):
+                        if b: self.emit("true")
+                        else: self.emit("false")
+                    case q_ast.Constant.Str(s):
+                        self.emit("\"")
+                        self.emit(s.to_string())
+                        self.emit("\"")
+                    case q_ast.Constant.Int(i): self.emit(i.to_string())
+                    case _: self.emit("_")
             case _: self.emit("_")
 
     import_kinds: HashMap[String, String]
@@ -131,6 +143,30 @@ class Codegen:
     current_module_path: String
     class_fields: HashMap[String, HashMap[String, String]]
     current_class: String
+
+    def is_skip_check_method(self, method_name: String) -> bool:
+        # Methods that are known to be infallible and don't need check! wrapping
+        # This list must match the host compiler exactly
+        if method_name.as_str() == "as_str": return True
+        if method_name.as_str() == "to_string": return True
+        if method_name.as_str() == "clone": return True
+        if method_name.as_str() == "into_syntax": return True
+        if method_name.as_str() == "into_iter": return True
+        if method_name.as_str() == "as_ref": return True
+        if method_name.as_str() == "ref": return True
+        if method_name.as_str() == "mutref": return True
+        if method_name.as_str() == "enter_var_scope": return True
+        if method_name.as_str() == "exit_var_scope": return True
+        if method_name.as_str() == "get_root_name": return True
+        if method_name.as_str() == "is_type_or_mod": return True
+        if method_name.as_str() == "is_var_defined": return True
+        if method_name.as_str() == "mark_var_defined": return True
+        if method_name.as_str() == "define_var": return True
+        if method_name.as_str() == "expr_contains_name": return True
+        if method_name.as_str() == "generate_pattern": return True
+        if method_name.as_str() == "emit": return True
+        if method_name.as_str() == "push": return True
+        return False
 
     def __init__(self):
         self.output = RustString.new()
@@ -210,7 +246,7 @@ class Codegen:
                 self.generate_expr(expr)
 
     def register_class_field(self, class_name: String, field_name: String, field_type: String):
-        match self.class_fields.get(as_ref(class_name.clone())):
+        match self.class_fields.get(ref(class_name.clone())):
             case Some(cf_untyped):
                 class_fields_map: HashMap[String, String] = cf_untyped.clone()
                 class_fields_map.insert(field_name.clone(), field_type.clone())
@@ -227,10 +263,10 @@ class Codegen:
 
     def get_self_field_type(self, field_name: String) -> String:
         if self.current_class == "": return ""
-        match self.class_fields.get(as_ref(self.current_class.clone())):
+        match self.class_fields.get(ref(self.current_class.clone())):
             case Some(cf_untyped):
                 class_fields_map: HashMap[String, String] = cf_untyped.clone()
-                match class_fields_map.get(as_ref(field_name.clone())):
+                match class_fields_map.get(ref(field_name.clone())):
                     case Some(t): return t.clone()
                     case None: return ""
             case None: return ""
@@ -239,7 +275,7 @@ class Codegen:
 
 
     def emit(self, s: String):
-        self.output.push_str(as_ref(s))
+        self.output.push_str(ref(s))
 
 
 
@@ -279,6 +315,12 @@ class Codegen:
                 self.emit_import_from(i)
             case q_ast.Stmt.Assert(a):
                 self.emit_assert(a)
+            case q_ast.Stmt.Pass:
+                pass  # Do nothing - empty statement in Rust
+            case q_ast.Stmt.Break:
+                self.emit("break;\n")
+            case q_ast.Stmt.Continue:
+                self.emit("continue;\n")
             case _:
                 self.emit("// Unimplemented stmt\n")
 
@@ -303,15 +345,15 @@ class Codegen:
                     if n.to_string() == "extern":
                         is_extern = True
                 case q_ast.Expr.Call(func=func, args=args, keywords=keywords):
-                    match as_ref(deref(func)):
+                    match ref(deref(func)):
                         case q_ast.Expr.Name(func_name):
                             if func_name.to_string() == "extern":
                                 is_extern = True
                                 for kw in keywords.clone():
-                                    match as_ref(kw.arg):
+                                    match ref(kw.arg):
                                         case Some(arg_name):
                                             if arg_name.as_str() == "path":
-                                                match as_ref(deref(kw.value)):
+                                                match ref(deref(kw.value)):
                                                     case q_ast.Expr.Constant(c):
                                                         match c:
                                                             case q_ast.Constant.Str(s):
@@ -384,7 +426,7 @@ class Codegen:
 
     def emit_stmt_expr(self, e: q_ast.QuicheExpr):
         is_doc = False
-        match as_ref(e):
+        match ref(e):
             case q_ast.Expr.Constant(c):
                 match c:
                     case q_ast.Constant.Str(s):
@@ -412,22 +454,22 @@ class Codegen:
         # Simple single target assignment
         is_subscript = False
         subscript_is_map = False
-        match as_ref(a.targets[0]):
+        match ref(a.targets[0]):
             case q_ast.Expr.Name(n):
                 name_assign = n.to_string()
                 is_existing = self.is_var_defined_in_scopes(name_assign.clone())
                 if not is_existing:
-                    if self.expr_contains_name(Clone.clone(as_ref(deref(a.value))), name_assign.clone()):
+                    if self.expr_contains_name(Clone.clone(ref(deref(a.value))), name_assign.clone()):
                         is_existing = True
                 if not is_existing:
                     self.emit("let mut ")
                 self.emit(name_assign.clone())
                 self.emit(" = ")
-                assign_val_type = self.infer_expr_type(Clone.clone(as_ref(deref(a.value))))
+                assign_val_type = self.infer_expr_type(Clone.clone(ref(deref(a.value))))
                 if not is_existing:
                     self.define_var(name_assign.clone())
                     self.mark_var_defined(name_assign.clone())
-                match as_ref(deref(a.value)):
+                match ref(deref(a.value)):
                     case q_ast.Expr.Tuple(_):
                         self.tuple_vars.insert(name_assign.clone(), True)
                     case _: pass
@@ -450,10 +492,10 @@ class Codegen:
         self.emit(";\n")
 
     def emit_ann_assign(self, a: q_ast.AnnAssign):
-        match as_ref(deref(a.target)):
+        match ref(deref(a.target)):
             case q_ast.Expr.Name(n):
-                ann_type_name = self.type_to_string(Clone.clone(as_ref(deref(a.annotation.clone()))))
-                is_tuple_ann = ann_type_name.starts_with(as_ref("(")) or ann_type_name.starts_with(as_ref("Tuple"))
+                ann_type_name = self.type_to_string(Clone.clone(ref(deref(a.annotation.clone()))))
+                is_tuple_ann = ann_type_name.starts_with(ref("(")) or ann_type_name.starts_with(ref("Tuple"))
                 self.emit("let mut ")
                 self.emit(n.to_string())
                 self.emit(": ")
@@ -475,14 +517,14 @@ class Codegen:
         prev_clone = self.clone_names
         self.clone_names = True
         self.emit("for __q in (")
-        match as_ref(deref(f.iter)):
+        match ref(deref(f.iter)):
             case q_ast.Expr.Name(n):
                 self.emit(n.to_string())
             case _:
                 self.generate_expr(deref(f.iter))
         self.emit(") {\n")
         self.emit("let ")
-        match as_ref(deref(f.target)):
+        match ref(deref(f.target)):
             case q_ast.Expr.Name(n):
                 self.emit(n.to_string())
             case _:
@@ -503,26 +545,15 @@ class Codegen:
         for s in i.body:
             self.generate_stmt(s)
         self.exit_var_scope()
-        self.emit("}")
+        self.emit("}\n")
         
         if i.orelse.len() > 0:
-            is_elif = False
-            if i.orelse.len() == 1:
-                match i.orelse[0]:
-                    case q_ast.Stmt.If(elif_stmt):
-                        is_elif = True
-                        self.emit(" else ")
-                        self.emit_if(elif_stmt)
-                    case _: pass
-            
-            if not is_elif:
-                self.emit(" else {\n")
-                self.enter_var_scope()
-                for s in i.orelse:
-                    self.generate_stmt(s)
-                self.exit_var_scope()
-                self.emit("}")
-        self.emit("\n")
+            self.emit("else {\n")
+            self.enter_var_scope()
+            for s in i.orelse:
+                self.generate_stmt(s)
+            self.exit_var_scope()
+            self.emit("}\n")
 
     def emit_while(self, w: q_ast.WhileStmt):
         self.emit("while ")
@@ -542,7 +573,7 @@ class Codegen:
 
         # Support class Name(Struct) or class Name(Enum)
         for base in c.bases.clone():
-             match as_ref(base):
+             match ref(base):
                  case q_ast.Expr.Name(n):
                      if n.to_string() == "Enum": is_enum = True
                      if n.to_string() == "Extern": is_extern = True
@@ -557,15 +588,15 @@ class Codegen:
                     if n.to_string() == "extern":
                         is_extern = True
                 case q_ast.Expr.Call(func=func, args=args, keywords=keywords):
-                    match as_ref(deref(func)):
+                    match ref(deref(func)):
                         case q_ast.Expr.Name(func_name):
                             if func_name.to_string() == "extern":
                                 is_extern = True
                                 for kw in keywords.clone():
-                                    match as_ref(kw.arg):
+                                    match ref(kw.arg):
                                         case Some(arg_name):
                                             if arg_name.as_str() == "path":
-                                                match as_ref(deref(kw.value)):
+                                                match ref(deref(kw.value)):
                                                     case q_ast.Expr.Constant(c):
                                                         match c:
                                                             case q_ast.Constant.Str(s):
@@ -573,7 +604,7 @@ class Codegen:
                                                             case _: pass
                                                     case _: pass
                                             elif arg_name.as_str() == "no_generic":
-                                                match as_ref(deref(kw.value)):
+                                                match ref(deref(kw.value)):
                                                     case q_ast.Expr.Constant(c):
                                                         match c:
                                                             case q_ast.Constant.Bool(b):
@@ -614,13 +645,13 @@ class Codegen:
              self.emit("#[derive(Clone, Debug, Default)]\n")
              self.emit("pub struct ")
         self.emit(c.name.to_string())
-        self.emit(" {\n")
+        self.emit("  {\n")
 
         if is_enum:
             for s in c.body.clone():
                 match s:
                     case q_ast.Stmt.AnnAssign(a):
-                        match as_ref(deref(a.target)):
+                        match ref(deref(a.target)):
                             case q_ast.Expr.Name(n):
                                 self.emit(n.to_string())
                                 self.emit("(")
@@ -640,18 +671,18 @@ class Codegen:
             for s in c.body.clone():
                 match s:
                     case q_ast.Stmt.AnnAssign(a):
-                        match as_ref(deref(a.target)):
+                        match ref(deref(a.target)):
                             case q_ast.Expr.Name(n):
                                 self.emit("pub ")
                                 self.emit(n.to_string())
                                 self.emit(": ")
-                                ann_str_f = self.type_to_string(Clone.clone(as_ref(deref(a.annotation.clone()))))
+                                ann_str_f = self.type_to_string(Clone.clone(ref(deref(a.annotation.clone()))))
                                 self.register_class_field(class_name.clone(), n.to_string(), ann_str_f.clone())
                                 self.emit(ann_str_f)
                                 self.emit(",\n")
                             case _: pass
                     case _: pass
-        self.emit("}\n")
+        self.emit("}\n\n")
 
 
 
@@ -666,7 +697,7 @@ class Codegen:
                         self.generate_stmt(s)
                     case _: pass
             self.clear_current_class()
-            self.emit("}\n")
+            self.emit("}\n\n")
 
     def emit_match(self, m: q_ast.MatchStmt):
         self.emit("match ")
@@ -702,13 +733,13 @@ class Codegen:
                 case None: pass
 
             rust_path_opt: Option[String] = None
-            match self.import_paths.get(as_ref(alias_name.clone())):
+            match self.import_paths.get(ref(alias_name.clone())):
                 case Some(p): rust_path_opt = Some(p.clone())
                 case None: pass
 
             match rust_path_opt:
                 case Some(rust_path):
-                    if is_root_module and rust_path.starts_with(as_ref("crate::")):
+                    if is_root_module and rust_path.starts_with(ref("crate::")):
 
                         continue
                     self.emit("use ")
@@ -721,7 +752,7 @@ class Codegen:
                     self.emit(";\n")
                 case None:
                     if not alias_name_raw.starts_with(rust_p.as_str()) and not alias_name_raw.starts_with(std_p.as_str()):
-                        if is_root_module and alias.asname.is_none() and not alias_name_raw.contains(as_ref(".")):
+                        if is_root_module and alias.asname.is_none() and not alias_name_raw.contains(ref(".")):
 
                             continue
                         self.emit("use crate::")
@@ -748,7 +779,7 @@ class Codegen:
                 case None: pass
 
             rust_path_opt: Option[String] = None
-            match self.import_paths.get(as_ref(alias_name.clone())):
+            match self.import_paths.get(ref(alias_name.clone())):
                 case Some(p): rust_path_opt = Some(p.clone())
                 case None: pass
             
@@ -783,8 +814,8 @@ class Codegen:
                             mod_name: String = m.to_string()
                             if mod_name == "rust":
                                 mod_name = ""
-                            elif mod_name.starts_with(as_ref("rust.")):
-                                mod_name = mod_name.replace(as_ref("rust."), as_ref(""))
+                            elif mod_name.starts_with(ref("rust.")):
+                                mod_name = mod_name.replace(ref("rust."), ref(""))
                             if mod_name != "":
                                 self.emit(mod_name.replace(mod_sep.as_str(), mod_col.as_str()))
                                 self.emit("::")
@@ -848,7 +879,7 @@ class Codegen:
 
     def emit_call(self, func: Box[q_ast.Expr], args: Vec[q_ast.Expr], keywords: Vec[q_ast.Keyword]):
         func_name = ""
-        match as_ref(deref(func)):
+        match ref(deref(func)):
             case q_ast.Expr.Lambda(args=l_args, body=l_body):
                 self.generate_expr(deref(func))
                 self.emit("(")
@@ -860,26 +891,27 @@ class Codegen:
                 self.emit(")")
                 return
             case _: pass
-        match as_ref(deref(func)):
+        match ref(deref(func)):
             case q_ast.Expr.Name(n):
                 func_name = n.to_string()
             case _: pass
 
-        if func_name == "as_ref":
+        if func_name == "as_ref" or func_name == "ref":
             if args.len() > 0:
-                self.emit("as_ref!(")
-                self.generate_expr_no_clone(Clone.clone(as_ref(args[0])))
+                self.emit("qref!(")
+                self.generate_expr_no_clone(Clone.clone(ref(args[0])))
                 self.emit(")")
             return
-        if func_name == "as_mut":
+        if func_name == "as_mut" or func_name == "mutref":
             if args.len() > 0:
-                self.emit("&mut ")
-                self.generate_expr_no_clone(Clone.clone(as_ref(args[0])))
+                self.emit("mutref!(")
+                self.generate_expr_no_clone(Clone.clone(ref(args[0])))
+                self.emit(")")
             return
         if func_name == "deref":
             if args.len() > 0:
                 self.emit("deref!(")
-                self.generate_expr_no_clone(Clone.clone(as_ref(args[0])))
+                self.generate_expr_no_clone(Clone.clone(ref(args[0])))
                 self.emit(")")
             return
         if func_name == "exit":
@@ -912,29 +944,29 @@ class Codegen:
         elif func_name == "assert_eq" or func_name == "assert_str_eq":
             self.emit("assert_eq!(")
             if args.len() >= 2:
-                self.generate_expr(Clone.clone(as_ref(args[0])))
+                self.generate_expr(Clone.clone(ref(args[0])))
                 self.emit(", ")
-                self.generate_expr(Clone.clone(as_ref(args[1])))
+                self.generate_expr(Clone.clone(ref(args[1])))
                 if args.len() > 2:
                     self.emit(", \"{:?}\", ")
-                    self.generate_expr(Clone.clone(as_ref(args[2])))
+                    self.generate_expr(Clone.clone(ref(args[2])))
             self.emit(")")
         elif func_name == "assert_true":
             self.emit("assert!(")
             if args.len() >= 1:
-                self.generate_expr(Clone.clone(as_ref(args[0])))
+                self.generate_expr(Clone.clone(ref(args[0])))
                 if args.len() > 1:
                     self.emit(", \"{:?}\", ")
-                    self.generate_expr(Clone.clone(as_ref(args[1])))
+                    self.generate_expr(Clone.clone(ref(args[1])))
             self.emit(")")
         elif func_name == "range":
             if args.len() == 1:
                 self.emit("0..")
-                self.generate_expr(Clone.clone(as_ref(args[0])))
+                self.generate_expr(Clone.clone(ref(args[0])))
             elif args.len() >= 2:
-                self.generate_expr(Clone.clone(as_ref(args[0])))
+                self.generate_expr(Clone.clone(ref(args[0])))
                 self.emit("..")
-                self.generate_expr(Clone.clone(as_ref(args[1])))
+                self.generate_expr(Clone.clone(ref(args[1])))
         elif keywords.len() > 0:
             # Emit as function call with kwargs as positional args (like host compiler)
             self.emit("crate::quiche::check!(")
@@ -951,10 +983,10 @@ class Codegen:
                 i_kw = i_kw + 1
             self.emit("))")
         else:
-            match as_ref(deref(func)):
+            match ref(deref(func)):
                 case q_ast.Expr.Attribute(value=value, attr=attr):
                     if attr.as_str() == "new":
-                        match as_ref(deref(value)):
+                        match ref(deref(value)):
                             case q_ast.Expr.Name(n):
                                 base_name = n.to_string()
                                 if base_name == "List" or base_name == "Vec":
@@ -964,31 +996,21 @@ class Codegen:
                                     self.emit("std::collections::HashMap::new()")
                                     return
                             case q_ast.Expr.Subscript(value=s_value, slice=s_slice):
-                                base_name_s = self.type_to_string(Clone.clone(as_ref(deref(s_value))))
+                                base_name_s = self.type_to_string(Clone.clone(ref(deref(s_value))))
                                 if base_name_s == "Vec":
-                                    inner_s = self.type_to_string(Clone.clone(as_ref(deref(s_slice))))
+                                    inner_s = self.type_to_string(Clone.clone(ref(deref(s_slice))))
                                     self.emit("Vec::<")
                                     self.emit(inner_s)
                                     self.emit(">::new()")
                                     return
                                 if base_name_s == "std::collections::HashMap" or base_name_s == "HashMap":
-                                    match as_ref(deref(s_slice)):
-                                        case q_ast.Expr.Tuple(t):
-                                            if t.len() == 2:
-                                                k_s = self.type_to_string(t[0].clone())
-                                                v_s = self.type_to_string(t[1].clone())
-                                                self.emit("std::collections::HashMap::<")
-                                                self.emit(k_s)
-                                                self.emit(", ")
-                                                self.emit(v_s)
-                                                self.emit(">::new()")
-                                                return
-                                        case _: pass
                                     self.emit("std::collections::HashMap::new()")
                                     return
                             case _: pass
 
-                    self.emit("crate::quiche::check!(")
+                    skip_check = self.is_skip_check_method(attr.to_string())
+                    if not skip_check:
+                        self.emit("crate::quiche::check!(")
                     self.generate_expr(deref(func))
                     self.emit("(")
                     idx_arg_call = 0
@@ -996,7 +1018,9 @@ class Codegen:
                         if idx_arg_call > 0: self.emit(", ")
                         self.generate_expr(arg_c)
                         idx_arg_call = idx_arg_call + 1
-                    self.emit("))")
+                    self.emit(")")
+                    if not skip_check:
+                        self.emit(")")
                 case _:
                     self.emit("crate::quiche::check!(")
                     self.generate_expr(deref(func))
@@ -1072,7 +1096,7 @@ class Codegen:
                 case q_ast.CmpOperator.GtE: self.emit(">=")
                 case _: self.emit("?")
             self.emit(" ")
-            self.generate_expr(Clone.clone(as_ref(comparators[idx_c])))
+            self.generate_expr(Clone.clone(ref(comparators[idx_c])))
             idx_c = idx_c + 1
 
     def emit_expr_tuple(self, elts: Vec[q_ast.Expr]):
@@ -1087,28 +1111,28 @@ class Codegen:
     def emit_attribute(self, value: Box[q_ast.Expr], attr: String):
         target_attr = deref(value)
         is_static_attr = False
-        match self.get_root_name(Clone.clone(as_ref(target_attr))):
+        match self.get_root_name(Clone.clone(ref(target_attr))):
             case Some(root_name):
                 if self.is_type_or_mod(root_name.clone()):
                     is_static_attr = True
             case None: pass
         if attr.as_str() == "new": is_static_attr = True
         
-        match as_ref(target_attr):
+        match ref(target_attr):
             case q_ast.Expr.Subscript(value=s_val, slice=s_slice):
                 if is_static_attr:
-                    full_expr = Clone.clone(as_ref(target_attr))
+                    full_expr = Clone.clone(ref(target_attr))
                     base_type = self.type_to_string(full_expr)
-                    if base_type.contains(as_ref("<")):
-                        base_type = base_type.replace(as_ref("<"), as_ref("::<"))
+                    if base_type.contains(ref("<")):
+                        base_type = base_type.replace(ref("<"), ref("::<"))
                     self.emit(base_type)
                 else:
-                    self.emit_lvalue_target(Clone.clone(as_ref(target_attr)))
+                    self.emit_lvalue_target(Clone.clone(ref(target_attr)))
             case _:
                 if is_static_attr:
-                    self.emit_pattern_path(Clone.clone(as_ref(target_attr)))
+                    self.emit_pattern_path(Clone.clone(ref(target_attr)))
                 else:
-                    self.emit_lvalue_target(Clone.clone(as_ref(target_attr)))
+                    self.emit_lvalue_target(Clone.clone(ref(target_attr)))
         if is_static_attr: self.emit("::")
         else: self.emit(".")
         self.emit(attr)
@@ -1116,46 +1140,46 @@ class Codegen:
     def emit_attribute_target(self, value: Box[q_ast.Expr], attr: String):
         target_attr = deref(value)
         is_static_attr = False
-        match self.get_root_name(Clone.clone(as_ref(target_attr))):
+        match self.get_root_name(Clone.clone(ref(target_attr))):
             case Some(root_name):
                 if self.is_type_or_mod(root_name.clone()):
                     is_static_attr = True
             case None: pass
         if attr.as_str() == "new": is_static_attr = True
 
-        match as_ref(target_attr):
+        match ref(target_attr):
             case q_ast.Expr.Attribute(value=inner_val, attr=inner_attr):
                 self.emit_attribute_target(inner_val.clone(), inner_attr.clone())
             case q_ast.Expr.Name(n):
                 self.emit(n.to_string())
             case _:
-                self.generate_expr_no_clone(Clone.clone(as_ref(target_attr)))
+                self.generate_expr_no_clone(Clone.clone(ref(target_attr)))
         if is_static_attr: self.emit("::")
         else: self.emit(".")
         self.emit(attr)
 
     def emit_subscript(self, value: Box[q_ast.Expr], slice: Box[q_ast.Expr]):
         is_neg_s = False
-        target_type_s = self.infer_expr_type(Clone.clone(as_ref(deref(value))))
-        is_tuple_target = self.is_tuple_expr(Clone.clone(as_ref(deref(value))))
+        target_type_s = self.infer_expr_type(Clone.clone(ref(deref(value))))
+        is_tuple_target = self.is_tuple_expr(Clone.clone(ref(deref(value))))
         tuple_via_registry = False
-        match as_ref(deref(value)):
+        match ref(deref(value)):
             case q_ast.Expr.Name(n):
-                match self.tuple_vars.get(as_ref(n.to_string())):
+                match self.tuple_vars.get(ref(n.to_string())):
                     case Some(_):
                         tuple_via_registry = True
                     case None: pass
             case q_ast.Expr.Subscript(value=inner_value, slice=inner_slice):
-                match as_ref(deref(inner_value)):
+                match ref(deref(inner_value)):
                     case q_ast.Expr.Name(n):
-                        match self.tuple_vars.get(as_ref(n.to_string())):
+                        match self.tuple_vars.get(ref(n.to_string())):
                             case Some(_):
                                 tuple_via_registry = True
                             case None: pass
                     case _: pass
             case _: pass
 
-        if tuple_via_registry or is_tuple_target or target_type_s == "Tuple" or target_type_s.starts_with(as_ref("Tuple")) or target_type_s.starts_with(as_ref("(")):
+        if tuple_via_registry or is_tuple_target or target_type_s == "Tuple" or target_type_s.starts_with(ref("Tuple")) or target_type_s.starts_with(ref("(")):
             self.generate_expr(deref(value))
             self.emit(".")
             match deref(slice):
@@ -1177,9 +1201,9 @@ class Codegen:
             if is_neg_s:
                 match sl_s:
                     case q_ast.Expr.UnaryOp(op=op, operand=operand):
-                        self.generate_expr(Clone.clone(as_ref(deref(value))))
+                        self.generate_expr(Clone.clone(ref(deref(value))))
                         self.emit("[")
-                        self.generate_expr(Clone.clone(as_ref(deref(value))))
+                        self.generate_expr(Clone.clone(ref(deref(value))))
                         self.emit(".len() - ")
                         self.generate_expr(deref(operand))
                         self.emit("].clone()")

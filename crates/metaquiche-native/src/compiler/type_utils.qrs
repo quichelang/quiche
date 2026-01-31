@@ -16,7 +16,7 @@ def infer_type(expr: q_ast.Expr) -> String:
     return "i32"
 
 def type_to_string(expr: q_ast.Expr) -> String:
-    match as_ref(expr):
+    match ref(expr):
         case q_ast.Expr.Name(n):
             name = n.to_string()
             if name == "List" or name == "Vec": return "Vec"
@@ -37,7 +37,7 @@ def type_to_string(expr: q_ast.Expr) -> String:
             
             # Check if slice is a Tuple - if so, unpack elements directly
             slice_str = ""
-            match as_ref(s.as_ref().clone()):
+            match ref(s.as_ref().clone()):
                 case q_ast.Expr.Tuple(elts):
                     # Unpack tuple elements as comma-separated type args
                     idx = 0

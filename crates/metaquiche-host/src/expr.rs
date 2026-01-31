@@ -181,6 +181,8 @@ impl Codegen {
                         "into_syntax",
                         "into_iter",
                         "as_ref",
+                        "ref",
+                        "mutref",
                         "enter_var_scope",
                         "exit_var_scope",
                         "get_root_name",
@@ -340,11 +342,18 @@ impl Codegen {
                 }
 
                 // Default Function Call
-                let is_helper = ["deref", "as_ref"].contains(&func_name.as_str());
+                let is_helper =
+                    ["deref", "as_ref", "ref", "mutref", "as_mut"].contains(&func_name.as_str());
                 if !is_helper {
                     self.output.push_str("crate::quiche::check!(");
                 }
-                self.output.push_str(&func_name);
+                // Translate to actual macro names
+                let macro_name = match func_name.as_str() {
+                    "ref" | "as_ref" => "qref",
+                    "mutref" | "as_mut" => "mutref",
+                    _ => &func_name,
+                };
+                self.output.push_str(macro_name);
                 if is_helper {
                     self.output.push_str("!");
                 }

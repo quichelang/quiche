@@ -175,9 +175,18 @@ macro_rules! deref {
     }};
 }
 
+// qref! - immutable borrow (called as ref() in Quiche code)
 #[macro_export]
-macro_rules! as_ref {
+macro_rules! qref {
     ($e:expr) => {
         &($e)
+    };
+}
+
+// mutref! - mutable borrow
+#[macro_export]
+macro_rules! mutref {
+    ($e:expr) => {
+        &mut ($e)
     };
 }
