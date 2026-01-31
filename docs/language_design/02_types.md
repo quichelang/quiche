@@ -25,20 +25,70 @@ Quiche uses a **Type-First** design. Unlike Python, types are static and map dir
 -   Type: `Map[String, i32]`.
 -   Compilation: `std::collections::HashMap::from([...])`.
 
-## Memory Management Strategy
+## Structs & Traits
 
-Quiche aims to eliminate explicit lifetime annotations for the 90% case.
+### Structs
+Structs are defined as Python classes inheriting from `Struct`. Rust derives are applied as metadata decorators.
 
-### 1. Tiered Strategy
--   **Copy Types** (`i32`, `f64`): Passed by copy. Zero overhead.
--   **Small Types** (`Vec`): Passed by move or cloned implicitly if needed (compiler insertion).
--   **Large Types**: Wrapped in smart pointers (`Rc` or `Arc`) if shared ownership is detected.
+```python
+@derive("Debug", "Clone")
+class Button(Struct):
+    label: String
+```
 
-### 2. Ownership
--   Default behavior is **Move** (like Rust).
--   `x = y` moves strict ownership of `y` to `x`.
--   Use `.clone()` to duplicate.
+### Traits
+Traits are defined as classes inheriting from `Trait`.
 
-### 3. Borrowing (Implicit)
--   Method calls `x.foo()` automatically borrow `&x` or `&mut x` based on the method signature.
--   Users rarely write `&x` explicitly, unless interfacing with foreign Rust code.
+```python
+class Drawable(Trait):
+    def render(self, x: i32, y: i32) -> None: ...
+```
+
+### Trait Implementation
+Implementations use the `@implement` decorator on a placeholder class (usually `class _`).
+
+```python
+@implement(Drawable, for_=Button)
+class _:
+    def render(self, x: i32, y: i32) -> None:
+        # Implementation
+        pass
+```
+
+## References & Lifetimes
+
+Quiche makes references and borrowing explicit but concise.
+
+### Canonical Forms
+- `Ref[L, T]`: Shared reference with lifetime `L`.
+- `MutRef[L, T]`: Mutable reference with lifetime `L`.
+
+### Short Forms (Preferred)
+- `ref[T]`: Equivalent to `Ref[_, T]` (inferred lifetime).
+- `mutref[T]`: Equivalent to `MutRef[_, T]`.
+
+### Borrowing & Dereferencing
+Borrowing and dereferencing are explicit expressions, not hidden.
+
+```python
+mut n = 10
+
+r = ref(n)        # Borrow immutable
+m = mutref(n)     # Borrow mutable
+
+val = deref(r)    # Read
+deref(m) = 20      # Write
+```
+
+### Function Signatures
+Lifetimes in signatures can be elided or explicit.
+
+```python
+# Implicit lifetimes
+def first(xs: ref[list[int]]) -> ref[int]:
+    return ref(xs[0])
+
+# Explicit lifetimes
+def first_explicit(L: type[L], xs: ref[L, list[int]]) -> ref[L, int]:
+    return ref(xs[0])
+```

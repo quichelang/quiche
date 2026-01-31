@@ -1,10 +1,10 @@
 # Quiche Language Design: Control Flow
 
 ## Enums
-Quiche introduces the `enum` keyword to define Algebraic Data Types (ADTs), similar to Rust.
+Quiche uses Python classes inheriting from `Enum` to define Algebraic Data Types (ADTs).
 
 ```python
-enum Shape:
+class Shape(Enum):
     Circle(radius: f64)
     Rectangle(width: f64, height: f64)
     Point  # Unit variant
@@ -48,6 +48,15 @@ match name:
         print("Hello Alice")
     case String("Bob"): # Explicit constructor match
         print("Hello Bob") 
+```
+
+### Guards
+Quiche supports match guards using standard Python `if` syntax.
+
+```python
+match kind:
+    case ButtonKind.Toggle(label=l, state=s) if s:
+        print(f"Toggle is on: {l}")
 ```
 
 ## Conditionals & Loops

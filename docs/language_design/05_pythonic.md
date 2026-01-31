@@ -8,10 +8,10 @@ Quiche bridges Python's ergonomics with Rust's performance by transforming idiom
 Returns the length of a collection or string.
 
 ```python
-v: Vec[i32] = [1, 2, 3]
+v = [1, 2, 3]
 print(len(v))  # 3
 
-s: String = "hello"
+s = "hello"
 print(len(s))  # 5
 ```
 
@@ -22,7 +22,7 @@ print(len(s))  # 5
 Access elements from the end of a sequence using negative indices.
 
 ```python
-v: Vec[i32] = [1, 2, 3, 4, 5]
+v = [1, 2, 3, 4, 5]
 print(v[-1])   # 5 (last element)
 print(v[-2])   # 4 (second to last)
 ```
@@ -34,8 +34,8 @@ print(v[-2])   # 4 (second to last)
 Embed expressions inside string literals using `f"..."`.
 
 ```python
-name: String = "World"
-msg: String = f"Hello {name}, 2+2={2+2}"
+name = "World"
+msg = f"Hello {name}, 2+2={2+2}"
 ```
 
 **Compiles to:** `format!("Hello {}, 2+2={}", name, 2+2)`

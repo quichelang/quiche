@@ -26,10 +26,10 @@ Quiche is a language that offers the **ergonomics of Python** with the **perform
 | Feature | Quiche Syntax | Rust Compilation |
 | :--- | :--- | :--- |
 | **Blocks** | Indentation (Whitespace) | Braces `{}` |
-| **Variables** | `x: i32 = 10` | `let x: i32 = 10;` |
-| **Mutation** | `x = 10` (Inferred) | `let mut x = 10;` |
+| **Variables** | `x = 10` | `let x = 10;` |
+| **Mutation** | `x = 11` (Reassign) / `x := 12` (Shadow) | `x = 11;` / `let x = 12;` |
 | **Functions** | `def foo(x: i32) -> i32:` | `fn foo(x: i32) -> i32` |
-| **Structs** | `class Point:` | `struct Point` |
-| **Enums** | `enum Color:` | `enum Color` |
+| **Structs** | `class Point(Struct):` | `struct Point` |
+| **Enums** | `class Color(Enum):` | `enum Color` |
 | **Matching** | `match x:` | `match x` |
 | **Macros** | `@macro` | `#[proc_macro]` |
