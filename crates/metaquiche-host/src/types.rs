@@ -52,6 +52,7 @@ impl Codegen {
                     "Result" => "Result",
                     "Ref" => "&",
                     "MutRef" => "&mut",
+                    "Dyn" => "dyn",
                     _ => &base,
                 };
 
@@ -61,6 +62,8 @@ impl Codegen {
                     format!("&{}", final_inner)
                 } else if rust_base == "&mut" {
                     format!("&mut {}", final_inner)
+                } else if rust_base == "dyn" {
+                    format!("dyn {}", final_inner)
                 } else {
                     format!("{}{}<{}>", rust_base, sep, final_inner)
                 }

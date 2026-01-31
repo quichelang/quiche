@@ -154,3 +154,41 @@ deref(m) = 20      # Write
 def first(xs: ref[list[i32]]) -> ref[i32]:
     return ref(xs[0])
 ```
+
+## Trait Objects
+
+When you need dynamic dispatch (runtime polymorphism), use `Dyn[Trait]` to create trait objects.
+
+### The Dyn Type Wrapper
+
+| Quiche | Rust Output |
+|--------|-------------|
+| `Dyn[Display]` | `dyn Display` |
+| `Ref[Dyn[Display]]` | `&dyn Display` |
+| `Box[Dyn[Logger]]` | `Box<dyn Logger>` |
+| `MutRef[Dyn[Writer]]` | `&mut dyn Writer` |
+
+### Example: Trait Object Parameter
+
+```python
+def print_it(x: Ref[Dyn[Display]]) -> None:
+    println!("{}", x)
+
+def log_to(logger: Box[Dyn[Logger]]) -> None:
+    logger.log("message")
+```
+
+Compiles to:
+
+```rust
+pub fn print_it(x: &dyn Display) {
+    println!("{}", x);
+}
+
+pub fn log_to(logger: Box<dyn Logger>) {
+    logger.log("message");
+}
+```
+
+> **Note**: `Dyn` is composable with `Ref`, `MutRef`, and `Box`. Use `Ref[Dyn[T]]` for borrowed trait objects or `Box[Dyn[T]]` for owned ones.
+

@@ -422,14 +422,6 @@ name = "quiche-runtime"
 version = "0.1.0"
 
 [[package]]
-name = "quiche-to-metaquiche"
-version = "0.1.0"
-dependencies = [
- "metaquiche-host",
- "ruff_python_ast",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"

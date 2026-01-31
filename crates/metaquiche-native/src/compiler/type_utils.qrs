@@ -50,6 +50,20 @@ def type_to_string(expr: q_ast.Expr) -> String:
                 case _:
                     slice_str = type_to_string(s.as_ref().clone())
             
+            # Handle special type wrappers without angle brackets
+            if base == "Ref":
+                amp = "&"
+                amp.push_str(slice_str.as_str())
+                return amp
+            if base == "MutRef":
+                amp_mut = "&mut "
+                amp_mut.push_str(slice_str.as_str())
+                return amp_mut
+            if base == "Dyn":
+                dyn_prefix = "dyn "
+                dyn_prefix.push_str(slice_str.as_str())
+                return dyn_prefix
+            
             bracket_l = "<"
             bracket_r = ">"
             base.push_str(bracket_l.as_str())

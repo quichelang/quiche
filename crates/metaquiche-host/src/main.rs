@@ -135,6 +135,7 @@ fn print_usage() {
     println!("  --strict             Treat warnings as errors");
     println!("  --warn-all           Show all warnings (Quiche + Rust)");
     println!("  --warn-quiche        Show only Quiche warnings");
+    println!("  -m, --emit-rust      Emit generated Rust code instead of running");
 }
 
 fn create_new_project(name: &str, is_lib: bool) {
@@ -394,7 +395,7 @@ fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, bool, Vec<String>) {
             "--strict" => strict = true,
             "--warn-all" => warn_all = true,
             "--warn-quiche" => warn_quiche = true,
-            "--emit-rust" => emit_rust = true,
+            "--emit-rust" | "-m" => emit_rust = true,
             _ => rest.push(a.clone()),
         }
     }

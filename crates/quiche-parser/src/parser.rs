@@ -626,7 +626,8 @@ fn expr_to_string_compat(expr: &ast::Expr) -> String {
         ast::Expr::BooleanLiteral(b) => (if b.value { "true" } else { "false" }).to_string(),
         ast::Expr::NoneLiteral(_) => "None".to_string(),
         ast::Expr::Attribute(a) => {
-            format!("{}.{}", expr_to_string_compat(&a.value), a.attr)
+            // Use :: for Rust path syntax in trait bounds
+            format!("{}::{}", expr_to_string_compat(&a.value), a.attr)
         }
         _ => "?".to_string(),
     }

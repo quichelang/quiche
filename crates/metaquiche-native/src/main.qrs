@@ -271,20 +271,21 @@ def print_usage():
     print("  quiche-self build         Build the current project")
     print("  quiche-self run           Run the current project")
     print("  quiche-self test          Run project tests")
-    print("  quiche-self <file.qrs>    Transpile a single file")
+    print("  quiche-self <file.qrs>    Run a single file script")
     print("")
     print("Flags:")
     print("  --warn               Show compiler warnings")
     print("  --strict             Treat warnings as errors")
     print("  --warn-all           Show all warnings (Quiche + Rust)")
     print("  --warn-quiche        Show only Quiche warnings")
+    print("  -m, --emit-rust      Emit generated Rust code instead of running")
 
 def build_flag_parser(include_lib: bool) -> Parsley:
     parser = Parsley.new()
     parser.add_flag("warn-all", ["--warn"], False)
     parser.add_flag("warn-quiche", [], False)
     parser.add_flag("strict", [], False)
-    parser.add_flag("emit-rust", [], False)
+    parser.add_flag("emit-rust", ["-m"], False)
     if include_lib:
         parser.add_flag("lib", [], False)
     return parser
@@ -517,7 +518,7 @@ def main():
 
         if flags.warn_all:
             flags.warn_quiche = True
-        run_transpiled_file(cmd.clone(), result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche)
+        run_transpiled_file(cmd.clone(), result.positionals, False, False, True, flags.warn, flags.strict, flags.warn_quiche)
         return
 
     print(concat3("Error: Unrecognized command or file '", ref(cmd), "'"))

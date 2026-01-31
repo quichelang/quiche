@@ -80,13 +80,78 @@ def check_shadowing(root_dir):
     for path, line_no, name in shadowed:
         print(f"  Shadowed: {path}:{line_no} -> {name}")
 
+def show_diff(dir1_pattern, dir2_pattern):
+    """Show actual content differences between stage outputs."""
+    import difflib
+    import subprocess
+    import tempfile
+    
+    # Resolve globs to find actual build out dirs
+    candidates1 = glob.glob(dir1_pattern)
+    candidates2 = glob.glob(dir2_pattern)
+    
+    if not candidates1:
+        print(f"Error: No directory found matching {dir1_pattern}")
+        sys.exit(1)
+    if not candidates2:
+        print(f"Error: No directory found matching {dir2_pattern}")
+        sys.exit(1)
+        
+    dir1 = max(candidates1, key=os.path.getmtime)
+    dir2 = max(candidates2, key=os.path.getmtime)
+
+    print(f"Comparing:\n  Stage 1: {dir1}\n  Stage 2: {dir2}\n")
+    
+    files1 = glob.glob(os.path.join(dir1, "**", "*.rs"), recursive=True)
+    all_diffs = []
+    
+    for f1 in files1:
+        rel = os.path.relpath(f1, dir1)
+        f2 = os.path.join(dir2, rel)
+        
+        if not os.path.exists(f2):
+            all_diffs.append(f"=== Missing in Stage 2: {rel} ===\n")
+            continue
+            
+        with open(f1, "r") as f: c1 = f.readlines()
+        with open(f2, "r") as f: c2 = f.readlines()
+        
+        diff = list(difflib.unified_diff(c1, c2, 
+                                          fromfile=f"Stage1/{rel}", 
+                                          tofile=f"Stage2/{rel}",
+                                          lineterm=""))
+        if diff:
+            all_diffs.append("\n".join(diff) + "\n")
+    
+    if not all_diffs:
+        print("[SUCCESS] No differences found between Stage 1 and Stage 2.")
+        return
+    
+    # Write to temp file and open with pager
+    combined = "\n".join(all_diffs)
+    
+    # Try to use less with color support, fall back to cat
+    try:
+        pager = os.environ.get("PAGER", "less -R")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".diff", delete=False) as tmp:
+            tmp.write(combined)
+            tmp_path = tmp.name
+        subprocess.run(f"{pager} {tmp_path}", shell=True)
+        os.unlink(tmp_path)
+    except Exception:
+        print(combined)
+
 def main():
     parser = argparse.ArgumentParser(description="Verification utility")
     subparsers = parser.add_subparsers(dest="command", required=True)
     
-    diff_parser = subparsers.add_parser("diff", help="Compare two directories")
+    diff_parser = subparsers.add_parser("diff", help="Compare two directories (pass/fail)")
     diff_parser.add_argument("dir1", help="First directory (supports glob)")
     diff_parser.add_argument("dir2", help="Second directory (supports glob)")
+    
+    show_diff_parser = subparsers.add_parser("show-diff", help="Show actual differences with pager")
+    show_diff_parser.add_argument("dir1", help="First directory (supports glob)")
+    show_diff_parser.add_argument("dir2", help="Second directory (supports glob)")
     
     shadow_parser = subparsers.add_parser("shadow", help="Check for shadowed variables")
     shadow_parser.add_argument("dir", help="Directory to check")
@@ -95,8 +160,11 @@ def main():
     
     if args.command == "diff":
         compare_dirs(args.dir1, args.dir2)
+    elif args.command == "show-diff":
+        show_diff(args.dir1, args.dir2)
     elif args.command == "shadow":
         check_shadowing(args.dir)
 
 if __name__ == "__main__":
     main()
+

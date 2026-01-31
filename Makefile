@@ -1,4 +1,4 @@
-#.PHONY: stage0 stage1 stage2 verify clean
+.PHONY: stage0 stage1 stage2 verify diff-stages clean all
 
 # Host compiler binary (quiche-host)
 HOST_BIN_DIR := target/debug
@@ -31,5 +31,10 @@ verify: stage2
 	@echo "Verifying Stage 1 output matches Stage 2 output..."
 	python3 verify.py diff $(STAGE1_TARGET_DIR)/debug/build/metaquiche-native-*/out $(STAGE2_TARGET_DIR)/debug/build/metaquiche-native-*/out
 
+diff-stages: stage2
+	@echo "Showing differences between Stage 1 and Stage 2..."
+	python3 verify.py show-diff $(STAGE1_TARGET_DIR)/debug/build/metaquiche-native-*/out $(STAGE2_TARGET_DIR)/debug/build/metaquiche-native-*/out
+
 clean:
 	rm -rf target
+
