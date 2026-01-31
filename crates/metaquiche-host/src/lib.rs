@@ -1,3 +1,6 @@
+// Legacy host compiler - will be deprecated in favor of metaquiche-native
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use quiche_parser::ast;
 use quiche_parser::parse;
 use std::collections::{HashMap, HashSet};

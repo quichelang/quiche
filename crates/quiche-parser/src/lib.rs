@@ -4,9 +4,11 @@ pub mod parser;
 pub use ast::QuicheModule;
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use crate::ast::*;
+    use crate::parser::parse; // Added this line to bring parse into scope
     use crate::parser::parse; // Added this line to bring parse into scope
 
     #[test]

@@ -1,3 +1,6 @@
+// Legacy host compiler CLI - will be deprecated in favor of metaquiche-native
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use metaquiche_host::compile;
 use std::env;
 use std::fs;

@@ -1,3 +1,6 @@
+// Parser uses unwrap_or_else with fallback values - these are safe patterns
+#![allow(clippy::unwrap_used)]
+
 use crate::ast::*;
 use crate::ast::{Constant, MatchClassPattern};
 use ruff_python_ast as ast;

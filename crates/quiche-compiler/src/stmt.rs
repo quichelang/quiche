@@ -513,7 +513,7 @@ impl Codegen {
                         mod_name = module
                             .as_str()
                             .strip_prefix("rust.")
-                            .unwrap()
+                            .unwrap_or(module.as_str())
                             .replace(".", "::");
                     }
 

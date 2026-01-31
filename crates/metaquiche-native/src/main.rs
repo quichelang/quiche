@@ -9,6 +9,8 @@
     unused_variables
 )]
 #![allow(unused_macros, unused_imports)]
+// Allow in handwritten Rust helpers (generated Quiche code should not use these)
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 // Export create helpers so they are available without prefix if imported *
 // (Actually crate::quiche::... works if we use it)
