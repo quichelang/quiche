@@ -58,7 +58,7 @@ pub mod extern_defs {
 
 pub mod type_utils {
     #![allow(unused_imports, dead_code)]
-    use crate::compiler::extern_defs::RustString;
+
     use crate::quiche::*;
     use quiche_parser::ast;
     include!(concat!(env!("OUT_DIR"), "/compiler/type_utils.rs"));

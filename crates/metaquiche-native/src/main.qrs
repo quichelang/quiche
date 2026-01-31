@@ -219,8 +219,8 @@ def build_import_maps(stmts: Vec[Stmt], module_index: HashMap[String, String], c
                             else:
                                 match exports.get(as_ref(name.clone())):
                                     case Some(k):
-                                        if k == "class": kind = "type"
-                                        elif k == "func": kind = "func"
+                                        if k.as_str() == "class": kind = "type"
+                                        elif k.as_str() == "func": kind = "func"
                                         else: kind = "value"
                                     case None: kind = "value"
 

@@ -139,6 +139,7 @@ impl Codegen {
             || base_str == "rustpython_parser"
             || base_str == "ruff_python_parser"
             || base_str == "ruff_python_ast"
+            || base_str == "q_ast"
             || base_str.starts_with("std::")
             || base_str.starts_with("crate::")
             || base_str.contains("::")

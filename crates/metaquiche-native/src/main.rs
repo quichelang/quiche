@@ -104,7 +104,19 @@ pub mod quiche {
     }
 
     pub fn escape_rust_string(s: impl AsRef<str>) -> String {
-        format!("{:?}", s.as_ref())
+        let s = s.as_ref();
+        let mut result = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '\\' => result.push_str("\\\\"),
+                '"' => result.push_str("\\\""),
+                '\n' => result.push_str("\\n"),
+                '\r' => result.push_str("\\r"),
+                '\t' => result.push_str("\\t"),
+                c => result.push(c),
+            }
+        }
+        result
     }
 
     pub fn run_rust_code(
@@ -229,7 +241,18 @@ pub fn push_str_wrapper(mut s: String, val: String) -> String {
 }
 
 pub fn escape_rust_string(s: String) -> String {
-    s.replace('\\', "\\\\").replace('\"', "\\\"")
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => result.push_str("\\\\"),
+            '"' => result.push_str("\\\""),
+            '\n' => result.push_str("\\n"),
+            '\r' => result.push_str("\\r"),
+            '\t' => result.push_str("\\t"),
+            c => result.push(c),
+        }
+    }
+    result
 }
 
 pub fn run_test_cmd(exe: String, test_path: String) -> bool {
