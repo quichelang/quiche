@@ -9,7 +9,6 @@ mod tests {
     use super::*;
     use crate::ast::*;
     use crate::parser::parse; // Added this line to bring parse into scope
-    use crate::parser::parse; // Added this line to bring parse into scope
 
     #[test]
     fn test_struct_parsing() {

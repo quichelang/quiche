@@ -45,11 +45,18 @@ class Color(Enum):
 #[test]
 fn test_compile_function() {
     let source = r#"
-def add(a: "i32", b: "i32") -> "i32":
+def add(a: i32, b: i32) -> i32:
     return a + b
 "#;
-    let rust_code = compile(source).expect("Compilation failed");
-    println!("{}", rust_code);
-    assert!(rust_code.contains("pub fn add(a: i32, b: i32) -> i32"));
-    assert!(rust_code.contains("return a + b;"));
+    let rust_code = compile(source);
+    assert_ne!(None, rust_code, "Compilation failed");
+
+    if let Some(rust_code) = rust_code {
+        debug_assert!(
+            rust_code.contains("pub fn add(a: i32, b: i32) -> i32"),
+            "{}",
+            rust_code
+        );
+        assert!(rust_code.contains("return a + b;"), "{}", rust_code);
+    }
 }

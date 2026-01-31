@@ -78,13 +78,19 @@ impl Codegen {
             }
             ast::QuicheExpr::Attribute { .. } => self.expr_to_string(expr),
             ast::QuicheExpr::Constant(c) => match c {
-                ast::Constant::Str(_) => "String".to_string(),
+                // Python-style: string annotations like "i32" are evaluated as type names
+                ast::Constant::Str(s) => {
+                    self.map_type_internal(&ast::QuicheExpr::Name(s.clone()), is_expr)
+                }
                 ast::Constant::Bool(_) => "bool".to_string(),
                 ast::Constant::Int(_) => "i32".to_string(),
                 ast::Constant::Float(_) => "f64".to_string(),
-                _ => "UnknownConstant".to_string(),
+                _ => "compile_error!(\"Unknown constant in type position\")".to_string(),
             },
-            _ => format!("/* complex type: {:?} */", expr),
+            _ => format!(
+                "compile_error!(\"Complex type expression not supported: {:?}\")",
+                expr
+            ),
         }
     }
 
