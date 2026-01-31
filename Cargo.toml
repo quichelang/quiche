@@ -7,6 +7,11 @@ members = [
     "crates/metaquiche-host",
     "crates/quiche-to-metaquiche",
     "crates/quiche-parser",
- "crates/quiche-parser",
 ]
 resolver = "2"
+
+# Workspace-wide lint configuration
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"

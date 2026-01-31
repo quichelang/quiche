@@ -3,6 +3,9 @@ name = "metaquiche-host"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 quiche-parser = { path = "../quiche-parser" }
 regex = "1.5"

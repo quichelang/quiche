@@ -60,10 +60,18 @@ fn clean_generated_rs(dir: &Path) {
     }
 }
 
+fn build_error(msg: &str) -> ! {
+    eprintln!("error: {}", msg);
+    std::process::exit(1);
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=src");
 
-    let out_dir = env::var("OUT_DIR").unwrap();
+    let out_dir = match env::var("OUT_DIR") {
+        Ok(d) => d,
+        Err(_) => build_error("OUT_DIR not set"),
+    };
     let out_path = Path::new(&out_dir);
     clean_generated_rs(out_path);
 
@@ -75,7 +83,7 @@ fn main() {
     }
 
     // 2. Identify root (main.qrs or lib.qrs), modules, and children
-    let mut root_file = None;
+    let mut root_file: Option<(&PathBuf, &str)> = None;
     let mut top_modules: Vec<String> = Vec::new();
     let mut module_children: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
@@ -83,7 +91,10 @@ fn main() {
     for path in &qrs_files {
         let rel = path.strip_prefix(src_dir).unwrap_or(path);
         let (module_path, is_mod) = module_path_from_rel(rel);
-        let stem = path.file_stem().unwrap().to_str().unwrap();
+        let stem = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s,
+            None => continue,
+        };
 
         if stem == "main" || stem == "lib" {
             root_file = Some((path, stem));
@@ -108,37 +119,89 @@ fn main() {
         }
     }
 
-    // 3. Compile all files
-    let bootstrap_bin =
-        env::var("QUICHE_COMPILER_BIN").expect("QUICHE_COMPILER_BIN env var must be set");
+    // 3. Compile all files (requires QUICHE_COMPILER_BIN)
+    let bootstrap_bin = match env::var("QUICHE_COMPILER_BIN") {
+        Ok(bin) => bin,
+        Err(_) => {
+            // When running cargo test directly without make, skip Quiche compilation
+            // Create stub with minimal type definitions so lib.rs compiles
+            let stub = r#"// Stub: QUICHE_COMPILER_BIN not set
+#[derive(Clone, Debug, Default)]
+pub struct FlagSpec {
+    pub name: String,
+    pub aliases: Vec<String>,
+    pub takes_value: bool,
+    pub default_bool: bool,
+    pub default_value: String,
+    pub has_default: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ParseResult {
+    pub flags: std::collections::HashMap<String, bool>,
+    pub options: std::collections::HashMap<String, String>,
+    pub positionals: Vec<String>,
+    pub errors: Vec<String>,
+    pub command: String,
+    pub subargs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Parsley {
+    pub specs: Vec<FlagSpec>,
+    pub by_name: std::collections::HashMap<String, FlagSpec>,
+    pub alias_map: std::collections::HashMap<String, String>,
+    pub commands: Vec<String>,
+}
+"#;
+            let _ = fs::write(out_path.join("lib.rs"), stub);
+            println!("cargo:warning=QUICHE_COMPILER_BIN not set, using stub types");
+            println!("cargo:warning=Use 'make test' for full Quiche compilation");
+            return;
+        }
+    };
 
     for path in &qrs_files {
-        let stem = path.file_stem().unwrap().to_str().unwrap();
+        let stem = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s,
+            None => continue,
+        };
         let rel = path.strip_prefix(src_dir).unwrap_or(path);
         let (module_path, is_mod) = module_path_from_rel(rel);
         let out_rel = output_rel_from_rel(rel, is_mod);
 
         let dest_path = out_path.join(out_rel);
         if let Some(parent) = dest_path.parent() {
-            fs::create_dir_all(parent).expect("Failed to create output dir");
+            if let Err(e) = fs::create_dir_all(parent) {
+                build_error(&format!("Failed to create output dir: {}", e));
+            }
         }
 
         // --- External Binary Transpilation ---
-        let output = std::process::Command::new(&bootstrap_bin)
+        let output = match std::process::Command::new(&bootstrap_bin)
             .arg(path)
             .arg("--emit-rust")
             .output()
-            .unwrap_or_else(|e| panic!("Failed to run bootstrap bin {}: {}", bootstrap_bin, e));
+        {
+            Ok(o) => o,
+            Err(e) => build_error(&format!(
+                "Failed to run bootstrap bin {}: {}",
+                bootstrap_bin, e
+            )),
+        };
 
         if !output.status.success() {
-            panic!(
+            build_error(&format!(
                 "Bootstrap compilation failed for {}:\nstdout: {}\nstderr: {}",
                 path.display(),
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
-            );
+            ));
         }
-        let rust_code = String::from_utf8(output.stdout).expect("Bootstrap output not UTF-8");
+        let rust_code = match String::from_utf8(output.stdout) {
+            Ok(s) => s,
+            Err(_) => build_error("Bootstrap output not UTF-8"),
+        };
         // -------------------------------------
 
         let mut final_code = rust_code;
@@ -172,6 +235,8 @@ fn main() {
             }
         }
 
-        fs::write(&dest_path, final_code).expect("Write output failed");
+        if let Err(e) = fs::write(&dest_path, final_code) {
+            build_error(&format!("Write output failed: {}", e));
+        }
     }
 }

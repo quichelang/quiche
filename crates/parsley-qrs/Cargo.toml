@@ -3,6 +3,9 @@ name = "parsley-qrs"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [build-dependencies]
 # No build-time compiler dependency - uses QUICHE_COMPILER_BIN at build time
 

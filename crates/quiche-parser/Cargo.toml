@@ -3,8 +3,10 @@ name = "quiche-parser"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 ruff_python_parser = { git = "https://github.com/astral-sh/ruff" }
 ruff_python_ast = { git = "https://github.com/astral-sh/ruff" }
 thiserror = "2.0"
-
