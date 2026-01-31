@@ -60,3 +60,41 @@ def add(a: i32, b: i32) -> i32:
         assert!(rust_code.contains("return a + b;"), "{}", rust_code);
     }
 }
+
+#[test]
+fn test_compile_generic_function() {
+    let source = r#"
+def identity[T](x: T) -> T:
+    return x
+
+def first[T](items: Vec[T]) -> T:
+    return items[0]
+"#;
+    let rust_code = compile(source).expect("Compilation failed");
+    println!("{}", rust_code);
+    assert!(
+        rust_code.contains("pub fn identity<T>(x: T) -> T"),
+        "Expected generic function signature, got:\n{}",
+        rust_code
+    );
+    assert!(
+        rust_code.contains("pub fn first<T>(items: Vec<T>) -> T"),
+        "Expected generic function with Vec param, got:\n{}",
+        rust_code
+    );
+}
+
+#[test]
+fn test_compile_generic_function_with_trait_bound() {
+    let source = r#"
+def to_string[T: Display](value: T) -> String:
+    return format("{}", value)
+"#;
+    let rust_code = compile(source).expect("Compilation failed");
+    println!("{}", rust_code);
+    assert!(
+        rust_code.contains("pub fn to_string<T: Display>(value: T) -> String"),
+        "Expected trait-bounded generic, got:\n{}",
+        rust_code
+    );
+}

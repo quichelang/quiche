@@ -22,6 +22,7 @@ make clean && make stage1 && make stage2
 
 - **Run both stages** after changes: `make stage1 && make stage2`
 - **Use `ref(x)`** for borrowing, not `as_ref(x)` (legacy)
+- **Use `x: ref[i32]` and `x: mutref[i32]`** for borrowing instead of title-case variants
 - **Use `deref(x)`** for dereferencing boxed values
 - **Check `.qrs` files** for Quiche source code
 - **Use jj** for version control (see [docs/jj-guide.md](docs/jj-guide.md))

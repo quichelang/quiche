@@ -574,7 +574,14 @@ fn extract_type_params_class(params: &Option<Box<ast::TypeParams>>) -> Vec<Strin
         p.type_params
             .iter()
             .map(|tp| match tp {
-                ast::TypeParam::TypeVar(t) => t.name.to_string(),
+                ast::TypeParam::TypeVar(t) => {
+                    let name = t.name.to_string();
+                    if let Some(bound) = &t.bound {
+                        format!("{}: {}", name, expr_to_string_compat(bound))
+                    } else {
+                        name
+                    }
+                }
                 _ => "?".to_string(),
             })
             .collect()
@@ -588,7 +595,14 @@ fn extract_type_params_def(params: &Option<Box<ast::TypeParams>>) -> Vec<String>
         p.type_params
             .iter()
             .map(|tp| match tp {
-                ast::TypeParam::TypeVar(t) => t.name.to_string(),
+                ast::TypeParam::TypeVar(t) => {
+                    let name = t.name.to_string();
+                    if let Some(bound) = &t.bound {
+                        format!("{}: {}", name, expr_to_string_compat(bound))
+                    } else {
+                        name
+                    }
+                }
                 _ => "?".to_string(),
             })
             .collect()

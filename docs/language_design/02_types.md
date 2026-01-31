@@ -55,17 +55,86 @@ class _:
         pass
 ```
 
-## References & Lifetimes
+## Generics
+
+Quiche uses **Python 3.12 style** type parameters - square brackets after the name.
+
+### Generic Structs
+
+```python
+class Point[T](Struct):
+    x: T
+    y: T
+```
+
+Compiles to:
+
+```rust
+pub struct Point<T> {
+    pub x: T,
+    pub y: T,
+}
+```
+
+### Generic Functions
+
+Type parameters come after the function name, before the parentheses:
+
+```python
+def first[T](items: ref[Vec[T]]) -> ref[T]:
+    return ref(items[0])
+
+def identity[T](x: T) -> T:
+    return x
+```
+
+Compiles to:
+
+```rust
+pub fn first<T>(items: &Vec<T>) -> &T {
+    &items[0]
+}
+
+pub fn identity<T>(x: T) -> T {
+    x
+}
+```
+
+### Trait Bounds
+
+Constrain generics with trait bounds using colon syntax:
+
+```python
+def to_string[T: Display](value: T) -> String:
+    return format("{}", value)
+
+def compare[T: PartialOrd](a: T, b: T) -> bool:
+    return a < b
+```
+
+Compiles to:
+
+```rust
+pub fn to_string<T: Display>(value: T) -> String {
+    format!("{}", value)
+}
+
+pub fn compare<T: PartialOrd>(a: T, b: T) -> bool {
+    a < b
+}
+```
+
+## References
 
 Quiche makes references and borrowing explicit but concise.
 
 ### Canonical Forms
-- `Ref[L, T]`: Shared reference with lifetime `L`.
-- `MutRef[L, T]`: Mutable reference with lifetime `L`.
+- `Ref[T]`: Shared reference.
+- `MutRef[T]`: Mutable reference.
 
 ### Short Forms (Preferred)
-- `ref[T]`: Equivalent to `Ref[_, T]` (inferred lifetime).
-- `mutref[T]`: Equivalent to `MutRef[_, T]`.
+- `ref[T]`: Equivalent to `Ref[T]`.
+- `mutref[T]`: Equivalent to `MutRef[T]`.
 
 ### Borrowing & Dereferencing
 Borrowing and dereferencing are explicit expressions, not hidden.
@@ -81,14 +150,7 @@ deref(m) = 20      # Write
 ```
 
 ### Function Signatures
-Lifetimes in signatures can be elided or explicit.
-
 ```python
-# Implicit lifetimes
-def first(xs: ref[list[int]]) -> ref[int]:
-    return ref(xs[0])
-
-# Explicit lifetimes
-def first_explicit(L: type[L], xs: ref[L, list[int]]) -> ref[L, int]:
+def first(xs: ref[list[i32]]) -> ref[i32]:
     return ref(xs[0])
 ```

@@ -127,6 +127,60 @@ classDiagram
     QuicheExpr <|-- Constant
 ```
 
+### Two AST Layers
+
+The compiler uses **two distinct AST layers**:
+
+| Layer | Crate | Purpose |
+|-------|-------|---------|
+| **ruff_python_ast** | External | Raw Python 3.12 syntax from parser |
+| **quiche_parser::ast** | Internal | Simplified/lowered AST for codegen |
+
+```mermaid
+flowchart LR
+    Source[".qrs Source"] --> Ruff["ruff_python_ast\n(raw Python AST)"]
+    Ruff --> Lower["Lowering\n(parser.rs)"]
+    Lower --> Quiche["quiche_parser::ast\n(simplified)"]
+    Quiche --> Codegen["Code Generation"]
+```
+
+### The Lowering Process
+
+Complex Python AST nodes are **lowered** to simpler types in `parser.rs`:
+
+```rust
+// Example: Type parameters lowering
+ruff_python_ast::TypeParam::TypeVar { name: "T", bound: Some(Display) }
+                              ↓ extract_type_params_def()
+                      "T: Display"  // Vec<String>
+```
+
+Key lowering functions in [parser.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/quiche-parser/src/parser.rs):
+
+| Function | Converts |
+|----------|----------|
+| `lower_function_def()` | `StmtFunctionDef` → `FunctionDef` |
+| `lower_class_def()` | `StmtClassDef` → `ClassDef` / `StructDef` / `EnumDef` |
+| `lower_expr()` | `ruff::Expr` → `QuicheExpr` |
+| `extract_type_params_def()` | `TypeParams` → `Vec<String>` |
+
+### Native Compiler AST Access
+
+The native compiler imports the **lowered** AST:
+
+```python
+import rust.quiche_parser.ast as q_ast
+
+def generate_stmt(self, stmt: q_ast.Stmt):
+    match stmt:
+        case q_ast.Stmt.FunctionDef(f):
+            # f.type_params is Vec[String], already lowered
+            self.emit_type_params(f.type_params)
+```
+
+> [!IMPORTANT]
+> `q_ast` is `quiche_parser::ast` (lowered), NOT `ruff_python_ast`.
+
 ---
 
 ## Runtime Support

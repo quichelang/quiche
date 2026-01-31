@@ -283,6 +283,22 @@ class Codegen:
     # TYPE UTILITIES - Corresponds to types.rs in host compiler
     # ========================================================================
 
+    def emit_type_params(self, type_params: Vec[String]):
+        """Emit generic type parameters like <T> or <T: Display>
+        
+        type_params is Vec<String> where each string is a type param like
+        "T" or "T: Display" (already lowered by the parser).
+        """
+        if type_params.len() > 0:
+            self.emit("<")
+            first = True
+            for tp in type_params:
+                if not first:
+                    self.emit(", ")
+                first = False
+                self.emit(tp)
+            self.emit(">")
+
     # ========================================================================
     # STATEMENT EMISSION - Corresponds to stmt.rs in host compiler
     # ========================================================================
@@ -388,6 +404,10 @@ class Codegen:
 
         self.emit("pub fn ")
         self.emit(func_name)
+        
+        # Emit generic type parameters if present
+        self.emit_type_params(f.type_params)
+        
         self.emit("(")
         self.enter_var_scope()
         # Register keys and emit args

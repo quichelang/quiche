@@ -574,7 +574,16 @@ impl Codegen {
                 self.output.push_str("#[test]\n");
                 self.push_indent();
             }
-            self.output.push_str(&format!("pub fn {}(", f.name));
+            self.output.push_str(&format!("pub fn {}", f.name));
+
+            // Emit generic type parameters if present
+            if !f.type_params.is_empty() {
+                self.output.push_str("<");
+                self.output.push_str(&f.type_params.join(", "));
+                self.output.push_str(">");
+            }
+
+            self.output.push_str("(");
 
             for (i, arg) in f.args.iter().enumerate() {
                 if i > 0 {
