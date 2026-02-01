@@ -3,21 +3,25 @@
 
 use crate::ast::*;
 use crate::ast::{Constant, MatchClassPattern};
+use crate::error_fmt::format_ruff_error;
 use ruff_python_ast as ast;
 use ruff_python_parser::parse_module;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
-    #[error("Ruff Parse Error: {0}")]
+    #[error("Syntax Error: {0}")]
     RuffError(String),
     #[error("Semantic Error: {0}")]
     SemanticError(String),
-    #[error("Unsupported Syntax: {0}")]
+    #[error("Unsupported: {0}")]
     Unsupported(String),
 }
 
 pub fn parse(source: &str) -> Result<QuicheModule, ParseError> {
-    let parsed = parse_module(source).map_err(|e| ParseError::RuffError(e.to_string()))?;
+    let parsed = parse_module(source).map_err(|e| {
+        // Use shared error formatting module
+        ParseError::RuffError(format_ruff_error(&e, source))
+    })?;
     let suite = parsed.into_suite();
 
     let mut quiche_body = Vec::new();

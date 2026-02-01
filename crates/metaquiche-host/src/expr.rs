@@ -314,23 +314,12 @@ impl Codegen {
 
                 // Intrinsic/Macro Handling
                 if func_name == "print" || func_name == "println" {
-                    self.output.push_str("println!(\"{}\", ");
-                    // join args with comma
-                    if let Some(first) = args.first() {
-                        // logic to join? standard print in python takes multiple args and joins with space.
-                        // Rust println! expected format string.
-                        // Simplification: only support 1 arg or multiple printed consecutively?
-                        // "println!(\"{}\", arg)" supports 1.
-                        // For multiple: println!("{} {}", arg1, arg2)
-                        // Let's implement multi-arg print support:
-                        let fmt = std::iter::repeat("{}")
-                            .take(args.len())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        // Override previous push
-                        // Actually this is hard with current stream writing.
-                        // Just loop.
-                    }
+                    // Generate format string with correct number of {} placeholders
+                    let fmt = std::iter::repeat("{}")
+                        .take(args.len())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    self.output.push_str(&format!("println!(\"{}\", ", fmt));
                     for (i, arg) in args.into_iter().enumerate() {
                         if i > 0 {
                             self.output.push_str(", ");

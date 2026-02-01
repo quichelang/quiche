@@ -1,7 +1,9 @@
 pub mod ast;
+pub mod error_fmt;
 pub mod parser;
 
 pub use ast::QuicheModule;
+pub use error_fmt::{byte_to_line_col, format_error_with_context, format_ruff_error};
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

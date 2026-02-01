@@ -1,44 +1,47 @@
 # Built-in utility functions for Quiche
 
-# def is_integer[T](value: T) -> bool:
-#     """Check if value is an integer type."""
-#     match value:
-#         case i8(_) | i16(_) | i32(_) | i64(_) | i128(_) | isize(_) |
-#             u8(_) | u16(_) | u32(_) | u64(_) | u128(_) | usize(_):
-#             return True
-#         case _:
-#             return False
+def is_integer[T](value: T) -> bool:
+    """Check if value is an integer type."""
+    match value:
+        case i8(_) | i16(_) | i32(_) | i64(_) | i128(_) | isize(_) |
+            u8(_) | u16(_) | u32(_) | u64(_) | u128(_) | usize(_):
+            return True
+        case _:
+            return False
 
-# def is_float[T](value: T) -> bool:
-#     """Check if value is a float type."""
-#     match value:
-#         case f32(_) | f64(_):
-#             return True
-#         case _:
-#             return False
+def is_float[T](value: T) -> bool:
+    """Check if value is a float type."""
+    match value:
+        case f32(_) | f64(_):
+            return True
+        case _:
+            return False
 
-# def is_number[T](value: T) -> bool:
-#     """Check if value is a numeric type."""
-#     match value:
-#         case is_int(_) |
-#             f32(_) | f64(_):
-#             return True
-#         case _:
-#             return False
+def is_number[T](value: T) -> bool:
+    """Check if value is a numeric type."""
+    match value:
+        case is_int(_) |
+            f32(_) | f64(_):
+            return True
+        case _:
+            return False
 
-# def is_string[T](value: T) -> bool:
-#     """Check if value is a string type."""
-#     match value:
-#         case String(_):
-#             return True
-#         case _:
-#             return False
+def is_string[T](value: T) -> bool:
+    """Check if value is a string type."""
+    match value:
+        case String(_):
+            return True
+        case _:
+            return False
 
 def to_string[T: std.fmt.Display](obj: T) -> String:
     """Convert any Display-able value to String."""
     return obj.to_string()
 
 def main():
-    print("Hello, world!")
-    print(to_string("Hello, world!"), to_string(42), to_string(3.14))
-    # raise ErrorType("Hello, world!")
+    try:
+        print("Hello, world!")
+        print(to_string("Hello, world!"), to_string(42), to_string(3.14))
+        # raise ErrorType("Hello, world!")
+    except e:
+        print("Error: ", e)

@@ -4,13 +4,13 @@ pub trait QuicheResult {
     fn quiche_handle(self) -> Self::Output;
 }
 
-impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {
+impl<T, E: std::fmt::Display> QuicheResult for Result<T, E> {
     type Output = T;
     fn quiche_handle(self) -> T {
         match self {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("Quiche Exception: {:?}", e);
+                eprintln!("Quiche Error: {}", e);
                 std::process::exit(1);
             }
         }
@@ -172,7 +172,7 @@ impl<T: Clone> QuicheDeref for Option<Box<T>> {
         match self.as_ref() {
             Some(v) => v.as_ref().clone(),
             None => {
-                eprintln!("Quiche Exception: deref None");
+                eprintln!("Quiche Error: deref None (attempted to dereference an empty Option)");
                 std::process::exit(1);
             }
         }

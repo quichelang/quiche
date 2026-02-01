@@ -945,7 +945,14 @@ class Codegen:
             return
 
         if func_name == "print":
-            self.emit("println!(\"{}\", ")
+            # Generate format string with correct number of {} placeholders
+            fmt_parts: Vec[String] = []
+            for _ in args.clone():
+                fmt_parts.push("{}")
+            fmt_str = fmt_parts.join(ref(" "))
+            self.emit("println!(\"")
+            self.emit(fmt_str)
+            self.emit("\", ")
             first_p = True
             for arg in args.clone():
                 if not first_p: self.emit(", ")

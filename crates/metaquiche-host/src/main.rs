@@ -239,7 +239,7 @@ mod quiche {
     impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {
         type Output = T;
         fn quiche_handle(self) -> T {
-            self.expect("Quiche Exception")
+            self.expect("Quiche Error")
         }
     }
     
