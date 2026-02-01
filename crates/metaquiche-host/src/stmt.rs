@@ -1,6 +1,5 @@
 use crate::codegen_template;
 use crate::Codegen;
-use metaquiche_shared::templates;
 use quiche_parser::ast;
 
 impl Codegen {

@@ -14,7 +14,7 @@ pub mod types;
 #[macro_export]
 macro_rules! codegen_template {
     ($key:expr) => {
-        metaquiche_shared::templates::codegen_template($key)
+        metaquiche_shared::template::codegen_template($key)
             .expect(concat!("Template not found: ", $key))
     };
 }

@@ -37,7 +37,7 @@ pub mod quiche {
 
     pub fn codegen_template(key: impl AsRef<str>) -> String {
         let key_str = key.as_ref();
-        match metaquiche_shared::templates::codegen_template(key_str) {
+        match metaquiche_shared::template::codegen_template(key_str) {
             Some(content) => content.to_string(),
             None => {
                 eprintln!(
@@ -427,7 +427,7 @@ pub fn run_rust_code(
     warn: bool,
     strict: bool,
 ) -> i32 {
-    use metaquiche_shared::templates::{get_and_render, templates};
+    use metaquiche_shared::template::{get_and_render, templates};
 
     let rust_code = user_code.replace("#[test]", "");
 

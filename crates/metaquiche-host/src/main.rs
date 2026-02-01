@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use metaquiche_shared::templates::{self, get_and_render, templates};
+use metaquiche_shared::template as templates;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
