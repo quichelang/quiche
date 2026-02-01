@@ -35,6 +35,20 @@ pub mod quiche {
         p.parent().unwrap_or(p).to_string_lossy().to_string()
     }
 
+    pub fn codegen_template(key: impl AsRef<str>) -> String {
+        let key_str = key.as_ref();
+        match metaquiche_shared::templates::codegen_template(key_str) {
+            Some(content) => content.to_string(),
+            None => {
+                eprintln!(
+                    "Compiler Error: Template key '{}' not found in shared templates.",
+                    key_str
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+
     pub fn dedup_shadowed_let_mut(s: impl AsRef<str>) -> String {
         use std::collections::HashSet;
         let code = s.as_ref();
@@ -102,6 +116,12 @@ pub mod quiche {
     pub fn module_join(a: impl AsRef<str>, b: impl AsRef<str>) -> String {
         format!("{}::{}", a.as_ref(), b.as_ref())
     }
+
+    // ========================================================================
+    // CODEGEN TEMPLATES - Shared strings from templates.toml
+    // ========================================================================
+    // Historical Note: Individual template functions were replaced by the unified
+    // codegen_template accessor below.
 
     pub fn path_exists(path: impl AsRef<str>) -> bool {
         std::path::Path::new(path.as_ref()).exists()
@@ -500,8 +520,24 @@ pub fn dedup_shadowed_let_mut(code: String) -> String {
     for line in code.lines() {
         let mut line_out = line.to_string();
 
+        let mut in_string = false;
+        let mut escape = false;
+
+        // Calculate scope POPS (closing braces)
         for ch in line.chars() {
-            if ch == '}' && scopes.len() > 1 {
+            if escape {
+                escape = false;
+                continue;
+            }
+            if ch == '\\' {
+                escape = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = !in_string;
+                continue;
+            }
+            if !in_string && ch == '}' && scopes.len() > 1 {
                 scopes.pop();
             }
         }
@@ -510,6 +546,30 @@ pub fn dedup_shadowed_let_mut(code: String) -> String {
         loop {
             if let Some(idx) = line_out[search_start..].find("let mut ") {
                 let abs_idx = search_start + idx;
+
+                // Verify this instance is NOT in a string
+                let prefix = &line_out[0..abs_idx];
+                let mut p_in_string = false;
+                let mut p_escape = false;
+                for c in prefix.chars() {
+                    if p_escape {
+                        p_escape = false;
+                        continue;
+                    }
+                    if c == '\\' {
+                        p_escape = true;
+                        continue;
+                    }
+                    if c == '"' {
+                        p_in_string = !p_in_string;
+                    }
+                }
+
+                if p_in_string {
+                    search_start = abs_idx + 8; // skip
+                    continue;
+                }
+
                 let name_start = abs_idx + "let mut ".len();
                 let mut name_end = name_start;
                 for (i, c) in line_out[name_start..].char_indices() {
@@ -529,19 +589,38 @@ pub fn dedup_shadowed_let_mut(code: String) -> String {
                     .iter()
                     .take(scopes.len().saturating_sub(1))
                     .any(|s| s.contains(&name));
+
                 if shadowed {
                     line_out.replace_range(abs_idx..name_start, "");
+                    search_start = abs_idx;
                 } else if let Some(cur) = scopes.last_mut() {
                     cur.insert(name);
+                    search_start = name_end;
+                } else {
+                    search_start = name_end;
                 }
-                search_start = name_end;
             } else {
                 break;
             }
         }
 
+        // Calculate scope PUSHES (opening braces)
+        in_string = false;
+        escape = false;
         for ch in line.chars() {
-            if ch == '{' {
+            if escape {
+                escape = false;
+                continue;
+            }
+            if ch == '\\' {
+                escape = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = !in_string;
+                continue;
+            }
+            if !in_string && ch == '{' {
                 scopes.push(HashSet::new());
             }
         }

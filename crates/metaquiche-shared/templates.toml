@@ -601,3 +601,105 @@ content = ", \"{:?}\", "
 # All strings emitted during code generation should be defined in this file
 # to ensure host and native compilers produce byte-identical output.
 
+# ============================================================================
+# Block Delimiters (aligned for readability)
+# ============================================================================
+[codegen.space_brace_open]
+content                          = " { "
+
+[codegen.space_brace_newline]
+content                          = " {\n"
+
+[codegen.brace_close_newline]
+content                          = "}\n"
+
+[codegen.brace_close_double_newline]
+content                          = "}\n\n"
+
+# ============================================================================
+# Pattern Matching
+# ============================================================================
+[codegen.pattern_arrow]
+content                          = " => {\n"
+
+[codegen.pattern_guard_if]
+content                          = " if "
+
+# ============================================================================
+# Statement Terminators
+# ============================================================================
+[codegen.semicolon_newline]
+content                          = ";\n"
+
+[codegen.comma_newline]
+content                          = ",\n"
+
+[codegen.paren_comma_newline]
+content                          = "),\n"
+
+# ============================================================================
+# For Loop
+# ============================================================================
+[codegen.for_loop_start]
+content                          = "for __q in ("
+
+[codegen.for_loop_body]
+content                          = ") {\n"
+
+[codegen.assign_q]
+content                          = " = __q;\n"
+
+# ============================================================================
+# Print / Format
+# ============================================================================
+[codegen.println_str]
+content                          = "println!(\"{}\", "
+
+[codegen.format_debug]
+content                          = ", \"{:?}\", "
+
+# ============================================================================
+# Self / Types
+# ============================================================================
+[codegen.self_mut]
+content                          = "&mut self"
+
+[codegen.default_call]
+content                          = "Default::default()"
+
+[codegen.use_crate]
+content                          = "use crate::"
+
+[codegen.pub_type]
+content                          = "pub type "
+
+[codegen.extern_comment]
+content                          = "// Extern class "
+
+[codegen.generic_t]
+content                          = "<T>"
+
+[codegen.generic_t_eq]
+content                          = "<T> = "
+
+[codegen.unimplemented_stmt]
+content                          = "// Unimplemented stmt\n"
+
+[codegen.unimplemented_expr]
+content                          = "/* expr */"
+
+[codegen.unimplemented_const]
+content                          = "/* const */"
+
+[codegen.any_type]
+content                          = "Any"
+
+[codegen.pattern_struct_end]
+content                          = ", .. }"
+
+[codegen.pattern_struct_empty]
+content                          = " { .. }"
+
+[codegen.paren_semicolon_newline]
+content                          = ");\n"
+

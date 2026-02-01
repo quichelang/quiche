@@ -54,3 +54,30 @@ make clean && make stage1 && make stage2
 **Stage 2 fails but Stage 1 passes**: The native compiler generates different output than the host. Check that both compilers handle the construct the same way.
 
 **"cannot find macro"**: Check imports in the crate's `lib.rs` or `main.rs` wrapper modules.
+
+## Shared Templates
+
+All code generation strings MUST be defined in `crates/metaquiche-shared/templates.toml`:
+
+- **Project templates**: Cargo.toml, build.rs, wrapper files
+- **Codegen templates**: Function definitions, docstrings, operators, literals
+- **Runtime module**: Quiche macros (qref!, mutref!, deref!, strcat!)
+
+Both host and native compilers must use these shared templates to ensure **byte-identical output** between stage1 and stage2. When adding new emit strings:
+
+1. Add the template to `templates.toml` under `[codegen.your_new_template]`
+2. Update both host (Rust) and native (Quiche) compilers to use the template
+3. Verify with `make stage1 && make stage2` and diff the outputs
+
+## Safe File Editing
+
+When using `multi_replace_file_content` or `replace_file_content`:
+
+- **View before edit**: Always `view_file` the exact lines first
+- **Copy exact content**: Use the verbatim string from `view_file` as `TargetContent`
+- **Prefer single-chunk edits**: Use `replace_file_content` over `multi_replace_file_content` when possible
+- **Verify after edits**: Run `make stage1` after each batch to catch corruption early
+- **Use AllowMultiple carefully**: Only for patterns you're certain appear identically
+
+> **⚠️ Known Issue**: `multi_replace_file_content` with many chunks can cause content corruption (old+new values concatenated) if any `TargetContent` doesn't match exactly. When in doubt, use smaller batches with verification between each.
+

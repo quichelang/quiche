@@ -10,6 +10,23 @@ pub mod expr;
 pub mod stmt;
 pub mod types;
 
+/// Helper macro to get a codegen template or panic if missing
+#[macro_export]
+macro_rules! codegen_template {
+    ($key:expr) => {
+        metaquiche_shared::templates::codegen_template($key)
+            .expect(concat!("Template not found: ", $key))
+    };
+}
+
+/// Shorthand for codegen_template! to reduce verbosity
+macro_rules! T {
+    ($key:expr) => {
+        codegen_template!($key)
+    };
+}
+pub(crate) use T;
+
 pub struct Codegen {
     pub(crate) output: String,
     pub(crate) indent_level: usize,
@@ -262,17 +279,115 @@ fn dedup_shadowed_let_mut(code: &str) -> String {
 
     for line in code.lines() {
         let mut line_out = line.to_string();
+        let mut in_string = false;
+        let mut escape = false;
 
+        // Pre-scan line for brace changes, respecting strings
         for ch in line.chars() {
-            if ch == '}' && scopes.len() > 1 {
-                scopes.pop();
+            if escape {
+                escape = false;
+                continue;
+            }
+            if ch == '\\' {
+                escape = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = !in_string;
+                continue;
+            }
+            if !in_string {
+                if ch == '}' && scopes.len() > 1 {
+                    scopes.pop();
+                }
             }
         }
 
         let mut search_start = 0;
+        let mut in_str_detect = false;
+        let mut esc_detect = false;
+
+        loop {
+            // Find "let mut " but verify it's not in a string
+            // This naive search needs to respect string boundaries too
+            // Reuse string tracking for replacement as well to be safe
+            // But for simplicity, let's assume "let mut " doesn't appear in strings in a way that breaks this unique logic easily?
+            // Actually, if we have print!("let mut "), we shouldn't replace it.
+
+            // Simpler approach: Iterate chars and track state, buffer output
+            break; // Breaking the loop to rewrite validly below
+        }
+
+        // Re-implement the whole logic with proper char iteration
+        // This is getting complex to patch.
+        // Let's stick to the previous loop structure but add string guard for BRACES mainly,
+        // and string guard for 'let mut' search.
+    }
+
+    // Better implementation replacing the entire function content:
+    let mut out = String::new();
+    let mut scopes: Vec<HashSet<String>> = vec![HashSet::new()];
+
+    for line in code.lines() {
+        let mut line_out = line.to_string();
+
+        // 1. Update scopes based on '}' at start of line (or before logic?)
+        // Logic was: process '}' then process 'let mut' then process '{'
+        // But scopes need to be right for the CURRENT line.
+        // dedup logic seems to scan line for } to pop scope, then check let mut, then scan for { to push scope.
+
+        let mut in_string = false;
+        let mut escape = false;
+
+        // Calculate scope POPS (closing braces)
+        for ch in line.chars() {
+            if escape {
+                escape = false;
+                continue;
+            }
+            if ch == '\\' {
+                escape = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = !in_string;
+                continue;
+            }
+            if !in_string && ch == '}' && scopes.len() > 1 {
+                scopes.pop();
+            }
+        }
+
+        // Search and replace "let mut " if shadowed
+        let mut search_start = 0;
         loop {
             if let Some(idx) = line_out[search_start..].find("let mut ") {
                 let abs_idx = search_start + idx;
+
+                // Verify this instance is NOT in a string
+                // We need to scan from 0 to abs_idx to check string state
+                let prefix = &line_out[0..abs_idx];
+                let mut p_in_string = false;
+                let mut p_escape = false;
+                for c in prefix.chars() {
+                    if p_escape {
+                        p_escape = false;
+                        continue;
+                    }
+                    if c == '\\' {
+                        p_escape = true;
+                        continue;
+                    }
+                    if c == '"' {
+                        p_in_string = !p_in_string;
+                    }
+                }
+
+                if p_in_string {
+                    search_start = abs_idx + 8; // skip
+                    continue;
+                }
+
                 let name_start = abs_idx + "let mut ".len();
                 let mut name_end = name_start;
                 for (i, c) in line_out[name_start..].char_indices() {
@@ -292,19 +407,39 @@ fn dedup_shadowed_let_mut(code: &str) -> String {
                     .iter()
                     .take(scopes.len().saturating_sub(1))
                     .any(|s| s.contains(&name));
+
                 if shadowed {
                     line_out.replace_range(abs_idx..name_start, "");
+                    // Adjustment: search_start is now abs_idx (string shrank by 8)
+                    search_start = abs_idx;
                 } else if let Some(cur) = scopes.last_mut() {
                     cur.insert(name);
+                    search_start = name_end;
+                } else {
+                    search_start = name_end;
                 }
-                search_start = name_end;
             } else {
                 break;
             }
         }
 
+        // Calculate scope PUSHES (opening braces)
+        in_string = false;
+        escape = false;
         for ch in line.chars() {
-            if ch == '{' {
+            if escape {
+                escape = false;
+                continue;
+            }
+            if ch == '\\' {
+                escape = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = !in_string;
+                continue;
+            }
+            if !in_string && ch == '{' {
                 scopes.push(HashSet::new());
             }
         }

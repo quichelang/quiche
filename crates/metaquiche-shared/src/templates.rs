@@ -72,24 +72,32 @@ impl Templates {
             }
 
             // Single-line content (content = "..." or content = '...')
-            if (line.starts_with("content = \"") || line.starts_with("content = '")) && !in_content
-            {
-                let quote_char = if line.starts_with("content = \"") {
-                    '"'
-                } else {
-                    '\''
-                };
-                // Use if-let to avoid panicking on index errors
-                if let Some(first_quote_idx) = line.find(quote_char) {
-                    let content_start = first_quote_idx + 1;
-                    if let Some(content_end) = line[content_start..].rfind(quote_char) {
-                        let raw_content = &line[content_start..content_start + content_end];
-                        // Unescape common escape sequences
-                        let unescaped = raw_content
-                            .replace("\\n", "\n")
-                            .replace("\\\"", "\"")
-                            .replace("\\'", "'");
-                        content_lines.push(unescaped.leak());
+            // Handle whitespace-aligned format like: content                          = " { "
+            let trimmed = line.trim();
+            let is_single_line_content = trimmed.starts_with("content")
+                && trimmed.contains('=')
+                && (trimmed.contains('"') || trimmed.contains('\''))
+                && !trimmed.ends_with("'''")
+                && !in_content;
+
+            if is_single_line_content {
+                // Find the quote char used (after the '=' sign)
+                let eq_pos = trimmed.find('=').unwrap();
+                let after_eq = &trimmed[eq_pos + 1..].trim_start();
+                let quote_char = after_eq.chars().next().unwrap_or('"');
+                if quote_char == '"' || quote_char == '\'' {
+                    // Find content between quotes
+                    if let Some(first_quote_idx) = line.find(quote_char) {
+                        let content_start = first_quote_idx + 1;
+                        if let Some(content_end) = line[content_start..].rfind(quote_char) {
+                            let raw_content = &line[content_start..content_start + content_end];
+                            // Unescape common escape sequences
+                            let unescaped = raw_content
+                                .replace("\\n", "\n")
+                                .replace("\\\"", "\"")
+                                .replace("\\'", "'");
+                            content_lines.push(unescaped.leak());
+                        }
                     }
                 }
                 continue;

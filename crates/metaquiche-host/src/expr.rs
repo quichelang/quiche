@@ -1,3 +1,4 @@
+use crate::codegen_template;
 use crate::Codegen;
 use quiche_parser::ast;
 
@@ -251,8 +252,8 @@ impl Codegen {
                 }
 
                 // Default Function Call
-                let is_helper =
-                    ["deref", "as_ref", "ref", "mutref", "as_mut"].contains(&func_name.as_str());
+                let is_helper = ["deref", "as_ref", "ref", "mutref", "as_mut", "strcat"]
+                    .contains(&func_name.as_str());
                 // Translate to actual macro names
                 let macro_name = match func_name.as_str() {
                     "ref" | "as_ref" => "qref",
@@ -314,8 +315,14 @@ impl Codegen {
                 self.output.push_str(&n);
             }
             ast::QuicheExpr::Constant(c) => match c {
-                ast::Constant::NoneVal => self.output.push_str("None"),
-                ast::Constant::Bool(b) => self.output.push_str(&b.to_string()),
+                ast::Constant::NoneVal => self.output.push_str(codegen_template!("none_literal")),
+                ast::Constant::Bool(b) => {
+                    if b {
+                        self.output.push_str(codegen_template!("true_literal"));
+                    } else {
+                        self.output.push_str(codegen_template!("false_literal"));
+                    }
+                }
                 ast::Constant::Str(s) => self.output.push_str(&format!("String::from({:?})", s)),
                 ast::Constant::Int(i) => self.output.push_str(&i.to_string()),
                 ast::Constant::Float(f) => {

@@ -1,4 +1,6 @@
+use crate::codegen_template;
 use crate::Codegen;
+use metaquiche_shared::templates;
 use quiche_parser::ast;
 
 impl Codegen {
@@ -242,16 +244,17 @@ impl Codegen {
                 self.push_indent();
                 self.output.push_str("}\n\n");
             }
-            ast::QuicheStmt::Pass | ast::QuicheStmt::Break | ast::QuicheStmt::Continue => {
-                if matches!(stmt, ast::QuicheStmt::Break) {
-                    self.push_indent();
-                    self.output.push_str("break;\n");
-                }
-                if matches!(stmt, ast::QuicheStmt::Continue) {
-                    self.push_indent();
-                    self.output.push_str("continue;\n");
-                }
+            ast::QuicheStmt::Break => {
+                self.push_indent();
+                self.output.push_str(codegen_template!("break_stmt"));
+                self.output.push_str("\n");
             }
+            ast::QuicheStmt::Continue => {
+                self.push_indent();
+                self.output.push_str(codegen_template!("continue_stmt"));
+                self.output.push_str("\n");
+            }
+            ast::QuicheStmt::Pass => {}
             ast::QuicheStmt::Match(m) => {
                 self.push_indent();
                 self.output.push_str("match ");
@@ -297,7 +300,6 @@ impl Codegen {
                         || mod_path.starts_with("ruff_python_parser")
                         || mod_path.starts_with("parsley_qrs")
                         || mod_path.starts_with("quiche_parser")
-                        || mod_path.starts_with("quiche_runtime")
                         || mod_path == "glob"
                         || mod_path == "anyhow";
 
@@ -652,9 +654,9 @@ impl Codegen {
                 if let ast::QuicheStmt::Expr(e) = &stmt {
                     if let ast::QuicheExpr::Constant(ast::Constant::Str(s)) = &**e {
                         self.push_indent();
-                        self.output.push_str("#![doc = \"");
+                        self.output.push_str(codegen_template!("docstring_start"));
                         self.output.push_str(&s.replace("\"", "\\\""));
-                        self.output.push_str("\"]\n");
+                        self.output.push_str(codegen_template!("docstring_end"));
                         continue;
                     }
                 }
@@ -665,7 +667,7 @@ impl Codegen {
         self.exit_scope(); // End function scope
         self.indent_level -= 1;
         self.push_indent();
-        self.output.push_str("}\n\n");
+        self.output.push_str(codegen_template!("function_def_end"));
     }
 
     fn extract_extern_path(&self, decorators: &[ast::QuicheExpr]) -> Option<(String, bool)> {

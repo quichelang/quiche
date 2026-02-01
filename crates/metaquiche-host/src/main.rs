@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-mod templates;
+use metaquiche_shared::templates::{self, get_and_render, templates};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -147,8 +147,11 @@ fn create_new_project(name: &str, is_lib: bool) {
 
     fs::create_dir_all(path.join("src")).expect("Failed to create src dir");
 
-    fs::write(path.join("Quiche.toml"), templates::get_quiche_toml(name))
-        .expect("Failed to write Quiche.toml");
+    fs::write(
+        path.join("Quiche.toml"),
+        templates::get_and_render("quiche_toml", &[("name", name)]),
+    )
+    .expect("Failed to write Quiche.toml");
     // Determine path to compiler crate (relative to CLI crate which is compiled)
     // CARGO_MANIFEST_DIR points to crates/cli
     let compiler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -161,23 +164,51 @@ fn create_new_project(name: &str, is_lib: bool) {
     let compiler_path_str = compiler_path.to_str().unwrap().replace("\\", "/");
     // Escape backslashes for Windows path in string literal if needed, but Cargo handles / fine.
 
+    // Generate Cargo.toml
+    let mut cargo_toml = templates::get_and_render(
+        "cargo_toml",
+        &[("name", name), ("compiler_path", &compiler_path_str)],
+    );
+    if is_lib {
+        cargo_toml.push_str(templates::templates().get_content("cargo_toml_lib_section"));
+    } else {
+        cargo_toml.push_str(&templates::get_and_render(
+            "cargo_toml_bin_section",
+            &[("name", name)],
+        ));
+    }
+
+    fs::write(path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::write(
-        path.join("Cargo.toml"),
-        templates::get_cargo_toml(name, is_lib, &compiler_path_str),
+        path.join("build.rs"),
+        templates::templates().get_content("build_rs"),
     )
-    .expect("Failed to write Cargo.toml");
-    fs::write(path.join("build.rs"), templates::get_build_rs()).expect("Failed to write build.rs");
+    .expect("Failed to write build.rs");
+
+    let quiche_module = templates::templates().get_content("quiche_module");
 
     if is_lib {
-        fs::write(path.join("src/lib.qrs"), templates::get_lib_qrs())
-            .expect("Failed to write lib.qrs");
-        fs::write(path.join("src/lib.rs"), templates::get_lib_rs())
-            .expect("Failed to write lib.rs");
+        fs::write(
+            path.join("src/lib.qrs"),
+            templates::templates().get_content("lib_qrs"),
+        )
+        .expect("Failed to write lib.qrs");
+        fs::write(
+            path.join("src/lib.rs"),
+            templates::get_and_render("lib_rs_wrapper", &[("quiche_module", quiche_module)]),
+        )
+        .expect("Failed to write lib.rs");
     } else {
-        fs::write(path.join("src/main.qrs"), templates::get_main_qrs())
-            .expect("Failed to write main.qrs");
-        fs::write(path.join("src/main.rs"), templates::get_main_rs())
-            .expect("Failed to write main.rs");
+        fs::write(
+            path.join("src/main.qrs"),
+            templates::templates().get_content("main_qrs"),
+        )
+        .expect("Failed to write main.qrs");
+        fs::write(
+            path.join("src/main.rs"),
+            templates::get_and_render("main_rs_wrapper", &[("quiche_module", quiche_module)]),
+        )
+        .expect("Failed to write main.rs");
     }
 
     println!("Created new project: {}", name);
