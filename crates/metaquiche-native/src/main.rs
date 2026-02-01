@@ -347,115 +347,11 @@ pub fn run_rust_code(
     warn: bool,
     strict: bool,
 ) -> i32 {
+    use metaquiche_shared::templates::{get_and_render, templates};
+
     let rust_code = user_code.replace("#[test]", "");
 
-    let quiche_module = r#"
-mod quiche {
-    #![allow(unused_macros, unused_imports)]
-    
-    // High Priority: Consumes Self (Result/Option)
-    pub trait QuicheResult {
-        type Output;
-        fn quiche_handle(self) -> Self::Output;
-    }
-    
-    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {
-        type Output = T;
-        fn quiche_handle(self) -> T {
-            self.expect("Quiche Error")
-        }
-    }
-    
-
-    
-    // Low Priority: Takes &Self (Clone fallback)
-    pub trait QuicheGeneric {
-        fn quiche_handle(&self) -> Self;
-    }
-    
-    impl<T: Clone> QuicheGeneric for T {
-        fn quiche_handle(&self) -> Self {
-            self.clone()
-        }
-    }
-    
-    macro_rules! check {
-        ($val:expr) => {{
-            use crate::quiche::*;
-            ($val).quiche_handle()
-        }};
-    }
-    pub(crate) use check;
-
-    macro_rules! call {
-        ($func:expr $(, $arg:expr)*) => {{
-            use crate::quiche::*;
-            $func( $( ($arg).quiche_handle() ),* )
-        }};
-    }
-    pub(crate) use call;
-
-    macro_rules! qref {
-        ($e:expr) => { &($e) };
-    }
-    pub(crate) use qref;
-
-    macro_rules! mutref {
-        ($e:expr) => { &mut ($e) };
-    }
-    pub(crate) use mutref;
-
-    macro_rules! deref {
-        ($e:expr) => { *($e) };
-    }
-    pub(crate) use deref;
-
-    /// String concatenation macro - efficient push_str pattern
-    macro_rules! strcat {
-        // Single argument - just convert to String
-        ($arg:expr) => {
-            ($arg).to_string()
-        };
-        // Multiple arguments - use push_str pattern
-        ($first:expr, $($rest:expr),+ $(,)?) => {{
-            let mut __s = ($first).to_string();
-            $(
-                __s.push_str(&($rest).to_string());
-            )+
-            __s
-        }};
-    }
-    pub(crate) use strcat;
-
-    pub fn run_test_cmd(exe: String, test_path: String) -> bool {
-        let mut cmd = std::process::Command::new(exe);
-        cmd.arg(test_path);
-        cmd.env("QUICHE_QUIET", "1");
-        cmd.env("QUICHE_SUPPRESS_OUTPUT", "1");
-        cmd.stdout(std::process::Stdio::null());
-        cmd.stderr(std::process::Stdio::null());
-        match cmd.status() {
-            Ok(status) => status.success(),
-            Err(_) => false,
-        }
-    }
-
-    pub fn list_test_files() -> Vec<String> {
-        let mut tests = Vec::new();
-        if let Ok(entries) = std::fs::read_dir("tests") {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if !name.ends_with(".qrs") || name == "runner.qrs" {
-                    continue;
-                }
-                tests.push(name);
-            }
-        }
-        tests.sort();
-        tests
-    }
-}
-"#;
+    let quiche_module = templates().get_content("quiche_module_run");
 
     let wrapped_user_code = if !rust_code.contains("fn main") {
         format!("fn main() {{\n{}\n}}\n", rust_code)
@@ -463,14 +359,13 @@ mod quiche {
         rust_code
     };
 
-    let mut full_code = String::new();
-    full_code.push_str(
-        "#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n",
+    let full_code = get_and_render(
+        "run_wrapper",
+        &[
+            ("quiche_module", quiche_module),
+            ("user_code", &wrapped_user_code),
+        ],
     );
-    full_code.push_str(quiche_module);
-    full_code.push_str("\n");
-    full_code.push_str("use crate::quiche as quiche_runtime;\n");
-    full_code.push_str(&wrapped_user_code);
 
     if !Path::new("target").exists() {
         std::fs::create_dir("target").ok();

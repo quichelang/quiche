@@ -137,6 +137,8 @@ impl Codegen {
                 if let Some(value) = a.value {
                     self.output.push_str(" = ");
                     self.generate_expr(*value);
+                } else {
+                    self.output.push_str(" = Default::default()");
                 }
                 self.output.push_str(";\n");
             }
@@ -322,8 +324,6 @@ impl Codegen {
             }
             ast::QuicheStmt::ImportFrom(i) => {
                 if let Some(module) = i.module {
-                    self.push_indent();
-                    self.output.push_str("use ");
                     // Handle relative imports logic (level > 0)?
                     // For now assume absolute or crate::
                     let mod_path = module.replace(".", "::");
@@ -343,29 +343,29 @@ impl Codegen {
                             .insert(mod_path.to_string(), "mod".to_string());
                     }
 
-                    if mod_path.starts_with("rust::") {
-                        self.output.push_str(&mod_path[6..]);
-                    } else if is_external {
-                        self.output.push_str(&mod_path);
-                    } else if !mod_path.starts_with("crate::") {
-                        self.output.push_str("crate::");
-                        self.output.push_str(&mod_path);
-                    } else {
-                        self.output.push_str(&mod_path);
-                    }
-                    self.output.push_str("::{");
-                    for (idx, alias) in i.names.iter().enumerate() {
-                        if idx > 0 {
-                            self.output.push_str(", ");
-                        }
-                        if let Some(asname) = &alias.asname {
-                            self.output
-                                .push_str(&format!("{} as {}", alias.name, asname));
+                    // Emit each import on a separate line (matches native compiler output)
+                    for alias in i.names.iter() {
+                        self.push_indent();
+                        self.output.push_str("use ");
+
+                        if mod_path.starts_with("rust::") {
+                            self.output.push_str(&mod_path[6..]);
+                        } else if is_external {
+                            self.output.push_str(&mod_path);
+                        } else if !mod_path.starts_with("crate::") {
+                            self.output.push_str("crate::");
+                            self.output.push_str(&mod_path);
                         } else {
-                            self.output.push_str(&alias.name);
+                            self.output.push_str(&mod_path);
                         }
+                        self.output.push_str("::");
+                        self.output.push_str(&alias.name);
+                        if let Some(asname) = &alias.asname {
+                            self.output.push_str(" as ");
+                            self.output.push_str(asname);
+                        }
+                        self.output.push_str(";\n");
                     }
-                    self.output.push_str("};\n");
                 }
             }
             ast::QuicheStmt::Assert(a) => {

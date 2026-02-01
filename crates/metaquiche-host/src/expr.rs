@@ -12,20 +12,6 @@ impl Codegen {
     }
 
     pub(crate) fn generate_expr(&mut self, expr: ast::QuicheExpr) {
-        if let ast::QuicheExpr::Call {
-            func,
-            args,
-            keywords,
-        } = &expr
-        {
-            use std::io::Write;
-            let mut f = std::fs::OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open("/tmp/quiche_debug.txt")
-                .unwrap();
-            writeln!(f, "GEN CAL: args={} kws={}", args.len(), keywords.len()).ok();
-        }
         match expr {
             ast::QuicheExpr::BinOp { left, op, right } => {
                 // Check if this is string concatenation
@@ -193,31 +179,6 @@ impl Codegen {
 
                 // 2. Strict 1:1 Method Calling
                 if let ast::QuicheExpr::Attribute { value, attr } = *func {
-                    let skip_check = [
-                        "as_str",
-                        "to_string",
-                        "clone",
-                        "into_syntax",
-                        "into_iter",
-                        "as_ref",
-                        "ref",
-                        "mutref",
-                        "enter_var_scope",
-                        "exit_var_scope",
-                        "get_root_name",
-                        "is_type_or_mod",
-                        "is_var_defined",
-                        "mark_var_defined",
-                        "define_var",
-                        "expr_contains_name",
-                        "generate_pattern",
-                        "emit",
-                        "push",
-                    ]
-                    .contains(&attr.as_str());
-                    if !skip_check {
-                        self.output.push_str("crate::quiche::check!(");
-                    }
                     self.generate_expr(*value.clone());
 
                     let base_str = self.expr_to_string(&*value);
@@ -226,41 +187,10 @@ impl Codegen {
                     } else {
                         "."
                     };
-                    {
-                        use std::io::Write;
-                        let mut f = std::fs::OpenOptions::new()
-                            .append(true)
-                            .create(true)
-                            .open("/tmp/quiche_debug.txt")
-                            .unwrap();
-                        writeln!(
-                            f,
-                            "Expr Call: base='{}' sep='{}' attr='{}'",
-                            base_str, sep, attr
-                        )
-                        .ok();
-                    }
-                    if sep == "::" {
-                        self.output.push_str("::");
-                    } else {
-                        self.output.push_str(".");
-                    }
-
+                    self.output.push_str(sep);
                     self.output.push_str(&attr);
                     self.output.push_str("(");
-                    let args = args; // Ensure ownership
-                    let args_len = args.len();
                     let args_empty = args.is_empty();
-
-                    {
-                        use std::io::Write;
-                        let mut f = std::fs::OpenOptions::new()
-                            .append(true)
-                            .create(true)
-                            .open("/tmp/quiche_debug.txt")
-                            .unwrap();
-                        writeln!(f, "Pre-Args Loop").ok();
-                    }
 
                     for (i, arg) in args.into_iter().enumerate() {
                         if i > 0 {
@@ -269,58 +199,16 @@ impl Codegen {
                         self.generate_expr(arg);
                     }
 
-                    {
-                        use std::io::Write;
-                        let mut f = std::fs::OpenOptions::new()
-                            .append(true)
-                            .create(true)
-                            .open("/tmp/quiche_debug.txt")
-                            .unwrap();
-                        writeln!(f, "Post-Args Loop").ok();
-                    }
-
                     if !args_empty && !keywords.is_empty() {
                         self.output.push_str(", ");
                     }
-                    {
-                        use std::io::Write;
-                        let mut f = std::fs::OpenOptions::new()
-                            .append(true)
-                            .create(true)
-                            .open("/tmp/quiche_debug.txt")
-                            .unwrap();
-                        writeln!(f, "AttrCall KW: args={} kws={}", args_len, keywords.len()).ok();
-                    }
                     for (i, kw) in keywords.into_iter().enumerate() {
-                        {
-                            use std::io::Write;
-                            let mut f = std::fs::OpenOptions::new()
-                                .append(true)
-                                .create(true)
-                                .open("/tmp/quiche_debug.txt")
-                                .unwrap();
-                            writeln!(f, "Loop KW {}", i).ok();
-                        }
                         if i > 0 {
                             self.output.push_str(", ");
                         }
                         self.generate_expr(*kw.value);
                     }
                     self.output.push_str(")");
-
-                    {
-                        use std::io::Write;
-                        let mut f = std::fs::OpenOptions::new()
-                            .append(true)
-                            .create(true)
-                            .open("/tmp/quiche_debug.txt")
-                            .unwrap();
-                        writeln!(f, "AttrCall EMIT: {}", self.output).ok();
-                    }
-
-                    if !skip_check {
-                        self.output.push_str(")");
-                    }
                     return;
                 }
 
@@ -349,12 +237,22 @@ impl Codegen {
                     return;
                 }
 
+                // Handle exit() specially to emit std::process::exit() directly
+                if func_name == "exit" {
+                    self.output.push_str("std::process::exit(");
+                    for (i, arg) in args.into_iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.generate_expr(arg);
+                    }
+                    self.output.push_str(")");
+                    return;
+                }
+
                 // Default Function Call
                 let is_helper =
                     ["deref", "as_ref", "ref", "mutref", "as_mut"].contains(&func_name.as_str());
-                if !is_helper {
-                    self.output.push_str("crate::quiche::check!(");
-                }
                 // Translate to actual macro names
                 let macro_name = match func_name.as_str() {
                     "ref" | "as_ref" => "qref",
@@ -367,7 +265,6 @@ impl Codegen {
                 }
                 self.output.push_str("(");
                 let args_empty = args.is_empty();
-                let args_len = args.len();
                 for (i, arg) in args.into_iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
@@ -377,15 +274,6 @@ impl Codegen {
                 if !args_empty && !keywords.is_empty() {
                     self.output.push_str(", ");
                 }
-                {
-                    use std::io::Write;
-                    let mut f = std::fs::OpenOptions::new()
-                        .append(true)
-                        .create(true)
-                        .open("/tmp/quiche_debug.txt")
-                        .unwrap();
-                    writeln!(f, "Call KW: args={} kws={}", args_len, keywords.len()).ok();
-                }
                 for (i, kw) in keywords.into_iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
@@ -393,9 +281,6 @@ impl Codegen {
                     self.generate_expr(*kw.value);
                 }
                 self.output.push_str(")");
-                if !is_helper {
-                    self.output.push_str(")");
-                }
             }
             ast::QuicheExpr::Attribute { value, attr } => {
                 // Determine separator

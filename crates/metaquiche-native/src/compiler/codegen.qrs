@@ -1003,8 +1003,7 @@ class Codegen:
                 self.emit("..")
                 self.generate_expr(Clone.clone(ref(args[1])))
         elif keywords.len() > 0:
-            # Emit as function call with kwargs as positional args (like host compiler)
-            self.emit("crate::quiche::check!(")
+            # Emit as function call with kwargs as positional args
             self.generate_expr(deref(func))
             self.emit("(")
             i_kw: usize = 0
@@ -1016,7 +1015,7 @@ class Codegen:
                 if i_kw > 0: self.emit(", ")
                 self.generate_expr(deref(kw.value.clone()))
                 i_kw = i_kw + 1
-            self.emit("))")
+            self.emit(")")
         else:
             match ref(deref(func)):
                 case q_ast.Expr.Attribute(value=value, attr=attr):
@@ -1043,9 +1042,6 @@ class Codegen:
                                     return
                             case _: pass
 
-                    skip_check = self.is_skip_check_method(attr.to_string())
-                    if not skip_check:
-                        self.emit("crate::quiche::check!(")
                     self.generate_expr(deref(func))
                     self.emit("(")
                     idx_arg_call = 0
@@ -1054,10 +1050,7 @@ class Codegen:
                         self.generate_expr(arg_c)
                         idx_arg_call = idx_arg_call + 1
                     self.emit(")")
-                    if not skip_check:
-                        self.emit(")")
                 case _:
-                    self.emit("crate::quiche::check!(")
                     self.generate_expr(deref(func))
                     self.emit("(")
                     idx_arg_call = 0
@@ -1065,7 +1058,7 @@ class Codegen:
                         if idx_arg_call > 0: self.emit(", ")
                         self.generate_expr(arg_c)
                         idx_arg_call = idx_arg_call + 1
-                    self.emit("))")
+                    self.emit(")")
 
     def emit_list(self, l: Vec[q_ast.Expr]):
         self.emit("vec![")

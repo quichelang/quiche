@@ -1,0 +1,223 @@
+# Unified Templates for Quiche Compilers
+# Both stage0 (host) and stage1 (native) compilers use these templates
+# to ensure identical code output.
+#
+# Template syntax: {{key}} is replaced with provided value
+# Multiline strings use TOML's triple-quoted literal strings
+
+[cargo_toml]
+description = "Generated Cargo.toml for Quiche projects"
+content = '''
+[package]
+name = "{{name}}"
+version = "0.1.0"
+edition = "2024"
+
+# Break out of any parent workspace
+[workspace]
+
+[build-dependencies]
+quiche-compiler = { path = "{{compiler_path}}" }
+
+[dependencies]
+'''
+
+[cargo_toml_lib_section]
+description = "Additional section for library crates"
+content = '''
+
+[lib]
+path = "src/lib.rs"
+'''
+
+[cargo_toml_bin_section]
+description = "Additional section for binary crates"
+content = '''
+
+[[bin]]
+name = "{{name}}"
+path = "src/main.rs"
+'''
+
+[build_rs]
+description = "Generated build.rs for Quiche projects"
+content = '''
+use std::env;
+use std::fs;
+use std::path::Path;
+use quiche_compiler::compile;
+
+fn main() {
+    println!("cargo:rerun-if-changed=src");
+    let out_dir = env::var("OUT_DIR").unwrap();
+    
+    // Check for lib.qrs or main.qrs
+    let is_lib = Path::new("src/lib.qrs").exists();
+    let source_path = if is_lib { "src/lib.qrs" } else { "src/main.qrs" };
+    let dest_name = if is_lib { "lib.rs" } else { "main.rs" };
+    let dest_path = Path::new(&out_dir).join(dest_name);
+
+    if Path::new(source_path).exists() {
+        let source = fs::read_to_string(source_path).expect("Read source failed");
+        let source = source.replace("struct ", "class ");
+        
+        if let Some(rust_code) = compile(&source) {
+            fs::write(&dest_path, rust_code).expect("Write output failed");
+        } else {
+            panic!("Compilation failed");
+        }
+    } else {
+        fs::write(&dest_path, "").unwrap();
+    }
+}
+'''
+
+[lib_qrs]
+description = "Starter lib.qrs template"
+content = '''
+def hello():
+    print("Hello from Lib!")
+'''
+
+[main_qrs]
+description = "Starter main.qrs template"
+content = '''
+def main():
+    print("Hello, Quiche!")
+'''
+
+[quiche_toml]
+description = "quiche.toml project config"
+content = '''
+[package]
+name = "{{name}}"
+version = "0.1.0"
+'''
+
+# The runtime module is embedded to provide core macros
+# This is the unified version used by both host and native compilers
+[quiche_module]
+description = "Core quiche runtime module embedded in generated code"
+content = '''
+mod quiche {
+    #![allow(unused_macros, unused_imports)]
+
+    macro_rules! qref {
+        ($e:expr) => { &($e) };
+    }
+    pub(crate) use qref;
+
+    macro_rules! mutref {
+        ($e:expr) => { &mut ($e) };
+    }
+    pub(crate) use mutref;
+
+    macro_rules! deref {
+        ($e:expr) => { *($e) };
+    }
+    pub(crate) use deref;
+
+    macro_rules! strcat {
+        ($arg:expr) => { ($arg).to_string() };
+        ($first:expr, $($rest:expr),+ $(,)?) => {{
+            let mut __s = ($first).to_string();
+            $( __s.push_str(&($rest).to_string()); )+
+            __s
+        }};
+    }
+    pub(crate) use strcat;
+}
+'''
+
+# Extended quiche module for run mode (includes test helpers)
+[quiche_module_run]
+description = "Extended quiche module for run mode with test helpers"
+content = '''
+mod quiche {
+    #![allow(unused_macros, unused_imports)]
+
+    macro_rules! qref {
+        ($e:expr) => { &($e) };
+    }
+    pub(crate) use qref;
+
+    macro_rules! mutref {
+        ($e:expr) => { &mut ($e) };
+    }
+    pub(crate) use mutref;
+
+    macro_rules! deref {
+        ($e:expr) => { *($e) };
+    }
+    pub(crate) use deref;
+
+    macro_rules! strcat {
+        ($arg:expr) => { ($arg).to_string() };
+        ($first:expr, $($rest:expr),+ $(,)?) => {{
+            let mut __s = ($first).to_string();
+            $( __s.push_str(&($rest).to_string()); )+
+            __s
+        }};
+    }
+    pub(crate) use strcat;
+
+    pub fn run_test_cmd(exe: String, test_path: String) -> bool {
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg(test_path);
+        cmd.env("QUICHE_QUIET", "1");
+        cmd.env("QUICHE_SUPPRESS_OUTPUT", "1");
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        match cmd.status() {
+            Ok(status) => status.success(),
+            Err(_) => false,
+        }
+    }
+
+    pub fn list_test_files() -> Vec<String> {
+        let mut tests = Vec::new();
+        if let Ok(entries) = std::fs::read_dir("tests") {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.ends_with(".qrs") || name == "runner.qrs" {
+                    continue;
+                }
+                tests.push(name);
+            }
+        }
+        tests.sort();
+        tests
+    }
+}
+'''
+
+[lib_rs_wrapper]
+description = "Wrapper lib.rs that includes transpiled code"
+content = '''
+#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+
+{{quiche_module}}
+
+// Re-export everything from the transpiled module
+include!(concat!(env!("OUT_DIR"), "/lib.rs"));
+'''
+
+[main_rs_wrapper]
+description = "Wrapper main.rs that includes transpiled code"
+content = '''
+#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+
+{{quiche_module}}
+
+include!(concat!(env!("OUT_DIR"), "/main.rs"));
+'''
+
+[run_wrapper]
+description = "Wrapper for run mode (direct rustc compilation)"
+content = '''
+#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+
+{{quiche_module}}
+use crate::quiche as quiche_runtime;
+{{user_code}}
+'''

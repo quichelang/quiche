@@ -4,4 +4,6 @@
 //! - metaquiche-host (Rust-based bootstrap compiler)
 //! - metaquiche-native (Self-hosted Quiche compiler)
 
+pub mod macros;
 pub mod telemetry;
+pub mod templates;
