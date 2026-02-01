@@ -1,0 +1,70 @@
+# Quiche Compiler - English (US) Locale
+# This file contains all user-facing strings for the Quiche compiler ecosystem
+
+# =============================================================================
+# CLI Error Messages
+# =============================================================================
+cli.error.no_command = "Error: No command specified."
+cli.error.missing_project_name = "Error: Missing project name."
+cli.error.no_cargo_toml = "Error: No Cargo.toml found in current directory."
+cli.error.no_tests_found = "Error: No tests/runner.qrs or Cargo.toml found."
+cli.error.file_not_found = "Error: File '%{file}' not found."
+cli.error.unrecognized_command = "Error: Unrecognized command or file '%{cmd}'"
+cli.error.dir_exists = "Error: Directory '%{name}' already exists"
+cli.error.read_file_failed = "Error: Failed to read file '%{file}': %{error}"
+cli.error.write_failed = "Error: Failed to write file '%{file}': %{error}"
+cli.error.compilation_failed = "Compilation failed: %{error}"
+
+# =============================================================================
+# CLI Usage Messages
+# =============================================================================
+cli.usage.header = "Usage: quiche <command> [options]"
+cli.usage.new = "  quiche new <name>       Create a new Quiche project"
+cli.usage.new_lib = "  quiche new --lib <name> Create a new library project"
+cli.usage.build = "  quiche build            Build the current project"
+cli.usage.run = "  quiche run              Build and run the current project"
+cli.usage.test = "  quiche test             Run tests"
+cli.usage.script = "  quiche <file.qrs>       Run a single script"
+cli.usage.version = "  quiche version          Show version information"
+cli.usage.help = "  quiche help             Show this help message"
+
+# =============================================================================
+# CLI Hints and Notes
+# =============================================================================
+cli.hint.single_script = "To run a single script, use: quiche <file.qrs>"
+cli.hint.did_you_mean = "Did you mean '%{suggestion}'?"
+cli.note.qrs_extension = "Note: Quiche scripts must end with .qrs extension."
+
+# =============================================================================
+# CLI Success Messages
+# =============================================================================
+cli.success.project_created = "Created new project: %{name}"
+cli.info.compiling = "--- Compiling and Running ---"
+
+# =============================================================================
+# CLI Output Headers
+# =============================================================================
+cli.output.header = "Output:\n%{output}"
+cli.output.errors_header = "Errors:\n%{errors}"
+
+# =============================================================================
+# Diagnostic Messages
+# =============================================================================
+diagnostic.level.error = "error"
+diagnostic.level.warning = "warning"
+diagnostic.level.note = "note"
+diagnostic.level.help = "help"
+diagnostic.compile_failed = "error: Failed to compile `%{file}`\n"
+diagnostic.help_prefix = "   = help: %{message}\n"
+
+# =============================================================================
+# Runtime Error Messages
+# =============================================================================
+runtime.error.generic = "Quiche Error: %{error}"
+runtime.error.deref_none = "Quiche Error: deref None (attempted to dereference an empty Option)"
+
+# =============================================================================
+# Parser Warning Messages  
+# =============================================================================
+parser.warning.arg_annotation_failed = "Warning: Failed to lower function argument annotation: %{error}"
+parser.warning.return_annotation_failed = "Warning: Failed to lower function return annotation: %{error}"

@@ -121,6 +121,13 @@ def compiler_path_for_new() -> String: pass
 @extern(path="crate::quiche::print_stdout")
 def print_stdout(s: String): pass
 
+# --- i18n Bridge Functions ---
+@extern(path="crate::quiche::tr")
+def tr(key: String) -> String: pass
+
+@extern(path="crate::quiche::tr1")
+def tr1(key: String, name: String, value: String) -> String: pass
+
 @extern(path="crate::version_info::get_stage")
 def version_get_stage() -> String: pass
 
@@ -310,12 +317,12 @@ def compile_source(source: String, filename: String, warn_quiche: bool, strict: 
     print_stdout(code)
 
 def print_usage():
-    print("Usage:")
-    print("  quiche-self new <name>    Create a new Quiche project")
-    print("  quiche-self build         Build the current project")
-    print("  quiche-self run           Run the current project")
-    print("  quiche-self test          Run project tests")
-    print("  quiche-self <file.qrs>    Run a single file script")
+    print(tr("cli.usage.header"))
+    print(tr("cli.usage.new"))
+    print(tr("cli.usage.build"))
+    print(tr("cli.usage.run"))
+    print(tr("cli.usage.test"))
+    print(tr("cli.usage.script"))
     print("")
     print("Flags:")
     print("  --warn               Show compiler warnings")
@@ -378,7 +385,7 @@ def template_main_rs() -> String:
 
 def create_new_project(name: String, is_lib: bool):
     if path_exists(name.clone()):
-        print(strcat("Error: Directory '", name, "' already exists"))
+        print(tr1("cli.error.dir_exists", "name", name))
         return
 
     unwrap_or_exit_unit(create_dir_all(name.clone() + ref("/src")), "Failed to create directory")
@@ -394,7 +401,7 @@ def create_new_project(name: String, is_lib: bool):
         unwrap_or_exit_unit(write_string(name.clone() + ref("/src/main.qrs"), template_main_qrs()), "Failed to write main.qrs")
         unwrap_or_exit_unit(write_string(name.clone() + ref("/src/main.rs"), template_main_rs()), "Failed to write main.rs")
 
-    print(strcat("Created new project: ", name))
+    print(tr1("cli.success.project_created", "name", name))
 
 def run_transpiled_file(filename: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool):
     source = unwrap_or_exit_io(read_to_string(filename.clone()), "Failed to read source file")
@@ -417,7 +424,7 @@ def main():
         i = i + 1
 
     if args.len() == 0:
-        print("Error: No command specified.")
+        print(tr("cli.error.no_command"))
         print_usage()
         exit(1)
 
@@ -444,8 +451,8 @@ def main():
                 print_usage()
                 exit(1)
             if result.positionals.len() < 1:
-                print("Error: Missing project name.")
-                print("Usage: quiche-self new [--lib] <project_name>")
+                print(tr("cli.error.missing_project_name"))
+                print(tr("cli.usage.new"))
                 exit(1)
             name = result.positionals[0]
             is_lib = False
@@ -481,8 +488,8 @@ def main():
                 if not success_run:
                     exit(1)
             else:
-                print("Error: No Cargo.toml found in current directory.")
-                print("To run a single script, use: quiche-self <file.qrs>")
+                print(tr("cli.error.no_cargo_toml"))
+                print(tr("cli.hint.single_script"))
                 exit(1)
             return
 
@@ -511,7 +518,7 @@ def main():
                 if not success_test:
                     exit(1)
             else:
-                print("Error: No tests/runner.qrs or Cargo.toml found.")
+                print(tr("cli.error.no_tests_found"))
                 exit(1)
             return
         
@@ -530,7 +537,7 @@ def main():
 
     if cmd.ends_with(ref(".qrs")):
         if not path_exists(cmd.clone()):
-            print(concat3("Error: File '", ref(cmd), "' not found."))
+            print(tr1("cli.error.file_not_found", "file", cmd))
             exit(1)
         parser = build_flag_parser(False)
         rest: Vec[String] = []
@@ -562,7 +569,7 @@ def main():
         run_transpiled_file(cmd.clone(), result.positionals, False, False, True, flags.warn, flags.strict, flags.warn_quiche)
         return
 
-    print(concat3("Error: Unrecognized command or file '", ref(cmd), "'"))
+    print(tr1("cli.error.unrecognized_command", "cmd", cmd))
     print("")
     print_usage()
     exit(1)

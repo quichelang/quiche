@@ -1,3 +1,5 @@
+pub mod re;
+
 // High Priority: Consumes Self (Result/Option)
 pub trait QuicheResult {
     type Output;
@@ -10,7 +12,10 @@ impl<T, E: std::fmt::Display> QuicheResult for Result<T, E> {
         match self {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("Quiche Error: {}", e);
+                eprintln!(
+                    "{}",
+                    metaquiche_shared::i18n::tr1("runtime.error.generic", "error", &e.to_string())
+                );
                 std::process::exit(1);
             }
         }
@@ -202,7 +207,10 @@ impl<T: Clone> QuicheDeref for Option<Box<T>> {
         match self.as_ref() {
             Some(v) => v.as_ref().clone(),
             None => {
-                eprintln!("Quiche Error: deref None (attempted to dereference an empty Option)");
+                eprintln!(
+                    "{}",
+                    metaquiche_shared::i18n::tr("runtime.error.deref_none")
+                );
                 std::process::exit(1);
             }
         }

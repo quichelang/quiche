@@ -246,6 +246,20 @@ pub mod quiche {
     pub fn env_args_helper() -> Vec<String> {
         std::env::args().collect()
     }
+
+    // ========================================================================
+    // i18n bridge functions - Expose translation capabilities to Quiche code
+    // ========================================================================
+
+    /// Translate a simple key (no interpolation)
+    pub fn tr(key: impl AsRef<str>) -> String {
+        metaquiche_shared::i18n::tr(key.as_ref())
+    }
+
+    /// Translate with a single named argument
+    pub fn tr1(key: impl AsRef<str>, name: impl AsRef<str>, value: impl AsRef<str>) -> String {
+        metaquiche_shared::i18n::tr1(key.as_ref(), name.as_ref(), value.as_ref())
+    }
 }
 pub use compiler::extern_defs;
 

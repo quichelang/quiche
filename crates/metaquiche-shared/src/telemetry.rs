@@ -11,6 +11,8 @@
 
 use std::fmt;
 
+use crate::i18n::t;
+
 /// Severity level of a diagnostic
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticLevel {
@@ -23,10 +25,10 @@ pub enum DiagnosticLevel {
 impl fmt::Display for DiagnosticLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DiagnosticLevel::Error => write!(f, "error"),
-            DiagnosticLevel::Warning => write!(f, "warning"),
-            DiagnosticLevel::Note => write!(f, "note"),
-            DiagnosticLevel::Help => write!(f, "help"),
+            DiagnosticLevel::Error => write!(f, "{}", t!("diagnostic.level.error")),
+            DiagnosticLevel::Warning => write!(f, "{}", t!("diagnostic.level.warning")),
+            DiagnosticLevel::Note => write!(f, "{}", t!("diagnostic.level.note")),
+            DiagnosticLevel::Help => write!(f, "{}", t!("diagnostic.level.help")),
         }
     }
 }
@@ -182,7 +184,7 @@ impl Emitter {
 
     /// Print header for compilation failure
     pub fn print_failed_header(filename: &str) {
-        eprintln!("error: Failed to compile `{}`\n", filename);
+        eprint!("{}", t!("diagnostic.compile_failed", file = filename));
     }
 }
 
@@ -221,7 +223,7 @@ pub fn format_diagnostic(diag: &Diagnostic, ctx: Option<&CompileContext>) -> Str
 
     // Help message if available
     if let Some(help) = &diag.help {
-        output.push_str(&format!("   = help: {}\n", help));
+        output.push_str(&t!("diagnostic.help_prefix", message = help));
     }
 
     output

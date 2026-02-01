@@ -114,7 +114,6 @@ class Drawable(Trait):
             _ => panic!("Expected RustBlock"),
         }
     }
-
     #[test]
     fn test_impl_parsing() {
         let source = r#"

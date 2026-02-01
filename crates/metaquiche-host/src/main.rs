@@ -2,6 +2,7 @@
 
 use metaquiche_host::compile;
 use metaquiche_shared::error_exit::UnwrapOrExit;
+use metaquiche_shared::i18n::{tr, tr1};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -12,7 +13,7 @@ use metaquiche_shared::template as templates;
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!("Error: No command specified.");
+        eprintln!("{}", tr("cli.error.no_command"));
         print_usage();
         std::process::exit(1);
     }
@@ -20,14 +21,14 @@ fn main() {
     match args[1].as_str() {
         "new" => {
             if args.len() < 3 {
-                eprintln!("Error: Missing project name.");
-                println!("Usage: quiche new [--lib] <project_name>");
+                eprintln!("{}", tr("cli.error.missing_project_name"));
+                println!("{}", tr("cli.usage.new"));
                 std::process::exit(1);
             }
             if args[2] == "--lib" {
                 if args.len() < 4 {
-                    eprintln!("Error: Missing project name.");
-                    println!("Usage: quiche new --lib <project_name>");
+                    eprintln!("{}", tr("cli.error.missing_project_name"));
+                    println!("{}", tr("cli.usage.new_lib"));
                     std::process::exit(1);
                 }
                 create_new_project(&args[3], true);
@@ -46,8 +47,8 @@ fn main() {
             if Path::new("Cargo.toml").exists() {
                 run_cargo_command("run", &rest);
             } else {
-                eprintln!("Error: No Cargo.toml found in current directory.");
-                eprintln!("To run a single script, use: quiche <file.qrs>");
+                eprintln!("{}", tr("cli.error.no_cargo_toml"));
+                eprintln!("{}", tr("cli.hint.single_script"));
                 std::process::exit(1);
             }
         }
@@ -78,14 +79,14 @@ fn main() {
             } else if Path::new("Cargo.toml").exists() {
                 run_cargo_command("test", &rest);
             } else {
-                eprintln!("Error: No tests/runner.qrs or Cargo.toml found.");
+                eprintln!("{}", tr("cli.error.no_tests_found"));
                 std::process::exit(1);
             }
         }
         arg => {
             if arg.ends_with(".qrs") {
                 if !Path::new(arg).exists() {
-                    eprintln!("Error: File '{}' not found.", arg);
+                    eprintln!("{}", tr1("cli.error.file_not_found", "file", arg));
                     std::process::exit(1);
                 }
                 let (warn, strict, warn_all, warn_quiche, emit_rust, rest) =
@@ -100,16 +101,16 @@ fn main() {
                     arg, &rest, false, false, false, warn, strict, emit_rust,
                 );
             } else {
-                eprintln!("Error: Unrecognized command or file '{}'", arg);
+                eprintln!("{}", tr1("cli.error.unrecognized_command", "cmd", arg));
                 if Path::new(arg).exists() {
-                    eprintln!("Note: Quiche scripts must end with .qrs extension.");
+                    eprintln!("{}", tr("cli.note.qrs_extension"));
                 } else {
                     // Simple suggestions
                     let cmds = ["new", "build", "run", "test"];
                     for cmd in cmds {
                         // Check for common typo (1 char off) - manually or just prefix
                         if cmd.starts_with(arg) || arg.starts_with(cmd) {
-                            eprintln!("Did you mean '{}'?", cmd);
+                            eprintln!("{}", tr1("cli.hint.did_you_mean", "suggestion", cmd));
                             break;
                         }
                     }
@@ -123,12 +124,12 @@ fn main() {
 }
 
 fn print_usage() {
-    println!("Usage:");
-    println!("  quiche new <name>    Create a new Quiche project");
-    println!("  quiche build         Build the current project");
-    println!("  quiche run           Run the current project");
-    println!("  quiche test          Run project tests");
-    println!("  quiche <file.qrs>    Run a single file script");
+    println!("{}", tr("cli.usage.header"));
+    println!("{}", tr("cli.usage.new"));
+    println!("{}", tr("cli.usage.build"));
+    println!("{}", tr("cli.usage.run"));
+    println!("{}", tr("cli.usage.test"));
+    println!("{}", tr("cli.usage.script"));
     println!();
     println!("Flags:");
     println!("  --warn               Show compiler warnings");
@@ -141,7 +142,7 @@ fn print_usage() {
 fn create_new_project(name: &str, is_lib: bool) {
     let path = Path::new(name);
     if path.exists() {
-        println!("Error: Directory '{}' already exists", name);
+        println!("{}", tr1("cli.error.dir_exists", "name", name));
         return;
     }
 
@@ -222,7 +223,7 @@ fn create_new_project(name: &str, is_lib: bool) {
         .with_error("Failed to write main.rs");
     }
 
-    println!("Created new project: {}", name);
+    println!("{}", tr1("cli.success.project_created", "name", name));
 }
 
 fn run_cargo_command(cmd: &str, args: &[String]) {
@@ -397,7 +398,7 @@ mod quiche {
             .with_error("Failed to write temp Rust file");
 
         if !quiet {
-            println!("--- Compiling and Running ---");
+            println!("{}", tr("cli.info.compiling"));
         }
         let mut rustc = Command::new("rustc");
         rustc
@@ -423,7 +424,7 @@ mod quiche {
             .with_error("Failed to run rustc");
 
         if !status.success() {
-            println!("Compilation failed: {}", filename);
+            println!("{}", tr1("cli.error.compilation_failed", "error", filename));
             std::process::exit(status.code().unwrap_or(1));
         }
 

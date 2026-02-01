@@ -283,8 +283,12 @@ fn lower_function_def(f: ast::StmtFunctionDef) -> Result<QuicheStmt, ParseError>
                     Box::new(lower_expr(*e).unwrap_or_else(|err| {
                         // Handle error or provide a default/placeholder expression
                         eprintln!(
-                            "Warning: Failed to lower function argument annotation: {}",
-                            err
+                            "{}",
+                            metaquiche_shared::i18n::tr1(
+                                "parser.warning.arg_annotation_failed",
+                                "error",
+                                &err.to_string()
+                            )
                         );
                         QuicheExpr::Name("ErrorType".to_string()) // Placeholder
                     }))
@@ -304,8 +308,12 @@ fn lower_function_def(f: ast::StmtFunctionDef) -> Result<QuicheStmt, ParseError>
         returns: f.returns.map(|e| {
             Box::new(lower_expr(*e).unwrap_or_else(|err| {
                 eprintln!(
-                    "Warning: Failed to lower function return annotation: {}",
-                    err
+                    "{}",
+                    metaquiche_shared::i18n::tr1(
+                        "parser.warning.return_annotation_failed",
+                        "error",
+                        &err.to_string()
+                    )
                 );
                 QuicheExpr::Name("ErrorType".to_string()) // Placeholder
             }))

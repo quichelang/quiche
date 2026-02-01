@@ -7,3 +7,5 @@ edition = "2024"
 workspace = true
 
 [dependencies]
+metaquiche-shared = { path = "../metaquiche-shared" }
+regex = "1"

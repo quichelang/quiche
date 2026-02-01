@@ -304,4 +304,5 @@ pub struct AssertStmt {
     pub test: Box<QuicheExpr>,
     pub msg: Option<Box<QuicheExpr>>,
 }
-pub type Expr = QuicheExpr; pub type Stmt = QuicheStmt;
+pub type Expr = QuicheExpr;
+pub type Stmt = QuicheStmt;
