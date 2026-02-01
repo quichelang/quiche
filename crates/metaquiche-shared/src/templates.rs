@@ -71,13 +71,37 @@ impl Templates {
                 continue;
             }
 
-            // Start of content block
+            // Single-line content (content = "..." or content = '...')
+            if (line.starts_with("content = \"") || line.starts_with("content = '")) && !in_content
+            {
+                let quote_char = if line.starts_with("content = \"") {
+                    '"'
+                } else {
+                    '\''
+                };
+                // Use if-let to avoid panicking on index errors
+                if let Some(first_quote_idx) = line.find(quote_char) {
+                    let content_start = first_quote_idx + 1;
+                    if let Some(content_end) = line[content_start..].rfind(quote_char) {
+                        let raw_content = &line[content_start..content_start + content_end];
+                        // Unescape common escape sequences
+                        let unescaped = raw_content
+                            .replace("\\n", "\n")
+                            .replace("\\\"", "\"")
+                            .replace("\\'", "'");
+                        content_lines.push(unescaped.leak());
+                    }
+                }
+                continue;
+            }
+
+            // Start of multi-line content block
             if line.starts_with("content = '''") && !in_content {
                 in_content = true;
                 continue;
             }
 
-            // End of content block
+            // End of multi-line content block
             if line == "'''" && in_content {
                 in_content = false;
                 continue;
@@ -188,6 +212,14 @@ pub fn templates() -> &'static Templates {
 pub fn get_and_render(name: &str, vars: &[(&str, &str)]) -> String {
     let content = templates().get_content(name);
     render(content, vars)
+}
+
+/// Get raw template content by key, or empty string if not found
+/// This allow wrappers to decide how to handle missing keys (e.g. panic)
+pub fn codegen_template(name: &str) -> Option<&'static str> {
+    // Automatically prepend "codegen." namespace
+    let full_name = format!("codegen.{}", name);
+    templates().get(&full_name).map(|t| t.content.as_str())
 }
 
 #[cfg(test)]

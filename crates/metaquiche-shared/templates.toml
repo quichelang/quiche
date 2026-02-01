@@ -5,7 +5,7 @@
 # Template syntax: {{key}} is replaced with provided value
 # Multiline strings use TOML's triple-quoted literal strings
 
-[cargo_toml]
+[codegen.project_cargo_toml]
 description = "Generated Cargo.toml for Quiche projects"
 content = '''
 [package]
@@ -17,12 +17,14 @@ edition = "2024"
 [workspace]
 
 [build-dependencies]
-quiche-compiler = { path = "{{compiler_path}}" }
+quiche_compiler = { path = "{{compiler_path}}" }
 
 [dependencies]
+quiche-runtime = { path = "../quiche-runtime" } # TODO: Make relative path smarter or use registry
+{{extra_sections}}
 '''
 
-[cargo_toml_lib_section]
+[codegen.project_cargo_toml_lib_section]
 description = "Additional section for library crates"
 content = '''
 
@@ -30,7 +32,7 @@ content = '''
 path = "src/lib.rs"
 '''
 
-[cargo_toml_bin_section]
+[codegen.project_cargo_toml_bin_section]
 description = "Additional section for binary crates"
 content = '''
 
@@ -39,7 +41,7 @@ name = "{{name}}"
 path = "src/main.rs"
 '''
 
-[build_rs]
+[codegen.project_build_rs]
 description = "Generated build.rs for Quiche projects"
 content = '''
 use std::env;
@@ -221,3 +223,381 @@ content = '''
 use crate::quiche as quiche_runtime;
 {{user_code}}
 '''
+
+# ============================================================================
+# CODEGEN TEMPLATES - Shared strings for code generation parity
+# These templates ensure host and native compilers emit identical code
+# ============================================================================
+
+[codegen]
+description = "Code generation string templates for compiler parity"
+
+# Statement patterns
+[codegen.function_def_start]
+content = "pub fn "
+
+[codegen.function_def_end]
+content = "}\n\n"
+
+[codegen.class_def_end]
+content = "}\n\n"
+
+[codegen.match_end]
+content = "}\n"
+
+# Docstring pattern
+[codegen.docstring_start]
+content = '#![doc = "'
+
+[codegen.docstring_end]
+content = '"]\n'
+
+# Type annotation patterns
+[codegen.return_arrow]
+content = " -> "
+
+[codegen.type_param_start]
+content = "<"
+
+[codegen.type_param_end]
+content = ">"
+
+[codegen.type_param_sep]
+content = ", "
+
+# Reference operators - these transcribe Quiche to Rust macros
+[codegen.ref_macro]
+content = "qref!"
+
+[codegen.mutref_macro]
+content = "mutref!"
+
+[codegen.deref_macro]
+content = "deref!"
+
+[codegen.strcat_macro]
+content = "strcat!"
+
+# Control flow
+[codegen.break_stmt]
+content = "break;\n"
+
+[codegen.continue_stmt]
+content = "continue;\n"
+
+# Pattern matching
+[codegen.wildcard]
+content = "_"
+
+[codegen.pattern_struct_end]
+content = ", .. }"
+
+[codegen.pattern_struct_empty]
+content = " { .. }"
+
+# Literals
+[codegen.none_literal]
+content = "None"
+
+[codegen.true_literal]
+content = "true"
+
+[codegen.false_literal]
+content = "false"
+
+# Operators
+[codegen.namespace_sep]
+content = "::"
+
+[codegen.field_access]
+content = "."
+
+[codegen.reference_op]
+content = "&"
+
+# Collections
+[codegen.vec_new]
+content = "Vec::new()"
+
+[codegen.hashmap_new]
+content = "std::collections::HashMap::new()"
+
+[codegen.vec_turbofish_start]
+content = "Vec::<"
+
+[codegen.vec_turbofish_end]
+content = ">::new()"
+[codegen.project_lib_qrs]
+content = '''
+
+def hello():
+    print("Hello from Lib!")
+'''
+
+[codegen.project_main_qrs]
+content = '''
+
+def main():
+    print("Hello, Quiche!")
+'''
+
+[codegen.project_lib_rs]
+content = '''
+#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+
+use quiche_runtime::*;
+use quiche_runtime::check;
+
+// Re-export everything from the transpiled module
+include!(concat!(env!("OUT_DIR"), "/lib.rs"));
+'''
+
+[codegen.project_main_rs]
+content = '''
+#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+
+use quiche_runtime::*;
+use quiche_runtime::check;
+
+include!(concat!(env!("OUT_DIR"), "/main.rs"));
+'''
+# Methods & Misc
+[codegen.len_sub]
+content = ".len() - "
+
+[codegen.clone_call]
+content = ".clone()"
+
+[codegen.close_bracket_clone]
+content = "].clone()"
+
+[codegen.question_mark]
+content = "?"
+
+# Punctuation & Delimiters
+[codegen.nop]
+content = ""
+
+[codegen.space]
+content = " "
+
+[codegen.underscore]
+content = "_"
+
+[codegen.comma]
+content = ","
+
+[codegen.comma_sep]
+content = ", "
+
+[codegen.colon_sep]
+content = ": "
+
+[codegen.semicolon]
+content = ";"
+
+[codegen.lparen]
+content = "("
+
+[codegen.rparen]
+content = ")"
+
+[codegen.lbrace]
+content = "{"
+
+[codegen.rbrace]
+content = "}"
+
+[codegen.lbracket]
+content = "["
+
+[codegen.rbracket]
+content = "]"
+
+[codegen.quote]
+content = "\""
+
+[codegen.assign_op]
+content = " = "
+
+[codegen.arrow]
+content = " -> "
+
+[codegen.range_op]
+content = ".."
+
+[codegen.newline]
+content = "\n"
+
+# Rust Keywords
+[codegen.kw_pub]
+content = "pub "
+
+[codegen.kw_fn]
+content = "fn "
+
+[codegen.kw_let]
+content = "let "
+
+[codegen.kw_mut]
+content = "mut "
+
+[codegen.kw_let_mut]
+content = "let mut "
+
+[codegen.kw_if]
+content = "if "
+
+[codegen.kw_else]
+content = "else "
+
+[codegen.kw_match]
+content = "match "
+
+[codegen.kw_while]
+content = "while "
+
+[codegen.kw_for]
+content = "for "
+
+[codegen.kw_in]
+content = "in "
+
+[codegen.kw_return]
+content = "return "
+
+[codegen.kw_impl]
+content = "impl "
+
+[codegen.kw_struct]
+content = "struct "
+
+[codegen.kw_enum]
+content = "enum "
+
+[codegen.kw_type]
+content = "type "
+
+[codegen.kw_ref]
+content = "ref "
+
+[codegen.kw_use]
+content = "use "
+
+[codegen.kw_mod]
+content = "mod "
+
+[codegen.kw_as]
+content = " as "
+
+[codegen.kw_crate]
+content = "crate::"
+
+[codegen.kw_super]
+content = "super::"
+
+[codegen.kw_pub_use]
+content = "pub use "
+
+[codegen.kw_pub_fn]
+content = "pub fn "
+
+[codegen.kw_pub_type]
+content = "pub type "
+
+[codegen.kw_pub_struct]
+content = "pub struct "
+
+[codegen.kw_pub_enum]
+content = "pub enum "
+
+[codegen.kw_derive_clone_debug]
+content = "#[derive(Clone, Debug)]\n"
+
+[codegen.kw_derive_clone_debug_default]
+content = "#[derive(Clone, Debug, Default)]\n"
+
+# Operators (Rust)
+[codegen.op_add]
+content = "+"
+
+[codegen.op_sub]
+content = "-"
+
+[codegen.op_mul]
+content = "*"
+
+[codegen.op_div]
+content = "/"
+
+[codegen.op_rem]
+content = "%"
+
+[codegen.op_bitand]
+content = "&"
+
+[codegen.op_bitor]
+content = "|"
+
+[codegen.op_bitxor]
+content = "^"
+
+[codegen.op_shl]
+content = "<<"
+
+[codegen.op_shr]
+content = ">>"
+
+[codegen.op_eq]
+content = "=="
+
+[codegen.op_ne]
+content = "!="
+
+[codegen.op_lt]
+content = "<"
+
+[codegen.op_le]
+content = "<="
+
+[codegen.op_gt]
+content = ">"
+
+[codegen.op_ge]
+content = ">="
+
+[codegen.op_and]
+content = "&&"
+
+[codegen.op_or]
+content = "||"
+
+[codegen.op_not]
+content = "!"
+
+# Std Lib
+[codegen.string_from_start]
+content = "String::from(\""
+
+[codegen.string_from_end]
+content = "\")"
+
+[codegen.std_process_exit]
+content = "std::process::exit("
+
+[codegen.println_start]
+content = "println!(\""
+
+[codegen.format_arg]
+content = "{}"
+
+[codegen.assert_start]
+content = "assert!("
+
+[codegen.assert_msg_sep]
+content = ", \"{:?}\", "
+
+# GEMINI.md guideline for templates
+# All strings emitted during code generation should be defined in this file
+# to ensure host and native compilers produce byte-identical output.
+

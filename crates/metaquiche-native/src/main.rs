@@ -36,7 +36,67 @@ pub mod quiche {
     }
 
     pub fn dedup_shadowed_let_mut(s: impl AsRef<str>) -> String {
-        s.as_ref().to_string()
+        use std::collections::HashSet;
+        let code = s.as_ref();
+        let mut out = String::new();
+        let mut scopes: Vec<HashSet<String>> = vec![HashSet::new()];
+
+        for line in code.lines() {
+            let mut line_out = line.to_string();
+
+            for ch in line.chars() {
+                if ch == '}' && scopes.len() > 1 {
+                    scopes.pop();
+                }
+            }
+
+            let mut search_start = 0;
+            loop {
+                if let Some(idx) = line_out[search_start..].find("let mut ") {
+                    let abs_idx = search_start + idx;
+                    let name_start = abs_idx + "let mut ".len();
+                    let mut name_end = name_start;
+                    for (i, c) in line_out[name_start..].char_indices() {
+                        if c.is_alphanumeric() || c == '_' {
+                            name_end = name_start + i + c.len_utf8();
+                        } else {
+                            break;
+                        }
+                    }
+                    if name_end == name_start {
+                        search_start = name_start;
+                        continue;
+                    }
+
+                    let name = line_out[name_start..name_end].to_string();
+                    let shadowed = scopes
+                        .iter()
+                        .take(scopes.len().saturating_sub(1))
+                        .any(|s| s.contains(&name));
+                    if shadowed {
+                        line_out.replace_range(abs_idx..name_start, "");
+                    } else if let Some(cur) = scopes.last_mut() {
+                        cur.insert(name);
+                    }
+                    search_start = name_end;
+                } else {
+                    break;
+                }
+            }
+
+            for ch in line.chars() {
+                if ch == '{' {
+                    scopes.push(HashSet::new());
+                }
+            }
+
+            out.push_str(&line_out);
+            out.push('\n');
+        }
+
+        // Normalize trailing whitespace to single newline
+        let trimmed = out.trim_end();
+        format!("{}\n", trimmed)
     }
 
     pub fn module_join(a: impl AsRef<str>, b: impl AsRef<str>) -> String {

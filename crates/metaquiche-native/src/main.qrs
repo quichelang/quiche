@@ -5,6 +5,12 @@ from compiler.codegen import Codegen
 from rust.parsley_qrs import Parsley
 from std.collections import HashMap
 from std.any import Any
+from std.io import Error as IoError
+
+# Unit type alias for Rust ()
+@extern(path="()", no_generic=True)
+class Unit:
+    pass
 
 @extern(path="std::string::String", no_generic=True)
 class RustString:
@@ -12,7 +18,7 @@ class RustString:
     def push_str(self, s: StrRef): pass
     def clone(self) -> RustString: pass
 
-@extern(path="ruff_python_parser::ParseError", no_generic=True)
+@extern(path="quiche_parser::parser::ParseError", no_generic=True)
 class ParseError:
     pass
 
@@ -24,10 +30,47 @@ def parse_module(source: StrRef) -> Result[QuicheModule, ParseError]:
 def env_args() -> Vec[String]: pass
 
 @extern(path="std::fs::read_to_string")
-def read_to_string(path: String) -> String: pass 
+def read_to_string(path: String) -> Result[String, IoError]: pass 
 
 @extern(path="std::process::exit")
 def exit(code: i32): pass
+
+# --- Error Handling Helpers ---
+# unwrap_or_exit_io: Unwrap Result[String, IoError] or print error and exit
+def unwrap_or_exit_io(result: Result[String, IoError], msg: String) -> String:
+    match result:
+        case Ok(v): return v
+        case Err(e):
+            print(msg + ": " + e.to_string())
+            exit(1)
+    return ""  # unreachable
+
+# unwrap_or_exit_parse: Unwrap Result[QuicheModule, ParseError] or print error and exit
+def unwrap_or_exit_parse(result: Result[QuicheModule, ParseError], msg: String) -> QuicheModule:
+    match result:
+        case Ok(v): return v
+        case Err(e):
+            print(msg)
+            exit(1)
+    # Create dummy module for unreachable path
+    match result:
+        case Ok(v): return v
+        case _: exit(1)
+    exit(1)
+
+# unwrap_or_exit_unit: Unwrap Result[(), IoError] or print error and exit
+def unwrap_or_exit_unit(result: Result[Unit, IoError], msg: String):
+    match result:
+        case Ok(_): pass
+        case Err(e):
+            print(msg + ": " + e.to_string())
+            exit(1)
+
+# unwrap_or_default_io: Unwrap Result[String, IoError] or return default value
+def unwrap_or_default_io(result: Result[String, IoError], default: String) -> String:
+    match result:
+        case Ok(v): return v
+        case Err(_): return default
 
 @extern(path="crate::quiche::path_dirname")
 def path_dirname(path: String) -> String: pass
@@ -47,14 +90,18 @@ def dedup_shadowed_let_mut(code: String) -> String: pass
 @extern(path="crate::quiche::module_join")
 def module_join(base: String, sub: String) -> String: pass
 
+# Template accessor functions for codegen parity
+@extern(path="crate::quiche::codegen_template")
+def codegen_template(key: String) -> String: pass
+
 @extern(path="crate::quiche::path_exists")
 def path_exists(path: String) -> bool: pass
 
 @extern(path="crate::quiche::create_dir_all")
-def create_dir_all(path: String): pass
+def create_dir_all(path: String) -> Result[Unit, IoError]: pass
 
 @extern(path="crate::quiche::write_string")
-def write_string(path: String, contents: String): pass
+def write_string(path: String, contents: String) -> Result[Unit, IoError]: pass
 
 @extern(path="crate::quiche::set_env_var")
 def set_env_var(key: String, value: String): pass
@@ -147,9 +194,8 @@ def collect_module_exports(module_index: HashMap[String, String], module_path: S
     exports = HashMap[String, String].new()
     match module_index.get(ref(module_path)):
         case Some(path):
-            source = read_to_string(path.clone())
-            parsed = parse_module(source.as_str())
-            module = parsed
+            source = unwrap_or_exit_io(read_to_string(path.clone()), "Failed to read module")
+            module = unwrap_or_exit_parse(parse_module(source.as_str()), "Failed to parse module")
             for stmt in module.body:
                 match stmt:
                     case Stmt.ClassDef(c):
@@ -240,10 +286,8 @@ def normalize_module_path(module_path: String) -> String:
 # --- Main ---
 
 def compile_source_to_string(source: String, filename: String, warn_quiche: bool, strict: bool) -> String:
-    # Ruff parse_module does not take filename in simple API
-    # check! macro unwraps Result automatically for us in host compiler
-    parsed = parse_module(source.as_str())
-    module = parsed
+    # Parse source with explicit error handling
+    module = unwrap_or_exit_parse(parse_module(source.as_str()), "Failed to parse source")
     stmts = module.body
 
     root_dir = path_dirname(filename.clone())
@@ -309,54 +353,51 @@ def template_quiche_toml(name: String) -> String:
     return "[package]\nname = \"" + name.as_str() + ref("\"\nversion = \"0.1.0\"\n")
 
 def template_cargo_toml(name: String, is_lib: bool, compiler_path: String) -> String:
-    s = "[package]\nname = \"" + name.as_str() + ref("\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n")
-    s = s + ref("# Break out of any parent workspace\n[workspace]\n\n")
-    s = s + ref("[build-dependencies]\nquiche_compiler = { path = \"") + compiler_path.as_str() + ref("\" }\n\n")
-    s = s + ref("[dependencies]\n")
-    s = s + ref("quiche-runtime = { path = \"../quiche-runtime\" }\n")  # TODO: Make relative path smarter or use registry
+    extra = ""
     if is_lib:
-        s = s + ref("\n[lib]\npath = \"src/lib.rs\"\n")
+        extra = codegen_template("project_cargo_toml_lib_section")
     else:
-        s = s + ref("\n[[bin]]\nname = \"") + name.as_str() + ref("\"\npath = \"src/main.rs\"\n")
-    return s
+        extra = codegen_template("project_cargo_toml_bin_section").replace(ref("{{name}}"), ref(name.as_str()))
+    
+    return codegen_template("project_cargo_toml").replace(ref("{{name}}"), ref(name.as_str())).replace(ref("{{compiler_path}}"), ref(compiler_path.as_str())).replace(ref("{{extra_sections}}"), ref(extra.as_str()))
 
 def template_build_rs() -> String:
-    return "\nuse std::env;\nuse std::fs;\nuse std::path::Path;\nuse quiche_compiler::compile;\n\nfn main() {\n    println!(\"cargo:rerun-if-changed=src\");\n    let out_dir = env::var(\"OUT_DIR\").unwrap();\n    \n    // Check for lib.qrs or main.qrs\n    let is_lib = Path::new(\"src/lib.qrs\").exists();\n    let source_path = if is_lib { \"src/lib.qrs\" } else { \"src/main.qrs\" };\n    let dest_name = if is_lib { \"lib.rs\" } else { \"main.rs\" };\n    let dest_path = Path::new(&out_dir).join(dest_name);\n\n    if Path::new(source_path).exists() {\n        let source = fs::read_to_string(source_path).expect(\"Read source failed\");\n        let source = source.replace(\"struct \", \"class \");\n        \n        if let Some(rust_code) = compile(&source) {\n            fs::write(&dest_path, rust_code).expect(\"Write output failed\");\n        } else {\n            panic!(\"Compilation failed\");\n        }\n    } else {\n        fs::write(&dest_path, \"\").unwrap();\n    }\n}\n"
+    return codegen_template("project_build_rs")
 
 def template_lib_qrs() -> String:
-    return "\ndef hello():\n    print(\"Hello from Lib!\")\n"
+    return codegen_template("project_lib_qrs")
 
 def template_main_qrs() -> String:
-    return "\ndef main():\n    print(\"Hello, Quiche!\")\n"
+    return codegen_template("project_main_qrs")
 
 def template_lib_rs() -> String:
-    return "\n#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n\nuse quiche_runtime::*;\nuse quiche_runtime::check;\n\n// Re-export everything from the transpiled module\ninclude!(concat!(env!(\"OUT_DIR\"), \"/lib.rs\"));\n"
+    return codegen_template("project_lib_rs")
 
 def template_main_rs() -> String:
-    return "\n#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]\n\nuse quiche_runtime::*;\nuse quiche_runtime::check;\n\ninclude!(concat!(env!(\"OUT_DIR\"), \"/main.rs\"));\n"
+    return codegen_template("project_main_rs")
 
 def create_new_project(name: String, is_lib: bool):
     if path_exists(name.clone()):
-        print(concat3("Error: Directory '", ref(name), "' already exists"))
+        print(strcat("Error: Directory '", name, "' already exists"))
         return
 
-    create_dir_all(name.clone() + ref("/src"))
-    write_string(name.clone() + ref("/Quiche.toml"), template_quiche_toml(name.clone()))
+    unwrap_or_exit_unit(create_dir_all(name.clone() + ref("/src")), "Failed to create directory")
+    unwrap_or_exit_unit(write_string(name.clone() + ref("/Quiche.toml"), template_quiche_toml(name.clone())), "Failed to write Quiche.toml")
     compiler_path = compiler_path_for_new()
-    write_string(name.clone() + ref("/Cargo.toml"), template_cargo_toml(name.clone(), is_lib, compiler_path))
-    write_string(name.clone() + ref("/build.rs"), template_build_rs())
+    unwrap_or_exit_unit(write_string(name.clone() + ref("/Cargo.toml"), template_cargo_toml(name.clone(), is_lib, compiler_path)), "Failed to write Cargo.toml")
+    unwrap_or_exit_unit(write_string(name.clone() + ref("/build.rs"), template_build_rs()), "Failed to write build.rs")
 
     if is_lib:
-        write_string(name.clone() + ref("/src/lib.qrs"), template_lib_qrs())
-        write_string(name.clone() + ref("/src/lib.rs"), template_lib_rs())
+        unwrap_or_exit_unit(write_string(name.clone() + ref("/src/lib.qrs"), template_lib_qrs()), "Failed to write lib.qrs")
+        unwrap_or_exit_unit(write_string(name.clone() + ref("/src/lib.rs"), template_lib_rs()), "Failed to write lib.rs")
     else:
-        write_string(name.clone() + ref("/src/main.qrs"), template_main_qrs())
-        write_string(name.clone() + ref("/src/main.rs"), template_main_rs())
+        unwrap_or_exit_unit(write_string(name.clone() + ref("/src/main.qrs"), template_main_qrs()), "Failed to write main.qrs")
+        unwrap_or_exit_unit(write_string(name.clone() + ref("/src/main.rs"), template_main_rs()), "Failed to write main.rs")
 
-    print(concat2("Created new project: ", ref(name)))
+    print(strcat("Created new project: ", name))
 
 def run_transpiled_file(filename: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool):
-    source = read_to_string(filename.clone())
+    source = unwrap_or_exit_io(read_to_string(filename.clone()), "Failed to read source file")
     rust_code = compile_source_to_string(source, filename.clone(), warn_quiche, strict)
     # The original instruction had a syntax error and undefined 'success'.
     # Assuming the intent was to ensure exit_code is an i32, and run_rust_code returns an i32.
@@ -511,7 +552,7 @@ def main():
         emit_rust = get_flag_bool(result.flags.clone(), k_er)
 
         if emit_rust:
-             source = read_to_string(cmd.clone())
+             source = unwrap_or_exit_io(read_to_string(cmd.clone()), "Failed to read source file")
              code = compile_source_to_string(source, cmd.clone(), flags.warn_quiche, flags.strict)
              print_stdout(code)
              return
