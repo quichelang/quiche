@@ -270,6 +270,7 @@ pub fn concat4(
     format!("{}{}{}{}", a.as_ref(), b.as_ref(), c.as_ref(), d.as_ref())
 }
 
+use metaquiche_shared::error_exit::UnwrapOrExit;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -375,7 +376,9 @@ pub fn create_dir_all(path: String) {
 }
 
 pub fn write_string(path: String, contents: String) {
-    std::fs::write(path, contents).expect("Failed to write file");
+    std::fs::write(path, contents)
+        .unwrap_or_exit()
+        .with_error("Failed to write file");
 }
 
 pub fn print_stdout(s: String) {
@@ -398,7 +401,8 @@ pub fn current_exe_path() -> String {
 pub fn compiler_path_for_new() -> String {
     let compiler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .unwrap()
+        .unwrap_or_exit()
+        .with_error("No parent directory")
         .join("compiler")
         .canonicalize()
         .unwrap_or_else(|_| Path::new("../crates/compiler").to_path_buf());
@@ -410,7 +414,8 @@ pub fn run_cargo_command(cmd: String, args: Vec<String>) -> i32 {
         .arg(cmd)
         .args(args.iter())
         .status()
-        .expect("Failed to run cargo");
+        .unwrap_or_exit()
+        .with_error("Failed to run cargo");
     if status.success() {
         0
     } else {
@@ -451,7 +456,9 @@ pub fn run_rust_code(
         std::fs::create_dir("target").ok();
     }
     let tmp_rs = "target/tmp.rs";
-    std::fs::write(tmp_rs, full_code).expect("Failed to write temp Rust file");
+    std::fs::write(tmp_rs, full_code)
+        .unwrap_or_exit()
+        .with_error("Failed to write temp Rust file");
 
     if !quiet {
         println!("--- Compiling and Running ---");
@@ -474,7 +481,10 @@ pub fn run_rust_code(
             .stderr(Stdio::null());
     }
 
-    let status = rustc.status().expect("Failed to run rustc");
+    let status = rustc
+        .status()
+        .unwrap_or_exit()
+        .with_error("Failed to run rustc");
     if !status.success() {
         return status.code().unwrap_or(1);
     }
@@ -485,7 +495,8 @@ pub fn run_rust_code(
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
-            .expect("Failed to run binary");
+            .unwrap_or_exit()
+            .with_error("Failed to run binary");
         if !status.success() {
             return status.code().unwrap_or(1);
         }
@@ -495,7 +506,8 @@ pub fn run_rust_code(
     let output = Command::new("./target/tmp_bin")
         .args(script_args.iter())
         .output()
-        .expect("Failed to run binary");
+        .unwrap_or_exit()
+        .with_error("Failed to run binary");
 
     if raw_output {
         print!("{}", String::from_utf8_lossy(&output.stdout));

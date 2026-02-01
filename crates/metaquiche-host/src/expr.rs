@@ -120,12 +120,13 @@ impl Codegen {
             } => {
                 {
                     use std::io::Write;
-                    let mut f = std::fs::OpenOptions::new()
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
                         .append(true)
                         .create(true)
                         .open("/tmp/quiche_debug.txt")
-                        .unwrap();
-                    writeln!(f, "Func: {:?}", func).ok();
+                    {
+                        writeln!(f, "Func: {:?}", func).ok();
+                    }
                 }
                 // 0. Special Case: Direct Lambda Calls
                 if let ast::QuicheExpr::Lambda { .. } = *func {
@@ -289,12 +290,13 @@ impl Codegen {
                 let is_constr = if let Some(cls) = self.current_class.clone() {
                     {
                         use std::io::Write;
-                        let mut f = std::fs::OpenOptions::new()
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
                             .append(true)
                             .create(true)
                             .open("/tmp/quiche_debug.txt")
-                            .unwrap();
-                        writeln!(f, "Checking Constr: cls={} constr={}", cls, attr).ok();
+                        {
+                            writeln!(f, "Checking Constr: cls={} constr={}", cls, attr).ok();
+                        }
                     }
                     cls == attr.to_string()
                 } else {

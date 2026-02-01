@@ -1,7 +1,7 @@
 // Legacy host compiler CLI - will be deprecated in favor of metaquiche-native
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use metaquiche_host::compile;
+use metaquiche_shared::error_exit::UnwrapOrExit;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -145,23 +145,27 @@ fn create_new_project(name: &str, is_lib: bool) {
         return;
     }
 
-    fs::create_dir_all(path.join("src")).expect("Failed to create src dir");
+    fs::create_dir_all(path.join("src"))
+        .unwrap_or_exit()
+        .with_error("Failed to create src dir");
 
     fs::write(
         path.join("Quiche.toml"),
         templates::get_and_render("quiche_toml", &[("name", name)]),
     )
-    .expect("Failed to write Quiche.toml");
+    .unwrap_or_exit()
+    .with_error("Failed to write Quiche.toml");
     // Determine path to compiler crate (relative to CLI crate which is compiled)
     // CARGO_MANIFEST_DIR points to crates/cli
     let compiler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .unwrap()
+        .unwrap_or_exit()
+        .with_error("No parent directory")
         .join("compiler")
         .canonicalize()
         .unwrap_or_else(|_| Path::new("../crates/compiler").to_path_buf());
 
-    let compiler_path_str = compiler_path.to_str().unwrap().replace("\\", "/");
+    let compiler_path_str = compiler_path.to_str().unwrap_or("").replace("\\", "/");
     // Escape backslashes for Windows path in string literal if needed, but Cargo handles / fine.
 
     // Generate Cargo.toml
@@ -178,12 +182,15 @@ fn create_new_project(name: &str, is_lib: bool) {
         ));
     }
 
-    fs::write(path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
+    fs::write(path.join("Cargo.toml"), cargo_toml)
+        .unwrap_or_exit()
+        .with_error("Failed to write Cargo.toml");
     fs::write(
         path.join("build.rs"),
         templates::templates().get_content("build_rs"),
     )
-    .expect("Failed to write build.rs");
+    .unwrap_or_exit()
+    .with_error("Failed to write build.rs");
 
     let quiche_module = templates::templates().get_content("quiche_module");
 
@@ -192,23 +199,27 @@ fn create_new_project(name: &str, is_lib: bool) {
             path.join("src/lib.qrs"),
             templates::templates().get_content("lib_qrs"),
         )
-        .expect("Failed to write lib.qrs");
+        .unwrap_or_exit()
+        .with_error("Failed to write lib.qrs");
         fs::write(
             path.join("src/lib.rs"),
             templates::get_and_render("lib_rs_wrapper", &[("quiche_module", quiche_module)]),
         )
-        .expect("Failed to write lib.rs");
+        .unwrap_or_exit()
+        .with_error("Failed to write lib.rs");
     } else {
         fs::write(
             path.join("src/main.qrs"),
             templates::templates().get_content("main_qrs"),
         )
-        .expect("Failed to write main.qrs");
+        .unwrap_or_exit()
+        .with_error("Failed to write main.qrs");
         fs::write(
             path.join("src/main.rs"),
             templates::get_and_render("main_rs_wrapper", &[("quiche_module", quiche_module)]),
         )
-        .expect("Failed to write main.rs");
+        .unwrap_or_exit()
+        .with_error("Failed to write main.rs");
     }
 
     println!("Created new project: {}", name);
@@ -219,7 +230,8 @@ fn run_cargo_command(cmd: &str, args: &[String]) {
         .arg(cmd)
         .args(args)
         .status()
-        .expect("Failed to run cargo");
+        .unwrap_or_exit()
+        .with_error("Failed to run cargo");
 
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));
@@ -380,7 +392,9 @@ mod quiche {
             fs::create_dir("target").ok();
         }
         let tmp_rs = "target/tmp.rs";
-        fs::write(tmp_rs, full_code).expect("Failed to write temp Rust file");
+        fs::write(tmp_rs, full_code)
+            .unwrap_or_exit()
+            .with_error("Failed to write temp Rust file");
 
         if !quiet {
             println!("--- Compiling and Running ---");
@@ -403,7 +417,10 @@ mod quiche {
                 .stderr(Stdio::null());
         }
 
-        let status = rustc.status().expect("Failed to run rustc");
+        let status = rustc
+            .status()
+            .unwrap_or_exit()
+            .with_error("Failed to run rustc");
 
         if !status.success() {
             println!("Compilation failed: {}", filename);
@@ -416,7 +433,8 @@ mod quiche {
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status()
-                .expect("Failed to run binary");
+                .unwrap_or_exit()
+                .with_error("Failed to run binary");
             if !status.success() {
                 std::process::exit(status.code().unwrap_or(1));
             }
@@ -426,7 +444,8 @@ mod quiche {
         let output = Command::new("./target/tmp_bin")
             .args(script_args)
             .output()
-            .expect("Failed to run binary");
+            .unwrap_or_exit()
+            .with_error("Failed to run binary");
 
         if raw_output {
             print!("{}", String::from_utf8_lossy(&output.stdout));
