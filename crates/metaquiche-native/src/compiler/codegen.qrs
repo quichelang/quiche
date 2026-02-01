@@ -136,6 +136,14 @@ class Codegen:
                         self.emit("\"")
                     case q_ast.Constant.Int(i): self.emit(i.to_string())
                     case _: self.emit("_")
+            case q_ast.Pattern.MatchSequence(pats):
+                self.emit("(")
+                first_seq = True
+                for p_seq in pats.clone():
+                    if not first_seq: self.emit(", ")
+                    self.generate_pattern(p_seq)
+                    first_seq = False
+                self.emit(")")
             case _: self.emit("_")
 
     import_kinds: HashMap[String, String]
@@ -1069,6 +1077,31 @@ class Codegen:
         self.emit("]")
 
     def emit_bin_op(self, left: Box[q_ast.Expr], op: q_ast.Operator, right: Box[q_ast.Expr]):
+        # Check if this is an Add operation that might be string concatenation
+        match op:
+            case q_ast.Operator.Add:
+                # Check if any operand looks like a string (literal or involves strings)
+                if self.is_string_expr(deref(left)) or self.is_string_expr(deref(right)):
+                    # Flatten the chain and emit strcat!
+                    left_parts = self.flatten_add_chain(deref(left))
+                    right_parts = self.flatten_add_chain(deref(right))
+                    parts: Vec[q_ast.Expr] = []
+                    for p in left_parts:
+                        parts.push(p)
+                    for p in right_parts:
+                        parts.push(p)
+                    self.emit("crate::quiche::strcat!(")
+                    idx: usize = 0
+                    for part in parts.clone():
+                        if idx > 0:
+                            self.emit(", ")
+                        self.generate_expr(part)
+                        idx = idx + 1
+                    self.emit(")")
+                    return
+            case _:
+                pass
+        # Non-string binary operations: emit normally
         self.generate_expr(deref(left))
         match op:
             case q_ast.Operator.Add: self.emit(" + ")
@@ -1077,6 +1110,45 @@ class Codegen:
             case q_ast.Operator.Div: self.emit(" / ")
             case _: self.emit(" + ")
         self.generate_expr(deref(right))
+    
+    def is_string_expr(self, expr: q_ast.Expr) -> bool:
+        """Check if expression appears to be a string"""
+        match expr:
+            case q_ast.Expr.Constant(c):
+                match c:
+                    case q_ast.Constant.Str(_): return True
+                    case _: return False
+            # Check if it's a BinOp Add containing strings
+            case q_ast.Expr.BinOp(left=left, op=op, right=right):
+                match op:
+                    case q_ast.Operator.Add:
+                        return self.is_string_expr(deref(left)) or self.is_string_expr(deref(right))
+                    case _:
+                        return False
+            case _: return False
+        return False
+    
+    def flatten_add_chain(self, expr: q_ast.Expr) -> Vec[q_ast.Expr]:
+        """Flatten a chain of Add operations into a list of operands"""
+        match expr.clone():
+            case q_ast.Expr.BinOp(left=left, op=op, right=right):
+                match op:
+                    case q_ast.Operator.Add:
+                        # Recursively flatten left and right
+                        left_parts = self.flatten_add_chain(deref(left))
+                        right_parts = self.flatten_add_chain(deref(right))
+                        result: Vec[q_ast.Expr] = []
+                        for p in left_parts:
+                            result.push(p)
+                        for p in right_parts:
+                            result.push(p)
+                        return result
+                    case _:
+                        pass
+            case _:
+                pass
+        # Not an Add operation, return single element
+        return [expr]
 
     def emit_bool_op(self, op: q_ast.BoolOperator, values: Vec[q_ast.Expr]):
         op_str_b = " && "

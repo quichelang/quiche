@@ -71,6 +71,49 @@ pub fn format_ruff_error(error: &ruff_python_parser::ParseError, source: &str) -
     format_error_with_context(&error.to_string(), source)
 }
 
+/// Format a complete compiler error with filename header (Rust-style)
+///
+/// # Arguments
+/// * `filename` - The source file being compiled
+/// * `message` - The error message
+/// * `source` - The source code
+///
+/// # Returns
+/// A fully formatted compile error ready for display
+pub fn format_compile_error(filename: &str, message: &str, source: &str) -> String {
+    // Try to extract byte range and format with context
+    if let Some(byte_offset) = extract_byte_offset(message) {
+        let (line, col) = byte_to_line_col(source, byte_offset);
+        let source_line = source.lines().nth(line.saturating_sub(1)).unwrap_or("");
+
+        // Clean up the message by removing the byte range info
+        let clean_msg = message.split(" at byte range").next().unwrap_or(message);
+
+        format!(
+            "error: Failed to compile `{}`\n\nerror: {}\n  --> {}:{}:{}\n   |\n{:3} | {}\n   | {}^\n",
+            filename,
+            clean_msg,
+            filename,
+            line,
+            col,
+            line,
+            source_line,
+            " ".repeat(col.saturating_sub(1))
+        )
+    } else {
+        format!(
+            "error: Failed to compile `{}`\n\nerror: {}\n",
+            filename, message
+        )
+    }
+}
+
+/// Print a compile error to stderr and exit
+pub fn report_compile_error(filename: &str, message: &str, source: &str) -> ! {
+    eprint!("{}", format_compile_error(filename, message, source));
+    std::process::exit(1);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,7 +136,8 @@ mod tests {
     #[test]
     fn test_format_error_with_context() {
         let source = "def foo():\n    x = 1\n    y";
-        let msg = "Expected something at byte range 20..21";
+        // Byte 21 is the start of line 3
+        let msg = "Expected something at byte range 21..22";
         let result = format_error_with_context(msg, source);
         assert!(result.contains("line 3"));
         assert!(result.contains("y"));

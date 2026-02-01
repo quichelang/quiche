@@ -8,7 +8,7 @@ pub use error_fmt::{byte_to_line_col, format_error_with_context, format_ruff_err
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
-    use super::*;
+
     use crate::ast::*;
     use crate::parser::parse; // Added this line to bring parse into scope
 

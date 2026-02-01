@@ -48,6 +48,36 @@ macro_rules! check {
     }};
 }
 
+/// String concatenation macro - efficient push_str pattern
+///
+/// Quiche code:
+/// ```python
+/// s = "hello" + name + "!"
+/// ```
+///
+/// Generated Rust:
+/// ```rust
+/// use quiche_runtime::strcat;
+/// let name = "world";
+/// let s = strcat!("hello ", name, "!");
+/// assert_eq!(s, "hello world!");
+/// ```
+#[macro_export]
+macro_rules! strcat {
+    // Single argument - just convert to String
+    ($arg:expr) => {
+        ($arg).to_string()
+    };
+    // Multiple arguments - use push_str pattern
+    ($first:expr, $($rest:expr),+ $(,)?) => {{
+        let mut __s = ($first).to_string();
+        $(
+            __s.push_str(&($rest).to_string());
+        )+
+        __s
+    }};
+}
+
 #[derive(Debug, Clone)]
 pub struct QuicheException(pub String);
 

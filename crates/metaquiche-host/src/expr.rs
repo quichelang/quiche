@@ -28,29 +28,48 @@ impl Codegen {
         }
         match expr {
             ast::QuicheExpr::BinOp { left, op, right } => {
-                self.generate_expr(*left);
-                let op_str = match op {
-                    ast::Operator::Add => "+",
-                    ast::Operator::Sub => "-",
-                    ast::Operator::Mult => "*",
-                    ast::Operator::Div => "/",
-                    ast::Operator::Mod => "%",
-                    ast::Operator::Pow => "/* pow */", // standard Rust doesn't use operator for pow
-                    ast::Operator::BitAnd => "&",
-                    ast::Operator::BitOr => "|",
-                    ast::Operator::BitXor => "^",
-                    ast::Operator::LShift => "<<",
-                    ast::Operator::RShift => ">>",
-                    _ => "?",
-                };
-                if op == ast::Operator::Pow {
-                    // TODO: Implement pow via method call or specialized logic if needed
-                    self.output.push_str(".pow(");
-                    self.generate_expr(*right);
+                // Check if this is string concatenation
+                if op == ast::Operator::Add
+                    && (self.is_string_expr(&left) || self.is_string_expr(&right))
+                {
+                    // Flatten the chain and emit strcat!
+                    let mut parts = Vec::new();
+                    self.flatten_add_chain(&left, &mut parts);
+                    self.flatten_add_chain(&right, &mut parts);
+
+                    self.output.push_str("crate::quiche::strcat!(");
+                    for (i, part) in parts.into_iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.generate_expr(part);
+                    }
                     self.output.push_str(")");
                 } else {
-                    self.output.push_str(&format!(" {} ", op_str));
-                    self.generate_expr(*right);
+                    self.generate_expr(*left);
+                    let op_str = match op {
+                        ast::Operator::Add => "+",
+                        ast::Operator::Sub => "-",
+                        ast::Operator::Mult => "*",
+                        ast::Operator::Div => "/",
+                        ast::Operator::Mod => "%",
+                        ast::Operator::Pow => "/* pow */", // standard Rust doesn't use operator for pow
+                        ast::Operator::BitAnd => "&",
+                        ast::Operator::BitOr => "|",
+                        ast::Operator::BitXor => "^",
+                        ast::Operator::LShift => "<<",
+                        ast::Operator::RShift => ">>",
+                        _ => "?",
+                    };
+                    if op == ast::Operator::Pow {
+                        // TODO: Implement pow via method call or specialized logic if needed
+                        self.output.push_str(".pow(");
+                        self.generate_expr(*right);
+                        self.output.push_str(")");
+                    } else {
+                        self.output.push_str(&format!(" {} ", op_str));
+                        self.generate_expr(*right);
+                    }
                 }
             }
             ast::QuicheExpr::BoolOp { op, values } => {

@@ -121,6 +121,31 @@ mod quiche {
     }
     pub(crate) use check;
     pub(crate) use check as call;
+
+    macro_rules! qref {
+        ($e:expr) => { &($e) };
+    }
+    pub(crate) use qref;
+
+    macro_rules! mutref {
+        ($e:expr) => { &mut ($e) };
+    }
+    pub(crate) use mutref;
+
+    macro_rules! deref {
+        ($e:expr) => { *($e) };
+    }
+    pub(crate) use deref;
+
+    macro_rules! strcat {
+        ($arg:expr) => { ($arg).to_string() };
+        ($first:expr, $($rest:expr),+ $(,)?) => {{
+            let mut __s = ($first).to_string();
+            $( __s.push_str(&($rest).to_string()); )+
+            __s
+        }};
+    }
+    pub(crate) use strcat;
 }
 
 // Re-export everything from the transpiled module
@@ -178,6 +203,31 @@ mod quiche {
     }
     pub(crate) use check;
     pub(crate) use check as call;
+
+    macro_rules! qref {
+        ($e:expr) => { &($e) };
+    }
+    pub(crate) use qref;
+
+    macro_rules! mutref {
+        ($e:expr) => { &mut ($e) };
+    }
+    pub(crate) use mutref;
+
+    macro_rules! deref {
+        ($e:expr) => { *($e) };
+    }
+    pub(crate) use deref;
+
+    macro_rules! strcat {
+        ($arg:expr) => { ($arg).to_string() };
+        ($first:expr, $($rest:expr),+ $(,)?) => {{
+            let mut __s = ($first).to_string();
+            $( __s.push_str(&($rest).to_string()); )+
+            __s
+        }};
+    }
+    pub(crate) use strcat;
 }
 
 include!(concat!(env!("OUT_DIR"), "/main.rs"));

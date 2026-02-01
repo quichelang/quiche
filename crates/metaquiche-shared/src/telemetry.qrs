@@ -1,0 +1,79 @@
+# Compiler telemetry - simple version
+#
+# Provides basic error display for the Quiche compiler.
+# Written in Quiche - compiled by native compiler.
+# Uses strcat! for string concatenation.
+
+def repeat_string(s: String, count: i32) -> String:
+    """Repeat a string count times"""
+    result = ""
+    i: i32 = 0
+    while i < count:
+        # Use push_str to avoid + concatenation detection issues
+        result.push_str(s.as_str())
+        i = i + 1
+    return result
+
+def byte_to_line_col(source: String, byte_offset: i32) -> (i32, i32):
+    """Convert byte offset to (line, column), both 1-indexed"""
+    line_num: i32 = 1
+    col_num: i32 = 1
+    pos: i32 = 0
+    
+    for ch in source.chars():
+        if pos >= byte_offset:
+            break
+        # Compare char to newline
+        if ch.to_string() == "\n":
+            line_num = line_num + 1
+            col_num = 1
+        else:
+            col_num = col_num + 1
+        pos = pos + 1
+    
+    return (line_num, col_num)
+
+def get_source_line(source: String, target_line: i32) -> String:
+    """Get source line by line number (1-indexed)"""
+    idx: i32 = 0
+    for src_line in source.lines():
+        idx = idx + 1
+        if idx == target_line:
+            return src_line.to_string()
+    return ""
+
+def format_error(filename: String, message: String, source: String, err_line: i32, err_col: i32) -> String:
+    """Format an error with source context"""
+    source_line = get_source_line(source, err_line)
+    spaces = repeat_string(" ", err_col - 1)
+    
+    # Build error output using string concatenation (will use strcat!)
+    output = "error: " + message + "\n"
+    output = output + "  --> " + filename + ":" + err_line.to_string() + ":" + err_col.to_string() + "\n"
+    output = output + "   |\n"
+    output = output + err_line.to_string() + " | " + source_line + "\n"
+    output = output + "   | " + spaces + "^\n"
+    
+    return output
+
+def print_compile_error(filename: String, message: String, source: String, byte_offset: i32):
+    """Print a compile error with header and context"""
+    print("error: Failed to compile `" + filename + "`\n")
+    
+    # Call function and destructure in single assignment
+    result: (i32, i32) = byte_to_line_col(source.clone(), byte_offset)
+    
+    err_line: i32 = 1
+    err_col: i32 = 1
+    match result:
+        case (l, c):
+             err_line = l
+             err_col = c
+    
+    print(format_error(filename, message, source, err_line, err_col))
+
+
+# Test
+def main():
+    source = "def foo():\n    pass"
+    print_compile_error("test.qrs", "unexpected token", source, 5)

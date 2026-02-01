@@ -294,6 +294,7 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 name = "metaquiche-host"
 version = "0.1.0"
 dependencies = [
+ "metaquiche-shared",
  "quiche-parser",
  "regex",
  "tempfile",
@@ -303,6 +304,7 @@ dependencies = [
 name = "metaquiche-native"
 version = "0.1.0"
 dependencies = [
+ "metaquiche-shared",
  "parsley-qrs",
  "quiche-parser",
  "quiche-runtime",
@@ -310,6 +312,10 @@ dependencies = [
  "ruff_python_parser",
  "tempfile",
 ]
+
+[[package]]
+name = "metaquiche-shared"
+version = "0.1.0"
 
 [[package]]
 name = "once_cell"
@@ -398,14 +404,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "quiche-compiler"
-version = "0.1.0"
-dependencies = [
- "ruff_python_ast",
- "ruff_python_parser",
 ]
 
 [[package]]

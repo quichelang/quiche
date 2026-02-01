@@ -2,7 +2,9 @@
 
 // Alias for compatibility with generated code that uses crate::quiche::*
 mod quiche {
-    pub use quiche_runtime::{QuicheGeneric, QuicheResult, call, check, deref, mutref, qref};
+    pub use quiche_runtime::{
+        QuicheGeneric, QuicheResult, call, check, deref, mutref, qref, strcat,
+    };
 }
 
 use quiche_runtime::{deref, mutref, qref};

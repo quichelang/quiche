@@ -7,7 +7,7 @@ fn test_string_type_annotations() {
 def add(a: "i32", b: "i32") -> "i32":
     return a + b
 "#;
-    let rust_code = compile(source);
+    let rust_code = compile(source, "test.qrs");
     assert!(rust_code.is_some(), "Compilation failed");
     let rust_code = rust_code.unwrap_or_default();
     assert!(
@@ -23,7 +23,7 @@ fn test_generic_string_annotations() {
 def process(items: "List[i32]") -> "i32":
     return 0
 "#;
-    let rust_code = compile(source);
+    let rust_code = compile(source, "test.qrs");
     assert!(rust_code.is_some(), "Compilation failed");
     let rust_code = rust_code.unwrap_or_default();
     // Note: current implementation treats the whole string as a name, not parsing nested generics

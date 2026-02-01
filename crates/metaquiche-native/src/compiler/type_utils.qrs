@@ -51,15 +51,15 @@ def type_to_string(expr: q_ast.Expr) -> String:
                     slice_str = type_to_string(s.as_ref().clone())
             
             # Handle special type wrappers without angle brackets
-            if base == "Ref":
+            if base == "Ref" or base == "ref":
                 amp = "&"
                 amp.push_str(slice_str.as_str())
                 return amp
-            if base == "MutRef":
+            if base == "MutRef" or base == "mutref":
                 amp_mut = "&mut "
                 amp_mut.push_str(slice_str.as_str())
                 return amp_mut
-            if base == "Dyn":
+            if base == "Dyn" or base == "dyn":
                 dyn_prefix = "dyn "
                 dyn_prefix.push_str(slice_str.as_str())
                 return dyn_prefix

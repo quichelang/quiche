@@ -218,7 +218,7 @@ fn run_single_file_with_options(
     // Removed in favor of native macros and Cargo dependencies.
     let dependencies = String::new();
 
-    if let Some(rust_code) = compile(&source) {
+    if let Some(rust_code) = compile(&source, filename) {
         if emit_rust {
             print!("{}", rust_code);
             return;
@@ -266,6 +266,38 @@ mod quiche {
     }
     pub(crate) use check;
     pub(crate) use check as call;
+
+    macro_rules! qref {
+        ($e:expr) => { &($e) };
+    }
+    pub(crate) use qref;
+
+    macro_rules! mutref {
+        ($e:expr) => { &mut ($e) };
+    }
+    pub(crate) use mutref;
+
+    macro_rules! deref {
+        ($e:expr) => { *($e) };
+    }
+    pub(crate) use deref;
+
+    /// String concatenation macro - efficient push_str pattern
+    macro_rules! strcat {
+        // Single argument - just convert to String
+        ($arg:expr) => {
+            ($arg).to_string()
+        };
+        // Multiple arguments - use push_str pattern
+        ($first:expr, $($rest:expr),+ $(,)?) => {{
+            let mut __s = ($first).to_string();
+            $(
+                __s.push_str(&($rest).to_string());
+            )+
+            __s
+        }};
+    }
+    pub(crate) use strcat;
 
     pub fn run_test_cmd(exe: String, test_path: String) -> bool {
         let mut cmd = std::process::Command::new(exe);

@@ -1,6 +1,7 @@
 // Legacy host compiler - will be deprecated in favor of metaquiche-native
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use metaquiche_shared::telemetry::{CompileContext, Diagnostic, Emitter};
 use quiche_parser::ast;
 use quiche_parser::parse;
 use std::collections::{HashMap, HashSet};
@@ -153,6 +154,38 @@ impl Codegen {
         false
     }
 
+    /// Check if an expression appears to be a string (literal or involving strings)
+    pub(crate) fn is_string_expr(&self, expr: &ast::QuicheExpr) -> bool {
+        match expr {
+            ast::QuicheExpr::Constant(ast::Constant::Str(_)) => true,
+            ast::QuicheExpr::BinOp { left, op, right } => {
+                if *op == ast::Operator::Add {
+                    self.is_string_expr(left) || self.is_string_expr(right)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Flatten a chain of Add operations into a list of operands
+    pub(crate) fn flatten_add_chain(
+        &self,
+        expr: &ast::QuicheExpr,
+        parts: &mut Vec<ast::QuicheExpr>,
+    ) {
+        match expr {
+            ast::QuicheExpr::BinOp { left, op, right } if *op == ast::Operator::Add => {
+                self.flatten_add_chain(left, parts);
+                self.flatten_add_chain(right, parts);
+            }
+            _ => {
+                parts.push(expr.clone());
+            }
+        }
+    }
+
     pub(crate) fn register_class_field(&mut self, class: &str, field: &str, ty: String) {
         self.class_fields
             .entry(class.to_string())
@@ -176,19 +209,51 @@ impl Codegen {
     }
 }
 
-pub fn compile(source: &str) -> Option<String> {
+/// Compile source code with proper error reporting using telemetry
+pub fn compile(source: &str, filename: &str) -> Option<String> {
+    let ctx = CompileContext::new(filename, source);
+
     match parse(source) {
         Ok(parsed) => {
             let mut cg = Codegen::new();
             let rust_code = cg.generate_module(&parsed);
-            // println!("Successfully generated Rust code:\n{}", rust_code);
             Some(dedup_shadowed_let_mut(&rust_code))
         }
-        Err(_e) => {
-            eprintln!("Parse Error: {:?}", _e);
+        Err(e) => {
+            // Use telemetry for proper error display
+            Emitter::print_failed_header(filename);
+
+            // Extract byte offset and clean error message
+            let err_str = e.to_string();
+            let byte_offset = extract_byte_offset(&err_str);
+
+            // Clean the raw error message - remove "byte range X..Y" suffix
+            let clean_msg = err_str
+                .split(" at byte range")
+                .next()
+                .unwrap_or(&err_str)
+                .to_string();
+
+            let mut diag = Diagnostic::error(&clean_msg);
+            if let Some(offset) = byte_offset {
+                diag = diag.with_span(ctx.byte_to_span(offset));
+            }
+
+            eprintln!(
+                "{}",
+                metaquiche_shared::telemetry::format_diagnostic(&diag, Some(&ctx))
+            );
             None
         }
     }
+}
+
+/// Extract byte offset from error message containing "byte range X..Y"
+fn extract_byte_offset(message: &str) -> Option<usize> {
+    let range_start = message.find("byte range ")?;
+    let rest = &message[range_start + 11..];
+    let (start_str, _) = rest.split_once("..")?;
+    start_str.parse().ok()
 }
 
 fn dedup_shadowed_let_mut(code: &str) -> String {

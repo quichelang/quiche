@@ -3,7 +3,7 @@
 
 use crate::ast::*;
 use crate::ast::{Constant, MatchClassPattern};
-use crate::error_fmt::format_ruff_error;
+
 use ruff_python_ast as ast;
 use ruff_python_parser::parse_module;
 
@@ -19,8 +19,8 @@ pub enum ParseError {
 
 pub fn parse(source: &str) -> Result<QuicheModule, ParseError> {
     let parsed = parse_module(source).map_err(|e| {
-        // Use shared error formatting module
-        ParseError::RuffError(format_ruff_error(&e, source))
+        // Pass raw error - formatting with filename done by caller
+        ParseError::RuffError(e.to_string())
     })?;
     let suite = parsed.into_suite();
 

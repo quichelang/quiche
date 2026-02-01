@@ -50,9 +50,9 @@ impl Codegen {
                     "List" | "Vec" => "Vec",
                     "Option" => "Option",
                     "Result" => "Result",
-                    "Ref" => "&",
-                    "MutRef" => "&mut",
-                    "Dyn" => "dyn",
+                    "Ref" | "ref" => "&",
+                    "MutRef" | "mutref" => "&mut",
+                    "Dyn" | "dyn" => "dyn",
                     _ => &base,
                 };
 

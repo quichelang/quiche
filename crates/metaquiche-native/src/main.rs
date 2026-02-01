@@ -17,7 +17,7 @@
 
 pub mod compiler;
 pub mod quiche {
-    pub use quiche_runtime::{QuicheGeneric, QuicheResult, check, deref, mutref, qref};
+    pub use quiche_runtime::{QuicheGeneric, QuicheResult, check, deref, mutref, qref, strcat};
 
     pub fn as_str_helper<T: AsRef<str> + ?Sized>(s: &T) -> String {
         s.as_ref().to_string()
@@ -409,6 +409,23 @@ mod quiche {
         ($e:expr) => { *($e) };
     }
     pub(crate) use deref;
+
+    /// String concatenation macro - efficient push_str pattern
+    macro_rules! strcat {
+        // Single argument - just convert to String
+        ($arg:expr) => {
+            ($arg).to_string()
+        };
+        // Multiple arguments - use push_str pattern
+        ($first:expr, $($rest:expr),+ $(,)?) => {{
+            let mut __s = ($first).to_string();
+            $(
+                __s.push_str(&($rest).to_string());
+            )+
+            __s
+        }};
+    }
+    pub(crate) use strcat;
 
     pub fn run_test_cmd(exe: String, test_path: String) -> bool {
         let mut cmd = std::process::Command::new(exe);
