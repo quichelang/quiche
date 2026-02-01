@@ -6,4 +6,4 @@
 
 pub mod macros;
 pub mod telemetry;
-pub mod templates;
+pub mod template;

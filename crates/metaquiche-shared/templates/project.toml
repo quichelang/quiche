@@ -1,0 +1,112 @@
+# Project scaffolding templates
+# Used by `quiche new` and project initialization
+
+[project]
+description = "Project scaffolding templates for Quiche projects"
+
+[project.cargo_toml]
+content = '''
+[package]
+name = "{{name}}"
+version = "0.1.0"
+edition = "2024"
+
+# Break out of any parent workspace
+[workspace]
+
+[build-dependencies]
+quiche_compiler = { path = "{{compiler_path}}" }
+
+[dependencies]
+quiche-runtime = { path = "../quiche-runtime" } # TODO: Make relative path smarter or use registry
+{{extra_sections}}
+'''
+
+[project.cargo_toml_lib_section]
+content = '''
+
+[lib]
+path = "src/lib.rs"
+'''
+
+[project.cargo_toml_bin_section]
+content = '''
+
+[[bin]]
+name = "{{name}}"
+path = "src/main.rs"
+'''
+
+[project.build_rs]
+content = '''
+use std::env;
+use std::fs;
+use std::path::Path;
+use quiche_compiler::compile;
+
+fn main() {
+    println!("cargo:rerun-if-changed=src");
+    let out_dir = env::var("OUT_DIR").unwrap();
+    
+    // Check for lib.qrs or main.qrs
+    let is_lib = Path::new("src/lib.qrs").exists();
+    let source_path = if is_lib { "src/lib.qrs" } else { "src/main.qrs" };
+    let dest_name = if is_lib { "lib.rs" } else { "main.rs" };
+    let dest_path = Path::new(&out_dir).join(dest_name);
+
+    if Path::new(source_path).exists() {
+        let source = fs::read_to_string(source_path).expect("Read source failed");
+        let source = source.replace("struct ", "class ");
+        
+        if let Some(rust_code) = compile(&source) {
+            fs::write(&dest_path, rust_code).expect("Write output failed");
+        } else {
+            panic!("Compilation failed");
+        }
+    } else {
+        fs::write(&dest_path, "").unwrap();
+    }
+}
+'''
+
+[project.lib_rs]
+content = '''
+#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+
+use quiche_runtime::*;
+use quiche_runtime::check;
+
+// Re-export everything from the transpiled module
+include!(concat!(env!("OUT_DIR"), "/lib.rs"));
+'''
+
+[project.main_rs]
+content = '''
+#![allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens)]
+
+use quiche_runtime::*;
+use quiche_runtime::check;
+
+include!(concat!(env!("OUT_DIR"), "/main.rs"));
+'''
+
+[project.lib_qrs]
+content = '''
+
+def hello():
+    print("Hello from Lib!")
+'''
+
+[project.main_qrs]
+content = '''
+
+def main():
+    print("Hello, Quiche!")
+'''
+
+[project.quiche_toml]
+content = '''
+[package]
+name = "{{name}}"
+version = "0.1.0"
+'''
