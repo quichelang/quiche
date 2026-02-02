@@ -6,6 +6,7 @@ members = [
     "crates/metaquiche-native",
     "crates/quiche-runtime",
     "crates/parsley-qrs",
+    "crates/perceus-mem",
 ]
 resolver = "2"
 
