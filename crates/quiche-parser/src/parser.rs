@@ -432,6 +432,55 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Check if this annotated assignment should be a constant definition.
+    /// Returns (is_const, inner_type) where inner_type is Some if Const[T] was used.
+    fn check_const_annotation(
+        &self,
+        target: &QuicheExpr,
+        annotation: &QuicheExpr,
+    ) -> (bool, Option<Box<QuicheExpr>>) {
+        // Check 1: Is the type annotation Const[T]?
+        if let QuicheExpr::Subscript { value, slice } = annotation {
+            if let QuicheExpr::Name(type_name) = value.as_ref() {
+                if type_name == "Const" {
+                    return (true, Some(slice.clone()));
+                }
+            }
+        }
+
+        // Check 2: Is the identifier ALL_UPPER_CASE (SCREAMING_SNAKE_CASE)?
+        if let QuicheExpr::Name(name) = target {
+            if Self::is_screaming_snake_case(name) {
+                return (true, None);
+            }
+        }
+
+        (false, None)
+    }
+
+    /// Check if a string is SCREAMING_SNAKE_CASE (all uppercase with underscores)
+    fn is_screaming_snake_case(s: &str) -> bool {
+        if s.is_empty() {
+            return false;
+        }
+        // Must start with uppercase letter
+        let mut chars = s.chars().peekable();
+        if !chars.next().map_or(false, |c| c.is_ascii_uppercase()) {
+            return false;
+        }
+        // Rest must be uppercase letters, digits, or underscores
+        // And must contain at least one more character to avoid single letters
+        let mut has_multiple = false;
+        for c in chars {
+            has_multiple = true;
+            if !c.is_ascii_uppercase() && !c.is_ascii_digit() && c != '_' {
+                return false;
+            }
+        }
+        // Require at least 2 characters to avoid matching 'T', 'U', etc.
+        has_multiple
+    }
+
     /// Parse if statement
     fn parse_if_stmt(&mut self) -> Result<QuicheStmt, ParseError> {
         self.expect_keyword(Keyword::If)?;
@@ -792,6 +841,40 @@ impl<'a> Parser<'a> {
             } else {
                 None
             };
+
+            // Check if this should be a ConstDef:
+            // 1. Identifier is ALL_UPPER_CASE (SCREAMING_SNAKE_CASE)
+            // 2. Type annotation is Const[T]
+            let (is_const, inner_type) = self.check_const_annotation(&expr, &annotation);
+
+            if is_const {
+                // Validate: constants must have a value
+                let const_value = match value {
+                    Some(v) => v,
+                    None => {
+                        return Err(
+                            self.error("Constants must have an initializer value".to_string())
+                        );
+                    }
+                };
+
+                // Get the name from the expression
+                let name = match &expr {
+                    QuicheExpr::Name(n) => n.clone(),
+                    _ => {
+                        return Err(
+                            self.error("Constant name must be a simple identifier".to_string())
+                        );
+                    }
+                };
+
+                return Ok(QuicheStmt::ConstDef(ConstDef {
+                    name,
+                    ty: inner_type.unwrap_or(annotation),
+                    value: const_value,
+                }));
+            }
+
             return Ok(QuicheStmt::AnnAssign(AnnAssign {
                 target: Box::new(expr),
                 annotation,

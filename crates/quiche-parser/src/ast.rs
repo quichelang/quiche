@@ -12,6 +12,7 @@ pub enum QuicheStmt {
     EnumDef(EnumDef),
     TraitDef(TraitDef),
     ImplDef(ImplDef),
+    ConstDef(ConstDef),
     RustBlock(String),
 
     // Standard Constructs (Proxied)
@@ -121,6 +122,15 @@ pub struct AnnAssign {
     pub target: Box<QuicheExpr>,
     pub annotation: Box<QuicheExpr>,
     pub value: Option<Box<QuicheExpr>>,
+}
+
+/// Module-level constant definition.
+/// Generated when identifier is ALL_UPPER_CASE or type is Const[T].
+#[derive(Debug, Clone)]
+pub struct ConstDef {
+    pub name: String,
+    pub ty: Box<QuicheExpr>,
+    pub value: Box<QuicheExpr>,
 }
 
 #[derive(Debug, Clone)]

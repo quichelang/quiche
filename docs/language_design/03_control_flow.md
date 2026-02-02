@@ -65,3 +65,48 @@ Standard Python syntax maps to Rust.
 -   `if / elif / else` -> `if / else if / else`.
 -   `while cond:` -> `while cond {}`.
 -   `for x in iter:` -> `for x in iter {}`.
+
+## Range Iteration
+
+The `range()` function provides Python-style iteration:
+
+```python
+for i in range(10):        # 0..10
+    print(i)
+
+for i in range(5, 10):     # 5..10
+    print(i)
+
+for i in range(0, 10, 2):  # (0..10).step_by(2)
+    print(i)
+```
+
+## Slice Operators
+
+Rust-style slice syntax for subsequences:
+
+```python
+data: Vec[i32] = get_data()
+
+# Slice expressions
+subset = data[1..3]    # Elements at index 1, 2
+tail = data[2..]       # From index 2 to end
+head = data[..5]       # From start to index 4
+copy = data[..]        # Full slice
+
+# String slicing
+text: String = "hello world"
+hello = text[0..5]
+world = text[6..]
+```
+
+### Generated Rust
+
+| Quiche | Rust Output |
+|--------|-------------|
+| `data[1..3]` | `data[1..3]` |
+| `data[2..]` | `data[2..]` |
+| `data[..5]` | `data[..5]` |
+| `range(10)` | `(0..10)` |
+| `range(5, 10)` | `(5..10)` |
+| `range(0, 10, 2)` | `((0..10).step_by(2 as usize))` |

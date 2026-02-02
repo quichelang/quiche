@@ -3,6 +3,105 @@ pub mod ast_transformer {
 }
 pub mod re;
 
+// Re-export perceus-mem types for use in generated code
+pub use perceus_mem::{Handle, Managed, Region, Store, Weak};
+
+// ============================================================================
+// Memory Analysis Support
+// ============================================================================
+
+/// Allocation strategy for a type/value
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AllocationStrategy {
+    Inline, // Stack-only, Copy types
+    Region, // Arena allocation
+    #[default]
+    Managed, // FBIP copy-on-write (default)
+    Store,  // Long-lived, shared
+}
+
+/// Configuration from @mem decorator
+#[derive(Debug, Clone, Default)]
+pub struct MemConfig {
+    pub is_inline: bool,
+    pub is_region: bool,
+    pub is_raw: bool,
+}
+
+pub fn create_MemConfig() -> MemConfig {
+    MemConfig::default()
+}
+
+/// Escape analysis result
+#[derive(Debug, Clone, Default)]
+pub struct EscapeInfo {
+    pub escaping: Vec<String>,
+    pub local_only: Vec<String>,
+}
+
+pub fn create_EscapeInfo() -> EscapeInfo {
+    EscapeInfo::default()
+}
+
+/// Memory analyzer state
+#[derive(Debug, Clone, Default)]
+pub struct MemoryAnalyzer {
+    pub type_strategies: std::collections::HashMap<String, AllocationStrategy>,
+    pub func_configs: std::collections::HashMap<String, MemConfig>,
+    pub current_escape: EscapeInfo,
+    pub inline_types: Vec<String>,
+    pub verbose: bool,
+}
+
+pub fn create_MemoryAnalyzer() -> MemoryAnalyzer {
+    MemoryAnalyzer::default()
+}
+
+// Strategy constant accessors (for Quiche @extern)
+pub fn strategy_inline() -> i32 {
+    0
+}
+pub fn strategy_region() -> i32 {
+    1
+}
+pub fn strategy_managed() -> i32 {
+    2
+}
+pub fn strategy_store() -> i32 {
+    3
+}
+
+// ============================================================================
+// Diagnostic Emission
+// ============================================================================
+
+/// Emit a warning message (delegates to telemetry)
+pub fn emit_warning(message: String) {
+    eprintln!(
+        "{}: {}",
+        metaquiche_shared::i18n::tr("diagnostic.level.warning"),
+        message
+    );
+}
+
+/// Emit an error message (delegates to telemetry)
+pub fn emit_error(message: String) {
+    eprintln!(
+        "{}: {}",
+        metaquiche_shared::i18n::tr("diagnostic.level.error"),
+        message
+    );
+}
+
+/// Emit a note message
+pub fn emit_note(message: String) {
+    eprintln!(
+        "{}: {}",
+        metaquiche_shared::i18n::tr("diagnostic.level.note"),
+        message
+    );
+}
+
 pub mod quiche {
     pub use crate::{
         QuicheBorrow, QuicheDeref, QuicheException, QuicheGeneric, QuicheIterable, QuicheResult,

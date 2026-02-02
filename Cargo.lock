@@ -235,6 +235,7 @@ name = "quiche-runtime"
 version = "0.1.0"
 dependencies = [
  "metaquiche-shared",
+ "perceus-mem",
  "quiche-parser",
  "regex",
 ]

@@ -156,6 +156,17 @@ impl Codegen {
                 self.generate_expr(*e);
                 self.output.push_str(";\n");
             }
+            ast::QuicheStmt::ConstDef(c) => {
+                // Module-level constant: pub const NAME: TYPE = VALUE;
+                self.push_indent();
+                self.output.push_str("pub const ");
+                self.output.push_str(&c.name);
+                self.output.push_str(": ");
+                self.output.push_str(&self.map_type(&c.ty));
+                self.output.push_str(" = ");
+                self.generate_expr(*c.value);
+                self.output.push_str(";\n");
+            }
             ast::QuicheStmt::StructDef(s) => {
                 self.output.push_str("#[derive(Clone, Debug, Default)]\n");
                 self.push_indent();

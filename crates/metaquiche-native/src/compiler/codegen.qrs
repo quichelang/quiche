@@ -363,6 +363,16 @@ class Codegen:
                 for line in code.lines():
                     self.emit(line.to_string())
                     self.T("newline")
+            case q_ast.Stmt.ConstDef(c):
+                # Module-level constant: pub const NAME: TYPE = VALUE;
+                self.emit("pub const ")
+                self.emit(c.name.to_string())
+                self.T("colon_sep")
+                type_str = self.type_to_string(deref(c.ty))
+                self.emit(type_str)
+                self.T("assign_op")
+                self.generate_expr(deref(c.value))
+                self.emit(";\n")
             case _:
                 self.T("unimplemented_stmt")
 
