@@ -14,9 +14,6 @@ edition = "2024"
 # Break out of any parent workspace
 [workspace]
 
-[build-dependencies]
-quiche_compiler = { path = "{{compiler_path}}" }
-
 [dependencies]
 quiche-runtime = { path = "../quiche-runtime" } # TODO: Make relative path smarter or use registry
 {{extra_sections}}
@@ -42,26 +39,45 @@ content = '''
 use std::env;
 use std::fs;
 use std::path::Path;
-use quiche_compiler::compile;
+use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=src");
     let out_dir = env::var("OUT_DIR").unwrap();
     
-    // Check for lib.qrs or main.qrs
-    let is_lib = Path::new("src/lib.qrs").exists();
-    let source_path = if is_lib { "src/lib.qrs" } else { "src/main.qrs" };
+    // Check for lib.qrs, lib.q, main.qrs, or main.q
+    let is_lib_qrs = Path::new("src/lib.qrs").exists();
+    let is_lib_q = Path::new("src/lib.q").exists();
+    let is_lib = is_lib_qrs || is_lib_q;
+    
+    let source_path = if is_lib_qrs {
+        "src/lib.qrs"
+    } else if is_lib_q {
+        "src/lib.q"
+    } else if Path::new("src/main.qrs").exists() {
+        "src/main.qrs"
+    } else {
+        "src/main.q"
+    };
     let dest_name = if is_lib { "lib.rs" } else { "main.rs" };
     let dest_path = Path::new(&out_dir).join(dest_name);
 
     if Path::new(source_path).exists() {
-        let source = fs::read_to_string(source_path).expect("Read source failed");
-        let source = source.replace("struct ", "class ");
+        // Use QUICHE_COMPILER_BIN if set, otherwise try relative path
+        let compiler = env::var("QUICHE_COMPILER_BIN")
+            .unwrap_or_else(|_| "{{compiler_bin}}".to_string());
         
-        if let Some(rust_code) = compile(&source) {
-            fs::write(&dest_path, rust_code).expect("Write output failed");
+        let output = Command::new(&compiler)
+            .arg("--emit-rust")
+            .arg(source_path)
+            .output()
+            .expect(&format!("Failed to run quiche compiler: {}", compiler));
+        
+        if output.status.success() {
+            fs::write(&dest_path, &output.stdout).expect("Write output failed");
         } else {
-            panic!("Compilation failed");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            panic!("Compilation failed:\n{}", stderr);
         }
     } else {
         fs::write(&dest_path, "").unwrap();

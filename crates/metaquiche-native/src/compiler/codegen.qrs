@@ -1020,6 +1020,15 @@ class Codegen:
                 self.generate_expr(deref(expr))
                 self.emit(" as ")
                 self.generate_expr(deref(target_type))
+            case q_ast.Expr.Slice(lower=lower, upper=upper, step=step):
+                # Slice expression used standalone
+                match lower:
+                    case Some(l): self.generate_expr(deref(l))
+                    case None: pass
+                self.emit("..")
+                match upper:
+                    case Some(u): self.generate_expr(deref(u))
+                    case None: pass
 
             case _: self.emit("/* expr */")
 
@@ -1429,6 +1438,23 @@ class Codegen:
         self.emit(attr)
 
     def emit_subscript(self, value: Box[q_ast.Expr], slice: Box[q_ast.Expr]):
+        # Check if slice is a Slice expression (range access like [2..] or [1..3])
+        match ref(deref(slice))  :
+            case q_ast.Expr.Slice(lower=lower, upper=upper, step=step):
+                # Emit: value[lower..upper] or value[lower..] or value[..upper]
+                self.generate_expr(deref(value))
+                self.T("lbracket")
+                match lower:
+                    case Some(l): self.generate_expr(deref(l))
+                    case None: pass
+                self.emit("..")
+                match upper:
+                    case Some(u): self.generate_expr(deref(u))
+                    case None: pass
+                self.T("rbracket")
+                return
+            case _: pass
+
         is_neg_s = False
         target_type_s = self.infer_expr_type(Clone.clone(ref(deref(value))))
         is_tuple_target = self.is_tuple_expr(Clone.clone(ref(deref(value))))

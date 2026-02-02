@@ -30,6 +30,7 @@ pub mod quiche {
             .replace("/", "::")
             .replace(".rs", "")
             .replace(".qrs", "")
+            .replace(".q", "")
     }
 
     pub fn module_parent(path: impl AsRef<str>, _level: u32) -> String {
@@ -623,7 +624,7 @@ fn module_path_from_relative(rel: &Path) -> String {
         })
         .unwrap_or_else(Vec::new);
 
-    if file_name == "mod.qrs" {
+    if file_name == "mod.qrs" || file_name == "mod.q" {
         if parts.is_empty() {
             return "".to_string();
         }
@@ -642,8 +643,10 @@ fn collect_qrs_files(root: &Path, out: &mut Vec<PathBuf>) {
             let path = entry.path();
             if path.is_dir() {
                 collect_qrs_files(&path, out);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("qrs") {
-                out.push(path);
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if ext == "qrs" || ext == "q" {
+                    out.push(path);
+                }
             }
         }
     }

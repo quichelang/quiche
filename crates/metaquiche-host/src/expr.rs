@@ -387,10 +387,31 @@ impl Codegen {
                 self.output.push_str("]");
             }
             ast::QuicheExpr::Subscript { value, slice } => {
-                self.generate_expr(*value);
-                self.output.push_str("[");
-                self.generate_expr(*slice);
-                self.output.push_str("].clone()");
+                // Check if slice is a Slice expression (range access)
+                if let ast::QuicheExpr::Slice {
+                    lower,
+                    upper,
+                    step: _,
+                } = *slice
+                {
+                    // Emit: value[lower..upper] or value[lower..] or value[..upper]
+                    self.generate_expr(*value);
+                    self.output.push_str("[");
+                    if let Some(l) = lower {
+                        self.generate_expr(*l);
+                    }
+                    self.output.push_str("..");
+                    if let Some(u) = upper {
+                        self.generate_expr(*u);
+                    }
+                    self.output.push_str("]");
+                } else {
+                    // Regular index access
+                    self.generate_expr(*value);
+                    self.output.push_str("[");
+                    self.generate_expr(*slice);
+                    self.output.push_str("].clone()");
+                }
             }
             ast::QuicheExpr::Lambda { args, body } => {
                 self.output.push_str("(|");
@@ -408,6 +429,20 @@ impl Codegen {
                 self.generate_expr(*expr);
                 self.output.push_str(" as ");
                 self.generate_expr(*target_type);
+            }
+            ast::QuicheExpr::Slice {
+                lower,
+                upper,
+                step: _,
+            } => {
+                // Slice expression used standalone (e.g., as a function argument)
+                if let Some(l) = lower {
+                    self.generate_expr(*l);
+                }
+                self.output.push_str("..");
+                if let Some(u) = upper {
+                    self.generate_expr(*u);
+                }
             }
             _ => {
                 self.output

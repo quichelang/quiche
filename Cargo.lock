@@ -83,6 +83,7 @@ dependencies = [
 name = "metaquiche-native"
 version = "0.1.0"
 dependencies = [
+ "metaquiche-host",
  "metaquiche-shared",
  "parsley-qrs",
  "quiche-parser",

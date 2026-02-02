@@ -1262,6 +1262,58 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse subscript content - handles both regular indexing and slice syntax
+    /// Syntax: [expr], [start..], [..end], [start..end], [expr, expr, ...]
+    fn parse_subscript_content(&mut self) -> Result<QuicheExpr, ParseError> {
+        // Check for [..end] - slice starting with DotDot
+        if self.check(&TokenKind::DotDot) {
+            self.advance()?;
+            let upper = if self.check(&TokenKind::RBracket) {
+                None // [..]
+            } else {
+                Some(Box::new(self.parse_expression()?)) // [..end]
+            };
+            return Ok(QuicheExpr::Slice {
+                lower: None,
+                upper,
+                step: None,
+            });
+        }
+
+        // Parse first expression
+        let first = self.parse_expression()?;
+
+        // Check for slice syntax: [start..]  or  [start..end]
+        if self.check(&TokenKind::DotDot) {
+            self.advance()?;
+            let upper = if self.check(&TokenKind::RBracket) {
+                None // [start..]
+            } else {
+                Some(Box::new(self.parse_expression()?)) // [start..end]
+            };
+            return Ok(QuicheExpr::Slice {
+                lower: Some(Box::new(first)),
+                upper,
+                step: None,
+            });
+        }
+
+        // Handle comma-separated type parameters (e.g., HashMap[String, bool])
+        if self.check(&TokenKind::Comma) {
+            let mut elements = vec![first];
+            while self.eat(&TokenKind::Comma)? {
+                if self.check(&TokenKind::RBracket) {
+                    break; // trailing comma
+                }
+                elements.push(self.parse_expression()?);
+            }
+            return Ok(QuicheExpr::Tuple(elements));
+        }
+
+        // Regular single-element subscript
+        Ok(first)
+    }
+
     /// Parse postfix: calls, subscripts, attributes
     fn parse_postfix(&mut self) -> Result<QuicheExpr, ParseError> {
         let mut expr = self.parse_atom()?;
@@ -1280,24 +1332,12 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::LBracket => {
                     self.advance()?;
-                    // Parse comma-separated type parameters (e.g., HashMap[String, bool])
-                    let mut elements = vec![self.parse_expression()?];
-                    while self.eat(&TokenKind::Comma)? {
-                        if self.check(&TokenKind::RBracket) {
-                            break; // trailing comma
-                        }
-                        elements.push(self.parse_expression()?);
-                    }
+                    // Check for slice syntax: [..], [start..], [..end], [start..end]
+                    let slice_expr = self.parse_subscript_content()?;
                     self.expect(&TokenKind::RBracket)?;
-                    // If multiple elements, wrap in tuple; otherwise use single expression
-                    let slice = if elements.len() == 1 {
-                        elements.pop().unwrap()
-                    } else {
-                        QuicheExpr::Tuple(elements)
-                    };
                     expr = QuicheExpr::Subscript {
                         value: Box::new(expr),
-                        slice: Box::new(slice),
+                        slice: Box::new(slice_expr),
                     };
                 }
                 TokenKind::Dot => {

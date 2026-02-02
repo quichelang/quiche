@@ -305,7 +305,12 @@ pub fn get_and_render(name: &str, vars: &[(&str, &str)]) -> String {
 /// Get raw template content by key for codegen namespace
 /// Automatically prepends "codegen." namespace
 pub fn codegen_template(name: &str) -> Option<&'static str> {
-    let full_name = format!("codegen.{}", name);
+    // If name already contains a '.', assume it's fully qualified
+    let full_name = if name.contains('.') {
+        name.to_string()
+    } else {
+        format!("codegen.{}", name)
+    };
     templates().get(&full_name).map(|t| t.content.as_str())
 }
 

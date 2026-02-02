@@ -174,6 +174,7 @@ pub enum TokenKind {
     Colon,     // :
     Comma,     // ,
     Dot,       // .
+    DotDot,    // ..
     Semicolon, // ;
     Arrow,     // ->
     Ellipsis,  // ...
@@ -622,6 +623,11 @@ impl<'a> Lexer<'a> {
         if remaining.starts_with("...") {
             self.advance_by(3);
             return Some(TokenKind::Ellipsis);
+        }
+        // Two-character operators (check .. before other two-char ops)
+        if remaining.starts_with("..") {
+            self.advance_by(2);
+            return Some(TokenKind::DotDot);
         }
         if remaining.starts_with("**=") {
             self.advance_by(3);

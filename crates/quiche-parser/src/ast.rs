@@ -83,6 +83,11 @@ pub enum QuicheExpr {
         expr: Box<QuicheExpr>,
         target_type: Box<QuicheExpr>,
     },
+    Slice {
+        lower: Option<Box<QuicheExpr>>,
+        upper: Option<Box<QuicheExpr>>,
+        step: Option<Box<QuicheExpr>>,
+    },
 }
 
 // Support Types

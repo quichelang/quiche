@@ -375,26 +375,26 @@ def template_quiche_toml(name: String) -> String:
 def template_cargo_toml(name: String, is_lib: bool, compiler_path: String) -> String:
     extra = ""
     if is_lib:
-        extra = codegen_template("project_cargo_toml_lib_section")
+        extra = codegen_template("project.cargo_toml_lib_section")
     else:
-        extra = codegen_template("project_cargo_toml_bin_section").replace(ref("{{name}}"), ref(name.as_str()))
+        extra = codegen_template("project.cargo_toml_bin_section").replace(ref("{{name}}"), ref(name.as_str()))
     
-    return codegen_template("project_cargo_toml").replace(ref("{{name}}"), ref(name.as_str())).replace(ref("{{compiler_path}}"), ref(compiler_path.as_str())).replace(ref("{{extra_sections}}"), ref(extra.as_str()))
+    return codegen_template("project.cargo_toml").replace(ref("{{name}}"), ref(name.as_str())).replace(ref("{{compiler_path}}"), ref(compiler_path.as_str())).replace(ref("{{extra_sections}}"), ref(extra.as_str()))
 
 def template_build_rs() -> String:
-    return codegen_template("project_build_rs")
+    return codegen_template("project.build_rs")
 
 def template_lib_qrs() -> String:
-    return codegen_template("project_lib_qrs")
+    return codegen_template("project.lib_qrs")
 
 def template_main_qrs() -> String:
-    return codegen_template("project_main_qrs")
+    return codegen_template("project.main_qrs")
 
 def template_lib_rs() -> String:
-    return codegen_template("project_lib_rs")
+    return codegen_template("project.lib_rs")
 
 def template_main_rs() -> String:
-    return codegen_template("project_main_rs")
+    return codegen_template("project.main_rs")
 
 def create_new_project(name: String, is_lib: bool):
     if path_exists(name.clone()):

@@ -13,7 +13,12 @@ workspace = true
 quiche-runtime = { path = "../quiche-runtime" }
 quiche-parser = { path = "../quiche-parser" }
 metaquiche-shared = { path = "../metaquiche-shared" }
+metaquiche-host = { path = "../metaquiche-host" }
 parsley-qrs = { path = "../parsley-qrs" }
+
+[lib]
+name = "metaquiche_native"
+path = "src/lib.rs"
 
 [[bin]]
 name = "quiche"
