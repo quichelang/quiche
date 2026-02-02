@@ -1,49 +1,48 @@
 //! Internationalization (i18n) module for the Quiche compiler ecosystem
 //!
-//! This module provides centralized translation support using rust-i18n.
-//! All user-facing strings should be defined in the locale files and
-//! accessed through the `tr!` macro or the translation functions.
-//!
-//! Note: The `rust_i18n::i18n!` macro is invoked in lib.rs (crate root)
-//! as required by the rust-i18n crate.
+//! This module provides centralized translation support using the template system.
+//! All user-facing strings are defined in `templates/messages.toml` and
+//! accessed through the translation functions.
 
-// Re-export utilities (not t! macro - it only works within this crate)
-pub use rust_i18n::{locale, set_locale};
+use crate::template;
 
-/// Initialize i18n with the default locale (en-US)
+/// Initialize i18n (no-op, kept for API compatibility)
 pub fn init() {
-    set_locale("en-US");
+    // Templates are lazily loaded, no initialization needed
 }
 
-/// Get the current locale
+/// Get the current locale (returns "en-US" for now)
 pub fn current_locale() -> String {
-    locale().to_string()
+    "en-US".to_string()
+}
+
+/// Set the locale (no-op, kept for API compatibility)
+pub fn set_locale(_locale: &str) {
+    // Single-locale for now, could be extended later
+}
+
+/// Get the current locale (alias for current_locale)
+pub fn locale() -> String {
+    current_locale()
 }
 
 // ============================================================================
 // Translation wrapper functions for cross-crate usage
-// These functions call the t!() macro internally, avoiding crate-root issues
 // ============================================================================
 
 /// Translate a simple key (no interpolation)
 pub fn tr(key: &str) -> String {
-    rust_i18n::t!(key).to_string()
+    template::message(key)
 }
 
 /// Translate with a single named argument
 pub fn tr1(key: &str, name: &str, value: &str) -> String {
-    // rust-i18n requires compile-time known keys for the named syntax,
-    // so we do string replacement manually
-    let template = rust_i18n::t!(key);
-    template.replace(&format!("%{{{}}}", name), value)
+    template::message_fmt(key, &[(name, value)])
 }
 
 /// Translate with two named arguments
 pub fn tr2(key: &str, name1: &str, val1: &str, name2: &str, val2: &str) -> String {
-    let template = rust_i18n::t!(key);
-    template
-        .replace(&format!("%{{{}}}", name1), val1)
-        .replace(&format!("%{{{}}}", name2), val2)
+    template::message_fmt(key, &[(name1, val1), (name2, val2)])
 }
 
 // ============================================================================
@@ -51,13 +50,22 @@ pub fn tr2(key: &str, name1: &str, val1: &str, name2: &str, val2: &str) -> Strin
 // ============================================================================
 
 /// Translation macro for internal use within metaquiche-shared
-/// Re-exports rust_i18n::t! for internal module use
+/// Provides t!("key") and t!("key", name = value) syntax
 macro_rules! t {
     ($key:expr) => {
-        rust_i18n::t!($key)
+        crate::template::message($key)
     };
-    ($key:expr, $($arg:tt)*) => {
-        rust_i18n::t!($key, $($arg)*)
+    ($key:expr, $name:ident = $value:expr) => {
+        crate::template::message_fmt($key, &[(stringify!($name), &$value.to_string())])
+    };
+    ($key:expr, $name1:ident = $value1:expr, $name2:ident = $value2:expr) => {
+        crate::template::message_fmt(
+            $key,
+            &[
+                (stringify!($name1), &$value1.to_string()),
+                (stringify!($name2), &$value2.to_string()),
+            ],
+        )
     };
 }
 pub(crate) use t;

@@ -1,5 +1,8 @@
-# Quiche Compiler - English (US) Locale
-# This file contains all user-facing strings for the Quiche compiler ecosystem
+# Quiche Compiler - Messages
+# User-facing strings for the Quiche compiler ecosystem
+# Format: key = "value" with %{var} for interpolation
+
+[messages.strings]
 
 # =============================================================================
 # CLI Error Messages

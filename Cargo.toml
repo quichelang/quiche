@@ -11,7 +11,7 @@ resolver = "2"
 
 # Workspace dependencies
 [workspace.dependencies]
-rust-i18n = "3"
+# (empty - no shared workspace deps)
 
 # Workspace-wide lint configuration
 [workspace.lints.clippy]

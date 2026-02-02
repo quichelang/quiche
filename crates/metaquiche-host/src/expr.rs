@@ -31,7 +31,7 @@ impl Codegen {
                         ast::Operator::Mult => "*",
                         ast::Operator::Div => "/",
                         ast::Operator::Mod => "%",
-                        ast::Operator::Pow => "/* pow */", // standard Rust doesn't use operator for pow
+                        ast::Operator::Pow => ".pow", // handled specially below
                         ast::Operator::BitAnd => "&",
                         ast::Operator::BitOr => "|",
                         ast::Operator::BitXor => "^",
@@ -326,9 +326,11 @@ impl Codegen {
                         self.output.push_str(&format!("{}.0", s));
                     }
                 }
-                _ => self.output.push_str("/* unknown const */"),
+                _ => self.output.push_str("()"), // Ellipsis -> unit type ()
             },
             ast::QuicheExpr::List(l) => {
+                // Emit compiler warning about Vec vs Python list semantics
+                eprintln!("Warning: List literal [] creates a Rust Vec, which has different semantics than Python's list");
                 self.output.push_str("vec![");
                 for (i, e) in l.into_iter().enumerate() {
                     if i > 0 {

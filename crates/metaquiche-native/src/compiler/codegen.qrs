@@ -888,7 +888,7 @@ class Codegen:
                          if b: self.T("true_literal".to_string())
                          else: self.T("false_literal".to_string())
                     case q_ast.Constant.NoneVal: self.T("none_literal".to_string())
-                    case _: self.emit("/* const */")
+                    case _: self.emit("()")
             case q_ast.Expr.Name(n):
                 name_str = n.to_string()
                 if self.is_type_or_mod(name_str.clone()):
@@ -1082,6 +1082,8 @@ class Codegen:
                     self.T("rparen")
 
     def emit_list(self, l: Vec[q_ast.Expr]):
+        # Note: List literal creates a Rust Vec which differs from Python's list
+        # The host compiler emits a warning for this case
         self.emit("vec![")
         idx_l: usize = 0
         for e in l.clone():

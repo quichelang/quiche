@@ -13,6 +13,7 @@ use std::collections::HashMap;
 const CODEGEN_TOML: &str = include_str!("../templates/codegen.toml");
 const PROJECT_TOML: &str = include_str!("../templates/project.toml");
 const RUNTIME_TOML: &str = include_str!("../templates/runtime.toml");
+const MESSAGES_TOML: &str = include_str!("../templates/messages.toml");
 
 /// A parsed template with its content and metadata
 #[derive(Debug, Clone)]
@@ -35,6 +36,7 @@ impl Templates {
         Self::parse_toml(&mut templates, CODEGEN_TOML);
         Self::parse_toml(&mut templates, PROJECT_TOML);
         Self::parse_toml(&mut templates, RUNTIME_TOML);
+        Self::parse_toml(&mut templates, MESSAGES_TOML);
 
         Templates { templates }
     }
@@ -302,6 +304,32 @@ pub fn get_and_render(name: &str, vars: &[(&str, &str)]) -> String {
 pub fn codegen_template(name: &str) -> Option<&'static str> {
     let full_name = format!("codegen.{}", name);
     templates().get(&full_name).map(|t| t.content.as_str())
+}
+
+// =============================================================================
+// I18n Message Functions (replaces rust-i18n)
+// =============================================================================
+
+/// Get a message by key from the messages namespace
+/// Returns the key itself if not found (for debugging)
+pub fn message(key: &str) -> String {
+    let full_name = format!("messages.{}", key);
+    templates()
+        .get(&full_name)
+        .map(|t| t.content.clone())
+        .unwrap_or_else(|| key.to_string())
+}
+
+/// Get a message and format it with variable substitution
+/// Uses %{name} placeholder syntax (compatible with rust-i18n)
+pub fn message_fmt(key: &str, vars: &[(&str, &str)]) -> String {
+    let template = message(key);
+    let mut result = template;
+    for (name, value) in vars {
+        let placeholder = format!("%{{{}}}", name);
+        result = result.replace(&placeholder, value);
+    }
+    result
 }
 
 #[cfg(test)]
