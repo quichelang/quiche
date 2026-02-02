@@ -16,7 +16,7 @@ metaquiche-shared = { path = "../metaquiche-shared" }
 parsley-qrs = { path = "../parsley-qrs" }
 
 [[bin]]
-name = "metaquiche-native"
+name = "quiche"
 path = "src/main.rs"
 
 [dev-dependencies]

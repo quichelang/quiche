@@ -349,6 +349,11 @@ class Codegen:
                 self.T("break_stmt".to_string())
             case q_ast.Stmt.Continue:
                 self.T("continue_stmt".to_string())
+            case q_ast.Stmt.RustBlock(code):
+                # Emit raw Rust code directly
+                for line in code.lines():
+                    self.emit(line.to_string())
+                    self.T("newline")
             case _:
                 self.T("unimplemented_stmt")
 
@@ -974,10 +979,10 @@ class Codegen:
 
 
         if func_name_c == "print":
-            # Generate format string with correct number of {} placeholders
+            # Generate format string with correct number of {:?} placeholders (Debug fmt)
             fmt_parts: Vec[String] = []
             for _ in args.clone():
-                fmt_parts.push("{}")
+                fmt_parts.push("{:?}")
             fmt_str = fmt_parts.join(ref(" "))
             self.T("println_start")
             self.emit(fmt_str)

@@ -214,8 +214,8 @@ impl Codegen {
 
                 // Intrinsic/Macro Handling
                 if func_name == "print" || func_name == "println" {
-                    // Generate format string with correct number of {} placeholders
-                    let fmt = std::iter::repeat("{}")
+                    // Generate format string with correct number of {:?} placeholders (Debug fmt)
+                    let fmt = std::iter::repeat("{:?}")
                         .take(args.len())
                         .collect::<Vec<_>>()
                         .join(" ");
@@ -345,6 +345,18 @@ impl Codegen {
                 self.output.push_str("[");
                 self.generate_expr(*slice);
                 self.output.push_str("].clone()");
+            }
+            ast::QuicheExpr::Lambda { args, body } => {
+                self.output.push_str("(|");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.output.push_str(arg);
+                }
+                self.output.push_str("| ");
+                self.generate_expr(*body);
+                self.output.push_str(")");
             }
             _ => {
                 self.output

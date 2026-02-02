@@ -14,7 +14,7 @@ regex = "1.5"
 path = "src/lib.rs"
 
 [[bin]]
-name = "metaquiche-host"
+name = "quiche-host"
 path = "src/main.rs"
 
 [dev-dependencies]

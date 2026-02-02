@@ -2,13 +2,13 @@
 
 # Host compiler binary (quiche-host)
 HOST_BIN_DIR := target/debug
-HOST_BIN := $(HOST_BIN_DIR)/metaquiche-host
+HOST_BIN := $(HOST_BIN_DIR)/quiche-host
 
 # Stage 1 (built with host)
 STAGE1_TARGET_DIR := target/stage1
-STAGE1_BIN := $(STAGE1_TARGET_DIR)/debug/metaquiche-native
+STAGE1_BIN := $(STAGE1_TARGET_DIR)/debug/quiche
 STAGE2_TARGET_DIR := target/stage2
-STAGE2_BIN := $(STAGE2_TARGET_DIR)/debug/metaquiche-native
+STAGE2_BIN := $(STAGE2_TARGET_DIR)/debug/quiche
 
 # Default target
 all: verify

@@ -452,7 +452,7 @@ pub fn run_rust_code(
 
     let rust_code = user_code.replace("#[test]", "");
 
-    let quiche_module = templates().get_content("quiche_module_run");
+    let quiche_module = templates().get_content("runtime.quiche_module_run");
 
     let wrapped_user_code = if !rust_code.contains("fn main") {
         format!("fn main() {{\n{}\n}}\n", rust_code)
@@ -461,7 +461,7 @@ pub fn run_rust_code(
     };
 
     let full_code = get_and_render(
-        "run_wrapper",
+        "runtime.run_wrapper",
         &[
             ("quiche_module", quiche_module),
             ("user_code", &wrapped_user_code),

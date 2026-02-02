@@ -219,12 +219,15 @@ impl Templates {
         self.templates.get(name)
     }
 
-    /// Get template content by name, panics if not found
+    /// Get template content by name, exits gracefully if not found
     pub fn get_content(&self, name: &str) -> &str {
-        self.templates
-            .get(name)
-            .map(|t| t.content.as_str())
-            .unwrap_or_else(|| panic!("Template '{}' not found", name))
+        match self.templates.get(name) {
+            Some(t) => t.content.as_str(),
+            None => {
+                eprintln!("warning: Template '{}' not found", name);
+                std::process::exit(1);
+            }
+        }
     }
 
     /// List all template names
