@@ -5,12 +5,10 @@ edition = "2021"
 description = "Memory management with generation-based reference counting and regions"
 license = "MIT"
 
-[dependencies]
-qcell = "0.5"  # Compile-time checked interior mutability (no panics)
 
 [features]
 default = []
-thread-safe = []  # Toggles AtomicPolicy: Rc+QCell vs Arc+QCell+Mutex
+thread-safe = []  # Toggles AtomicPolicy TBD
 
 [dev-dependencies]
 # For testing

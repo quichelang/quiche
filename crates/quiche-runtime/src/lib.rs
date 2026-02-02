@@ -555,6 +555,7 @@ macro_rules! strcat {
 #[derive(Debug, Clone)]
 pub struct QuicheException(pub String);
 
+/// Panic free borrowing with Result<> instead of panics
 pub trait QuicheBorrow<T> {
     fn try_borrow_q<'a>(&'a self) -> Result<std::cell::Ref<'a, T>, QuicheException>;
     fn try_borrow_mut_q<'a>(&'a self) -> Result<std::cell::RefMut<'a, T>, QuicheException>;

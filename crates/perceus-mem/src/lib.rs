@@ -11,7 +11,6 @@
 //! - **Region-based allocation**: Arena-style bulk alloc/dealloc for scoped data
 //! - **FBIP (Functional-But-In-Place)**: In-place mutation when ref_count == 1
 //! - **Weak references**: Non-owning references for cycle prevention
-//! - **QCell-based**: Compile-time checked interior mutability (no RefCell panics)
 //! - **Generic thread-safety**: `SingleThreaded` or `ThreadSafe` via `AtomicPolicy` trait
 //!
 //! ## Quick Start

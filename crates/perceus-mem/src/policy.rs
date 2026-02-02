@@ -3,7 +3,6 @@
 //! This module provides the `AtomicPolicy` trait for abstracting over
 //! single-threaded (Rc) and thread-safe (Arc) reference counting.
 
-use qcell::{QCell, QCellOwner};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -39,7 +38,7 @@ pub trait Counter: Default {
 /// Single-threaded policy using Rc and Cell.
 ///
 /// Best for single-threaded applications where performance is critical.
-/// Uses QCell for compile-time checked interior mutability (no panics).
+/// Uses Cell for interior mutability (no panics).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SingleThreaded;
 
