@@ -189,6 +189,13 @@ impl Codegen {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
+                        // push_str needs &str, but string literals emit String::from()
+                        // Add & prefix for string literals passed to push_str
+                        let needs_borrow = attr == "push_str"
+                            && matches!(&arg, ast::QuicheExpr::Constant(ast::Constant::Str(_)));
+                        if needs_borrow {
+                            self.output.push_str("&");
+                        }
                         self.generate_expr(arg);
                     }
 
@@ -214,8 +221,8 @@ impl Codegen {
 
                 // Intrinsic/Macro Handling
                 if func_name == "print" || func_name == "println" {
-                    // Generate format string with correct number of {:?} placeholders (Debug fmt)
-                    let fmt = std::iter::repeat("{:?}")
+                    // Generate format string with correct number of {} placeholders (Display fmt)
+                    let fmt = std::iter::repeat("{}")
                         .take(args.len())
                         .collect::<Vec<_>>()
                         .join(" ");
@@ -243,6 +250,42 @@ impl Codegen {
                     return;
                 }
 
+                // Handle range() to emit Rust range syntax
+                if func_name == "range" {
+                    match args.len() {
+                        1 => {
+                            // range(n) -> 0..n
+                            self.output.push_str("(0..");
+                            self.generate_expr(args.into_iter().next().unwrap());
+                            self.output.push_str(")");
+                        }
+                        2 => {
+                            // range(start, end) -> start..end
+                            let mut args_iter = args.into_iter();
+                            self.output.push_str("(");
+                            self.generate_expr(args_iter.next().unwrap());
+                            self.output.push_str("..");
+                            self.generate_expr(args_iter.next().unwrap());
+                            self.output.push_str(")");
+                        }
+                        3 => {
+                            // range(start, end, step) -> (start..end).step_by(step)
+                            let mut args_iter = args.into_iter();
+                            self.output.push_str("((");
+                            self.generate_expr(args_iter.next().unwrap());
+                            self.output.push_str("..");
+                            self.generate_expr(args_iter.next().unwrap());
+                            self.output.push_str(").step_by(");
+                            self.generate_expr(args_iter.next().unwrap());
+                            self.output.push_str(" as usize))");
+                        }
+                        _ => {
+                            self.output.push_str("/* range() expects 1-3 args */");
+                        }
+                    }
+                    return;
+                }
+
                 // Default Function Call
                 let is_helper = ["deref", "as_ref", "ref", "mutref", "as_mut", "strcat"]
                     .contains(&func_name.as_str());
@@ -252,6 +295,9 @@ impl Codegen {
                     "mutref" | "as_mut" => "mutref",
                     _ => &func_name,
                 };
+                if is_helper {
+                    self.output.push_str("crate::quiche::");
+                }
                 self.output.push_str(macro_name);
                 if is_helper {
                     self.output.push_str("!");
@@ -357,6 +403,11 @@ impl Codegen {
                 self.output.push_str("| ");
                 self.generate_expr(*body);
                 self.output.push_str(")");
+            }
+            ast::QuicheExpr::Cast { expr, target_type } => {
+                self.generate_expr(*expr);
+                self.output.push_str(" as ");
+                self.generate_expr(*target_type);
             }
             _ => {
                 self.output

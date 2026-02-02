@@ -1016,6 +1016,10 @@ class Codegen:
             case q_ast.Expr.Attribute(value=value, attr=attr): self.emit_attribute(value, attr)
             case q_ast.Expr.Subscript(value=value, slice=slice): self.emit_subscript(value, slice)
             case q_ast.Expr.Lambda(args=args, body=body): self.emit_lambda(args, body)
+            case q_ast.Expr.Cast(expr=expr, target_type=target_type):
+                self.generate_expr(deref(expr))
+                self.emit(" as ")
+                self.generate_expr(deref(target_type))
             case _: self.emit("/* expr */")
 
 
@@ -1081,12 +1085,40 @@ class Codegen:
             self.T("rparen")
             return
 
+        # Handle range() to emit Rust range syntax
+        if func_name_c == "range":
+            nargs = args.len()
+            if nargs == 1:
+                # range(n) -> 0..n
+                self.emit("(0..")
+                self.generate_expr(Clone.clone(ref(args[0])))
+                self.emit(")")
+            elif nargs == 2:
+                # range(start, end) -> start..end
+                self.emit("(")
+                self.generate_expr(Clone.clone(ref(args[0])))
+                self.emit("..")
+                self.generate_expr(Clone.clone(ref(args[1])))
+                self.emit(")")
+            elif nargs == 3:
+                # range(start, end, step) -> (start..end).step_by(step as usize)
+                self.emit("((")
+                self.generate_expr(Clone.clone(ref(args[0])))
+                self.emit("..")
+                self.generate_expr(Clone.clone(ref(args[1])))
+                self.emit(").step_by(")
+                self.generate_expr(Clone.clone(ref(args[2])))
+                self.emit(" as usize))")
+            else:
+                self.emit("/* range() expects 1-3 args */")
+            return
+
 
         if func_name_c == "print":
-            # Generate format string with correct number of {:?} placeholders (Debug fmt)
+            # Generate format string with correct number of {} placeholders (Display fmt)
             fmt_parts: Vec[String] = []
             for _ in args.clone():
-                fmt_parts.push("{:?}")
+                fmt_parts.push("{}")
             fmt_str = fmt_parts.join(ref(" "))
             self.T("println_start")
             self.emit(fmt_str)
@@ -1177,6 +1209,18 @@ class Codegen:
                     idx_arg_call = 0
                     for arg_c in args.clone():
                         if idx_arg_call > 0: self.T("comma_sep")
+                        # push_str needs &str, but string literals emit String::from()
+                        # Add & prefix for string literals passed to push_str
+                        needs_borrow = False
+                        if attr.as_str() == "push_str":
+                            match ref(arg_c):
+                                case q_ast.Expr.Constant(c):
+                                    match c:
+                                        case q_ast.Constant.Str(_): needs_borrow = True
+                                        case _: pass
+                                case _: pass
+                        if needs_borrow:
+                            self.emit("&")
                         self.generate_expr(arg_c)
                         idx_arg_call = idx_arg_call + 1
                     self.T("rparen")

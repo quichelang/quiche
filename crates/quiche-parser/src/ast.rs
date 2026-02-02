@@ -79,6 +79,10 @@ pub enum QuicheExpr {
         body: Box<QuicheExpr>,
         orelse: Box<QuicheExpr>,
     },
+    Cast {
+        expr: Box<QuicheExpr>,
+        target_type: Box<QuicheExpr>,
+    },
 }
 
 // Support Types

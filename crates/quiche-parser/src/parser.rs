@@ -1070,13 +1070,32 @@ impl<'a> Parser<'a> {
         }
 
         if ops.is_empty() {
+            // Check for "as" cast after expression
+            if self.check_keyword(Keyword::As) {
+                self.advance()?; // consume "as"
+                let target_type = self.parse_unary()?; // Parse type as primary expression
+                return Ok(QuicheExpr::Cast {
+                    expr: Box::new(left),
+                    target_type: Box::new(target_type),
+                });
+            }
             Ok(left)
         } else {
-            Ok(QuicheExpr::Compare {
+            let result = QuicheExpr::Compare {
                 left: Box::new(left),
                 ops,
                 comparators,
-            })
+            };
+            // Check for "as" cast after comparison expression
+            if self.check_keyword(Keyword::As) {
+                self.advance()?; // consume "as"
+                let target_type = self.parse_unary()?;
+                return Ok(QuicheExpr::Cast {
+                    expr: Box::new(result),
+                    target_type: Box::new(target_type),
+                });
+            }
+            Ok(result)
         }
     }
 

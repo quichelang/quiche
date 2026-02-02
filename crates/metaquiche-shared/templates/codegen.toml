@@ -24,10 +24,10 @@ type_param_end               = ">"
 type_param_sep               = ", "
 
 # Reference operators - transcribe Quiche to Rust macros
-ref_macro                    = "qref!"
-mutref_macro                 = "mutref!"
-deref_macro                  = "deref!"
-strcat_macro                 = "strcat!"
+ref_macro                    = "crate::quiche::qref!"
+mutref_macro                 = "crate::quiche::mutref!"
+deref_macro                  = "crate::quiche::deref!"
+strcat_macro                 = "crate::quiche::strcat!"
 
 # Control flow
 break_stmt                   = "break;\n"
