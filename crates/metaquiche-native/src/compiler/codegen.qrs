@@ -581,17 +581,8 @@ class Codegen:
                     if self.expr_contains_name(Clone.clone(ref(deref(a.value))), name_assign.clone()):
                         is_existing = True
                 
-                self.emit("/* assign check: ")
-                self.emit(name_assign.clone())
-                self.emit(" existing=")
-                if is_existing: self.emit("true") 
-                else: self.emit("false")
-                self.emit(" */")
-
                 if not is_existing:
-                    self.emit("/* emit let mut */")
                     self.T("kw_let_mut")
-                
                 self.emit(name_assign.clone())
                 self.T("assign_op")
                 assign_val_type = self.infer_expr_type(Clone.clone(ref(deref(a.value))))
@@ -1211,6 +1202,16 @@ class Codegen:
                 self.emit("/* range() expects 1-3 args */")
             return
 
+
+
+        if func_name_c == "len":
+            if args.len() == 1:
+                self.emit("(")
+                self.generate_expr(args[0].clone())
+                self.emit(").len()")
+            else:
+                self.emit("/* len() expects 1 arg */")
+            return
 
         if func_name_c == "print":
             # Generate format string with correct number of {} placeholders (Display fmt)

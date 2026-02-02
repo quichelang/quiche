@@ -37,7 +37,7 @@ class Transformer:
     signatures: HashMap[String, Vec[bool]] # FuncName -> List of "needs_borrow" (true if complex)
     current_complex_args: Vec[String]
     memory_analyzer: MemoryAnalyzer  # Memory analysis state
-    extern_funcs: Vec[String]  # Functions decorated with @extern
+    extern_returns: HashMap[String, String]  # FuncName -> Return Type String
     verbose: bool
 
     def new() -> Transformer:
@@ -49,6 +49,8 @@ class Transformer:
         
         # Pass 0: Memory Analysis - collect @mem decorators and analyze escape
         init_inline_types(mutref(self.memory_analyzer))
+        self.extern_returns = HashMap[String, String].new()
+        
         for stmt in module.body.clone():
             collect_mem_decorators(mutref(self.memory_analyzer), stmt.clone())
             # Also collect @extern functions
@@ -71,6 +73,33 @@ class Transformer:
             final_body.push(self.transform_stmt(stmt))
         
         return create_QuicheModule(final_body)
+
+    def type_expr_to_string(self, expr: Expr) -> String:
+        match expr:
+            case Expr.Name(n):
+                return n.clone()
+            case Expr.Subscript(value=v, slice=s):
+                # Handle generic types like Vec[i32], ref[T], etc.
+                inner = self.type_expr_to_string(deref(s).clone())
+                outer = self.type_expr_to_string(deref(v).clone())
+                
+                if outer == "ref":
+                    return "&" + ref(inner)
+                elif outer == "mutref":
+                    return "&mut " + ref(inner)
+                else:
+                    return outer + "<" + ref(inner) + ">"
+            case Expr.Tuple(elts):
+                # Manual join since Vec.join might not be available
+                res = "("
+                first = True
+                for e in elts:
+                    if not first: res = res + ", "
+                    first = False
+                    res = res + ref(self.type_expr_to_string(e))
+                return res + ")"
+            case _:
+                return "Any"
 
     def visit_def(self, stmt: Stmt) -> Stmt:
         match stmt:
@@ -161,14 +190,24 @@ class Transformer:
         return check_first_upper(s)
 
     def collect_extern(self, stmt: Stmt):
-        """Collect @extern decorated functions for boundary handling"""
+        """Collect @extern decorated functions and their return types"""
         match stmt:
             case Stmt.FunctionDef(f):
                 if self.has_extern_decorator(f.decorator_list.clone()):
                     func_name = ast_get_func_name(ref(f))
-                    self.extern_funcs.push(func_name.clone())
+                    
+                    # Extract return type annotation
+                    ret_type = "Any"
+                    match f.returns:
+                        case Some(ann):
+                            ret_type = self.type_expr_to_string(deref(ann).clone())
+                        case None:
+                            pass
+                            
+                    self.extern_returns.insert(func_name.clone(), ret_type.clone())
+                    
                     if self.verbose:
-                        print("  Found @extern function: " + func_name)
+                        print("  Found @extern function: " + func_name + " -> " + ret_type)
             case _:
                 pass
     
@@ -189,13 +228,6 @@ class Transformer:
                             pass
                 case _:
                     pass
-        return False
-    
-    def is_extern_call(self, func_name: String) -> bool:
-        """Check if function is @extern decorated"""
-        for ef in self.extern_funcs.clone():
-            if ef == func_name:
-                return True
         return False
 
     def transform_stmt(self, stmt: Stmt) -> Stmt:
@@ -370,15 +402,12 @@ class Transformer:
                     idx = idx + 1
                 
                 # Transform keyword values (for struct constructors)
-                # If func is PascalCase (struct constructor), wrap Name values in deref
-                # to get owned values from &mut refs
                 is_struct_ctor = has_name and (func_name.len() > 0)
                 if is_struct_ctor:
-                    match func_name.chars().next():
-                        case Some(c):
-                            is_struct_ctor = c.is_uppercase()
-                        case None:
-                            is_struct_ctor = False
+                    if check_first_upper(func_name.clone()):
+                        is_struct_ctor = True
+                    else:
+                        is_struct_ctor = False
                 
                 new_keywords: Vec[Keyword] = []
                 for kw in ckw:
@@ -405,7 +434,30 @@ class Transformer:
                     new_keywords.push(new_kw)
                 
                 # Reconstruct Call with transformed keywords
-                return ast_create_call_with_keywords(box_expr(func_expr), new_args, new_keywords)
+                new_call = ast_create_call_with_keywords(box_expr(func_expr), new_args, new_keywords)
+
+                # Wrap @extern calls that return Managed types
+                if has_name and self.extern_returns.contains_key(ref(func_name)):
+                     ret_type = self.extern_returns.get(ref(func_name)).unwrap().clone()
+                     
+                     # Check if we should wrap
+                     should_wrap = False
+                     # Don't wrap if already Managed, generic Handle, or Option
+                     if not (check_prefix(ret_type.clone(), "Managed") or check_prefix(ret_type.clone(), "Handle") or check_prefix(ret_type.clone(), "Option")):
+                          strategy = get_strategy_for_type(ref(self.memory_analyzer), ret_type.clone())
+                          match strategy:
+                               case AllocationStrategy.Managed: should_wrap = True
+                               case _: pass
+                     
+                     if should_wrap:
+                          managed_name = box_expr(create_name_expr("Managed"))
+                          new_attr = ast_create_attribute(managed_name, "new".to_string())
+                          wrapper_args: Vec[Expr] = []
+                          wrapper_args.push(new_call)
+                          kw_empty: Vec[Keyword] = []
+                          return ast_create_call_with_keywords(box_expr(new_attr), wrapper_args, kw_empty)
+
+                return new_call
 
             case Expr.Subscript(value=val_box, slice=slice_box):
                 # value[slice]
@@ -497,6 +549,12 @@ def ast_set_func_args(f: FunctionDef, args: Vec[Arg]) -> FunctionDef: pass
 
 @extern(path="crate::check_first_upper")
 def check_first_upper(s: String) -> bool: pass
+
+@extern(path="crate::check_prefix")
+def check_prefix(s: String, prefix: String) -> bool: pass
+
+@extern(path="crate::create_name_expr")
+def create_name_expr(s: String) -> Expr: pass
 
 @extern(path="crate::ast_create_assign")
 def ast_create_assign(targets: Vec[Expr], value: Box[Expr]) -> Assign: pass

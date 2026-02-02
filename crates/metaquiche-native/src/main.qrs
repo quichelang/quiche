@@ -317,8 +317,9 @@ def compile_source_to_string(source: String, filename: String, warn_quiche: bool
     for stmt in stmts:
         codegen.generate_stmt(stmt)
     
-    cleaned = dedup_shadowed_let_mut(codegen.output)
-    return cleaned
+    # cleaned = dedup_shadowed_let_mut(codegen.output)
+    # return cleaned
+    return codegen.output
 
     return ""
 

@@ -320,6 +320,10 @@ pub fn check_first_upper(s: String) -> bool {
     s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
 }
 
+pub fn check_prefix(s: String, prefix: String) -> bool {
+    s.starts_with(&prefix)
+}
+
 pub fn ast_create_assign(
     targets: Vec<quiche_parser::ast::QuicheExpr>,
     value: Box<quiche_parser::ast::QuicheExpr>,

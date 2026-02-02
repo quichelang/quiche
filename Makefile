@@ -67,3 +67,7 @@ diff-stages: stage2
 
 clean:
 	rm -rf target bin stage0 stage1 stage2
+
+test: stage2
+	@echo "Running regression tests..."
+	./target/stage2/debug/quiche tests/test_codegen_scope_regression.q

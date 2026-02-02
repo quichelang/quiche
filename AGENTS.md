@@ -35,6 +35,7 @@ make clean && make stage1 && make stage2
 ## Do's ✅
 
 - **Run both stages** after changes: `make stage1 && make stage2`
+- **Run regression tests**: `make test`
 - **Use `ref(x)`** for borrowing, not `as_ref(x)` (legacy)
 - **Use `deref(x)`** for dereferencing boxed values
 - **Check `.qrs` files** for Quiche source code
