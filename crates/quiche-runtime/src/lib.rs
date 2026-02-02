@@ -1,3 +1,11 @@
+#![allow(
+    non_snake_case,
+    unused_variables,
+    unused_mut,
+    named_arguments_used_positionally,
+    unused_parens
+)]
+
 pub mod ast_transformer {
     include!(concat!(env!("OUT_DIR"), "/ast_transformer.rs"));
 }

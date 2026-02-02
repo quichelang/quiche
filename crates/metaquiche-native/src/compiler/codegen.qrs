@@ -1136,21 +1136,21 @@ class Codegen:
             if args.len() > 0:
                 self.T("ref_macro")
                 self.T("lparen")
-                self.generate_expr_no_clone(Clone.clone(ref(args[0])))
+                self.generate_expr_no_clone(args[0])
                 self.T("rparen")
             return
         if func_name_c == "as_mut" or func_name_c == "mutref":
             if args.len() > 0:
                 self.T("mutref_macro")
                 self.T("lparen")
-                self.generate_expr_no_clone(Clone.clone(ref(args[0])))
+                self.generate_expr_no_clone(args[0])
                 self.T("rparen")
             return
         if func_name_c == "deref":
             if args.len() > 0:
                 self.T("deref_macro")
                 self.T("lparen")
-                self.generate_expr_no_clone(Clone.clone(ref(args[0])))
+                self.generate_expr_no_clone(args[0])
                 self.T("rparen")
             return
         if func_name_c == "exit":
@@ -1180,23 +1180,23 @@ class Codegen:
             if nargs == 1:
                 # range(n) -> 0..n
                 self.emit("(0..")
-                self.generate_expr(Clone.clone(ref(args[0])))
+                self.generate_expr(args[0])
                 self.emit(")")
             elif nargs == 2:
                 # range(start, end) -> start..end
                 self.emit("(")
-                self.generate_expr(Clone.clone(ref(args[0])))
+                self.generate_expr(args[0])
                 self.emit("..")
-                self.generate_expr(Clone.clone(ref(args[1])))
+                self.generate_expr(args[1])
                 self.emit(")")
             elif nargs == 3:
                 # range(start, end, step) -> (start..end).step_by(step as usize)
                 self.emit("((")
-                self.generate_expr(Clone.clone(ref(args[0])))
+                self.generate_expr(args[0])
                 self.emit("..")
-                self.generate_expr(Clone.clone(ref(args[1])))
+                self.generate_expr(args[1])
                 self.emit(").step_by(")
-                self.generate_expr(Clone.clone(ref(args[2])))
+                self.generate_expr(args[2])
                 self.emit(" as usize))")
             else:
                 self.emit("/* range() expects 1-3 args */")
@@ -1207,7 +1207,7 @@ class Codegen:
         if func_name_c == "len":
             if args.len() == 1:
                 self.emit("(")
-                self.generate_expr(args[0].clone())
+                self.generate_expr(args[0])
                 self.emit(").len()")
             else:
                 self.emit("/* len() expects 1 arg */")
@@ -1240,20 +1240,20 @@ class Codegen:
         elif func_name_c == "assert_eq" or func_name_c == "assert_str_eq":
             self.emit("assert_eq!(")
             if args.len() >= 2:
-                self.generate_expr(Clone.clone(ref(args[0])))
+                self.generate_expr(args[0])
                 self.T("comma_sep")
-                self.generate_expr(Clone.clone(ref(args[1])))
+                self.generate_expr(args[1])
                 if args.len() > 2:
                     self.emit(", \"{:?}\", ")
-                    self.generate_expr(Clone.clone(ref(args[2])))
+                    self.generate_expr(args[2])
             self.T("rparen")
         elif func_name_c == "assert_true":
             self.emit("assert!(")
             if args.len() >= 1:
-                self.generate_expr(Clone.clone(ref(args[0])))
+                self.generate_expr(args[0])
                 if args.len() > 1:
                     self.emit(", \"{:?}\", ")
-                    self.generate_expr(Clone.clone(ref(args[1])))
+                    self.generate_expr(args[1])
             self.T("rparen")
         elif func_name_c == "range":
             if args.len() == 1:
@@ -1490,7 +1490,7 @@ class Codegen:
                 case q_ast.CmpOperator.GtE: self.T("op_ge")
                 case _: self.T("question_mark")
             self.T("space")
-            self.generate_expr(Clone.clone(ref(comparators[idx_c])))
+            self.generate_expr(comparators[idx_c])
             idx_c = idx_c + 1
 
     def emit_expr_tuple(self, elts: Vec[q_ast.Expr]):
@@ -1505,7 +1505,7 @@ class Codegen:
     def emit_attribute(self, value: Box[q_ast.Expr], attr: String):
         target_attr = deref(value)
         is_static_attr = False
-        match self.get_root_name(Clone.clone(ref(target_attr))):
+        match self.get_root_name(target_attr.clone()):
             case Some(root_name):
                 if self.is_type_or_mod(root_name.clone()):
                     is_static_attr = True
@@ -1515,18 +1515,18 @@ class Codegen:
         match ref(target_attr):
             case q_ast.Expr.Subscript(value=s_val, slice=s_slice):
                 if is_static_attr:
-                    full_expr = Clone.clone(ref(target_attr))
+                    full_expr = target_attr.clone()
                     base_type = self.type_to_string(full_expr)
                     if base_type.contains(ref("<")):
                         base_type = base_type.replace(ref("<"), ref("::<"))
                     self.emit(base_type)
                 else:
-                    self.emit_lvalue_target(Clone.clone(ref(target_attr)))
+                    self.emit_lvalue_target(target_attr.clone())
             case _:
                 if is_static_attr:
-                    self.emit_pattern_path(Clone.clone(ref(target_attr)))
+                    self.emit_pattern_path(target_attr.clone())
                 else:
-                    self.emit_lvalue_target(Clone.clone(ref(target_attr)))
+                    self.emit_lvalue_target(target_attr.clone())
         if is_static_attr: self.T("namespace_sep")
         else: self.T("field_access")
         self.emit(attr)
@@ -1534,7 +1534,7 @@ class Codegen:
     def emit_attribute_target(self, value: Box[q_ast.Expr], attr: String):
         target_attr = deref(value)
         is_static_attr = False
-        match self.get_root_name(Clone.clone(ref(target_attr))):
+        match self.get_root_name(target_attr.clone()):
             case Some(root_name):
                 if self.is_type_or_mod(root_name.clone()):
                     is_static_attr = True
