@@ -50,7 +50,7 @@ def unwrap_or_exit_parse(result: Result[QuicheModule, ParseError], msg: String) 
     match result:
         case Ok(v): return v
         case Err(e):
-            print(msg)
+            print(msg + ": " + e.to_string())
             exit(1)
     # Create dummy module for unreachable path
     match result:
@@ -139,6 +139,9 @@ def version_get_date() -> String: pass
 
 @extern(path="crate::version_info::get_build_kind")
 def version_get_build_kind() -> String: pass
+
+@extern(path="quiche_runtime::ast_transformer::transform_module")
+def transform_module(module: QuicheModule) -> QuicheModule: pass
 
 def get_flag_bool(flags: HashMap[String, bool], key: String) -> bool:
     match flags.get(ref(key)):
@@ -292,6 +295,10 @@ def normalize_module_path(module_path: String) -> String:
 def compile_source_to_string(source: String, filename: String, warn_quiche: bool, strict: bool) -> String:
     # Parse source with explicit error handling
     module = unwrap_or_exit_parse(parse_module(source.as_str()), "Failed to parse source")
+    
+    if filename.ends_with(ref(".q")):
+        module = transform_module(module)
+
     stmts = module.body
 
     root_dir = path_dirname(filename.clone())
@@ -532,7 +539,7 @@ def main():
             print(concat2("  profile: ", ref(kind)))
             return
 
-    if cmd.ends_with(ref(".qrs")):
+    if cmd.ends_with(ref(".qrs")) or cmd.ends_with(ref(".q")):
         if not path_exists(cmd.clone()):
             print(tr1("cli.error.file_not_found", "file", cmd))
             exit(1)

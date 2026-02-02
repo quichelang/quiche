@@ -9,6 +9,8 @@ A Python-like language that compiles to Rust.
 
 ## What It Looks Like
 
+(Example is written in the more Rust-like MetaQuiche dialect)
+
 ```python
 # Sudoku solver in MetaQuiche (examples/scripts/sudoku.qrs)
 def solve(board: mutref[Vec[Vec[i32]]]) -> bool:

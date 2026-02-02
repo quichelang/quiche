@@ -1,4 +1,223 @@
+pub mod ast_transformer;
 pub mod re;
+
+pub mod quiche {
+    pub use crate::{
+        QuicheBorrow, QuicheDeref, QuicheException, QuicheGeneric, QuicheIterable, QuicheResult,
+    };
+    pub use crate::{create_QuicheModule, create_Transformer};
+    // Re-export macros
+    pub use crate::{call, check, deref, mutref, qref, strcat};
+
+    // Add dummy path_exists etc if needed by codegen, but codegen mostly uses crate::quiche for macros
+}
+
+pub fn create_QuicheModule(
+    body: Vec<quiche_parser::ast::Stmt>,
+) -> quiche_parser::ast::QuicheModule {
+    quiche_parser::ast::QuicheModule { body }
+}
+
+pub fn create_Transformer() -> ast_transformer::Transformer {
+    ast_transformer::Transformer::default()
+}
+
+pub fn box_expr(e: quiche_parser::ast::QuicheExpr) -> Box<quiche_parser::ast::QuicheExpr> {
+    Box::new(e)
+}
+
+pub fn create_name_expr(s: String) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::Name(s)
+}
+
+pub fn ast_get_func_name(f: &quiche_parser::ast::FunctionDef) -> String {
+    f.name.clone()
+}
+
+pub fn ast_update_func_body(
+    mut f: quiche_parser::ast::FunctionDef,
+    body: Vec<quiche_parser::ast::Stmt>,
+) -> quiche_parser::ast::FunctionDef {
+    f.body = body;
+    f
+}
+
+pub fn ast_update_arg_annotation(
+    mut arg: quiche_parser::ast::Arg,
+    ann: Option<Box<quiche_parser::ast::QuicheExpr>>,
+) -> quiche_parser::ast::Arg {
+    arg.annotation = ann;
+    arg
+}
+
+pub fn ast_wrap_mutref_type(
+    inner: Box<quiche_parser::ast::QuicheExpr>,
+) -> Box<quiche_parser::ast::QuicheExpr> {
+    // Subscript { value: Name("mutref"), slice: inner }
+    Box::new(quiche_parser::ast::QuicheExpr::Subscript {
+        value: Box::new(quiche_parser::ast::QuicheExpr::Name("mutref".to_string())),
+        slice: inner,
+    })
+}
+
+pub fn ast_wrap_mutref_call(
+    inner: Box<quiche_parser::ast::QuicheExpr>,
+) -> Box<quiche_parser::ast::QuicheExpr> {
+    // Call { func: Name("mutref"), args: [inner], keywords: [] }
+    Box::new(quiche_parser::ast::QuicheExpr::Call {
+        func: Box::new(quiche_parser::ast::QuicheExpr::Name("mutref".to_string())),
+        args: vec![*inner],
+        keywords: vec![],
+    })
+}
+
+pub fn ast_cast_usize(
+    inner: Box<quiche_parser::ast::QuicheExpr>,
+) -> Box<quiche_parser::ast::QuicheExpr> {
+    // Cast { expr: inner, target_type: Name("usize") }
+    Box::new(quiche_parser::ast::QuicheExpr::Cast {
+        expr: inner,
+        target_type: Box::new(quiche_parser::ast::QuicheExpr::Name("usize".to_string())),
+    })
+}
+
+pub fn ast_is_name(e: &quiche_parser::ast::QuicheExpr) -> bool {
+    matches!(e, quiche_parser::ast::QuicheExpr::Name(_))
+}
+
+pub fn ast_get_name(e: &quiche_parser::ast::QuicheExpr) -> String {
+    match e {
+        quiche_parser::ast::QuicheExpr::Name(n) => n.clone(),
+        _ => String::new(),
+    }
+}
+
+pub fn ast_call_func_is_name(c: &quiche_parser::ast::QuicheExpr, name: &str) -> bool {
+    // c is Call. func is Box<Expr>.
+    if let quiche_parser::ast::QuicheExpr::Call { func, .. } = c {
+        if let quiche_parser::ast::QuicheExpr::Name(n) = &**func {
+            return n == name;
+        }
+    }
+    false
+}
+
+pub fn ast_set_func_args(
+    mut f: quiche_parser::ast::FunctionDef,
+    args: Vec<quiche_parser::ast::Arg>,
+) -> quiche_parser::ast::FunctionDef {
+    f.args = args;
+    f
+}
+
+pub fn check_first_upper(s: String) -> bool {
+    s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+}
+
+pub fn ast_create_assign(
+    targets: Vec<quiche_parser::ast::QuicheExpr>,
+    value: Box<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::Assign {
+    quiche_parser::ast::Assign { targets, value }
+}
+
+pub fn ast_create_if(
+    test: Box<quiche_parser::ast::QuicheExpr>,
+    body: Vec<quiche_parser::ast::Stmt>,
+    orelse: Vec<quiche_parser::ast::Stmt>,
+) -> quiche_parser::ast::IfStmt {
+    quiche_parser::ast::IfStmt { test, body, orelse }
+}
+
+pub fn ast_create_for(
+    target: Box<quiche_parser::ast::QuicheExpr>,
+    iter: Box<quiche_parser::ast::QuicheExpr>,
+    body: Vec<quiche_parser::ast::Stmt>,
+    orelse: Vec<quiche_parser::ast::Stmt>,
+) -> quiche_parser::ast::ForStmt {
+    quiche_parser::ast::ForStmt {
+        target,
+        iter,
+        body,
+        orelse,
+    }
+}
+
+pub fn ast_create_call(
+    func: Box<quiche_parser::ast::QuicheExpr>,
+    args: Vec<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::Call {
+        func,
+        args,
+        keywords: vec![],
+    }
+}
+
+pub fn ast_create_subscript(
+    value: Box<quiche_parser::ast::QuicheExpr>,
+    slice: Box<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::Subscript { value, slice }
+}
+
+pub fn ast_create_binop(
+    left: Box<quiche_parser::ast::QuicheExpr>,
+    op: quiche_parser::ast::Operator,
+    right: Box<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::BinOp { left, op, right }
+}
+
+pub fn ast_create_boolop(
+    op: quiche_parser::ast::BoolOperator,
+    values: Vec<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::BoolOp { op, values }
+}
+
+pub fn ast_create_unaryop(
+    op: quiche_parser::ast::UnaryOperator,
+    operand: Box<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::UnaryOp { op, operand }
+}
+
+pub fn ast_create_list(
+    elts: Vec<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::List(elts)
+}
+
+pub fn make_if_stmt(
+    test: Box<quiche_parser::ast::QuicheExpr>,
+    body: Vec<quiche_parser::ast::QuicheStmt>,
+    orelse: Vec<quiche_parser::ast::QuicheStmt>,
+) -> quiche_parser::ast::QuicheStmt {
+    quiche_parser::ast::QuicheStmt::If(quiche_parser::ast::IfStmt { test, body, orelse })
+}
+
+pub fn make_while_stmt(
+    test: Box<quiche_parser::ast::QuicheExpr>,
+    body: Vec<quiche_parser::ast::QuicheStmt>,
+    orelse: Vec<quiche_parser::ast::QuicheStmt>,
+) -> quiche_parser::ast::QuicheStmt {
+    quiche_parser::ast::QuicheStmt::While(quiche_parser::ast::WhileStmt { test, body, orelse })
+}
+
+pub fn make_for_stmt(
+    target: Box<quiche_parser::ast::QuicheExpr>,
+    iter: Box<quiche_parser::ast::QuicheExpr>,
+    body: Vec<quiche_parser::ast::QuicheStmt>,
+    orelse: Vec<quiche_parser::ast::QuicheStmt>,
+) -> quiche_parser::ast::QuicheStmt {
+    quiche_parser::ast::QuicheStmt::For(quiche_parser::ast::ForStmt {
+        target,
+        iter,
+        body,
+        orelse,
+    })
+}
 
 // High Priority: Consumes Self (Result/Option)
 pub trait QuicheResult {

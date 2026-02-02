@@ -1,0 +1,361 @@
+from rust.quiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, Arg, Operator, BoolOperator, UnaryOperator, IfStmt, WhileStmt, ForStmt
+from std.collections import HashMap
+
+@extern(path="crate::create_QuicheModule")
+def create_QuicheModule(body: Vec[Stmt]) -> QuicheModule: pass
+
+@extern(path="crate::box_expr")
+def box_expr(e: Expr) -> Box[Expr]: pass
+
+@extern(path="crate::ast_wrap_mutref_type")
+def ast_wrap_mutref_type(e: Box[Expr]) -> Box[Expr]: pass
+
+@extern(path="crate::ast_wrap_mutref_call")
+def ast_wrap_mutref_call(e: Box[Expr]) -> Box[Expr]: pass
+
+@extern(path="crate::ast_cast_usize")
+def ast_cast_usize(e: Box[Expr]) -> Box[Expr]: pass
+
+@extern(path="crate::ast_get_func_name")
+def ast_get_func_name(f: FunctionDef) -> String: pass
+
+@extern(path="crate::ast_update_func_body")
+def ast_update_func_body(f: FunctionDef, body: Vec[Stmt]) -> FunctionDef: pass
+
+@extern(path="crate::ast_update_arg_annotation")
+def ast_update_arg_annotation(arg: Arg, ann: Option[Box[Expr]]) -> Arg: pass
+
+@extern(path="crate::create_Transformer")
+def create_Transformer() -> Transformer: pass
+
+class Transformer:
+    signatures: HashMap[String, Vec[bool]] # FuncName -> List of "needs_borrow" (true if complex)
+
+    def new() -> Transformer:
+        return create_Transformer()
+
+    def transform_module(self, module: QuicheModule) -> QuicheModule:
+        print("Transformer: Analyzing signatures...")
+        self.signatures = HashMap[String, Vec[bool]].new()
+        
+        # Pass 1: Collect Signatures & Transform Definitions
+        pass1_body: Vec[Stmt] = []
+        for stmt in module.body:
+            pass1_body.push(self.visit_def(stmt))
+
+        print("Transformer: Transforming calls...")
+        # Pass 2: Transform Calls
+        final_body: Vec[Stmt] = []
+        for stmt in pass1_body:
+            final_body.push(self.transform_stmt(stmt))
+        
+        return create_QuicheModule(final_body)
+
+    def visit_def(self, stmt: Stmt) -> Stmt:
+        match stmt:
+            case Stmt.FunctionDef(f):
+                # Analyze args
+                new_args: Vec[Arg] = []
+                signature: Vec[bool] = []
+                func_name = ast_get_func_name(ref(f))
+
+                for arg in f.args.clone():
+                    new_arg = arg.clone()
+                    is_complex = False
+                    
+                    # Check annotation to decide if we auto-borrow (make it mutref)
+                    match arg.annotation:
+                        case Some(ann):
+                            # Inspect generic type inside Box
+                            # We clone to inspect without consuming
+                            inner = deref(ann).clone() 
+                            if self.is_complex_type(inner.clone()):
+                                is_complex = True
+                                # Change annotation to mutref[Original]
+                                # ann is Box[Expr]. We need to wrap it.
+                                # But match moves ann? In Quiche match binds by value/move usually
+                                # So ann is consumed here if we don't return it.
+                                # actually match destructures.
+                                # We want to wrap 'ann'.
+                                # But 'ann' was bound.
+                                # We need to use 'pass' or re-assign.
+                            
+                                # Create new wrapped annotation
+                                # We need to clone inner again or use it?
+                                # inner was cloned above.
+                                wrapped = ast_wrap_mutref_type(box_expr(inner))
+                                new_arg = ast_update_arg_annotation(new_arg, Some(wrapped))
+                            
+                            pass # end if
+                        case None: pass
+                    
+                    signature.push(is_complex)
+                    new_args.push(new_arg)
+                    
+                self.signatures.insert(func_name, signature) 
+                
+                # Update function args locally (struct update not easy, we modify 'f.args'?)
+                # f is owned. f.args is pub Vec.
+                # In generated Rust: f.args = new_args works if f is mut.
+                # But 'f' is immutable binding from match.
+                # We need a helper to update args too?
+                # Or just clone 'f' into 'mut f2'?
+                # 'FunctionDef' derives Clone.
+                # Let's use a helper 'ast_update_func_args' or assume we construct Stmt::FunctionDef(f) with new args?
+                # Stmt::FunctionDef(f) constructor takes 'f'.
+                # We can modify 'f' if we bind it mutably? No facile way in Quiche.
+                # I'll add 'ast_update_func_args' helper to lib.rs quickly?
+                # OR better: define a helper method on class that uses extern?
+                # Actually, f.args = new_args works if f is mutable.
+                # I will define 'make_mut_function_def(f) -> FunctionDef' helper (identity but ownership dance)?
+                # Or simply:
+                # updated_f = self.update_args(f, new_args)
+                updated_f = self.update_args(f, new_args)
+                return Stmt.FunctionDef(updated_f)
+            case _:
+                return stmt
+
+    def update_args(self, f: FunctionDef, args: Vec[Arg]) -> FunctionDef:
+        # We need to set f.args = args.
+        # Since I can't easily mutate f here, I'll rely on an extern or helper.
+        return ast_set_func_args(f, args)
+
+    def is_complex_type(self, e: Expr) -> bool:
+        match e:
+            case Expr.Name(n):
+                # Vec, String, or Capitalized class name
+                return n == "Vec" or n == "String" or (n.len() > 0 and self.is_uppercase(n))
+            case Expr.Subscript(value=val_box, slice=slice_box):
+                return self.is_complex_type(deref(val_box).clone())
+            case _:
+                return False
+
+    def is_uppercase(self, s: String) -> bool:
+        # Check first char
+        # Need helper? or s.chars().next()...
+        # use an extern for 'is_first_upper'?
+        return check_first_upper(s)
+
+    def transform_stmt(self, stmt: Stmt) -> Stmt:
+        match stmt:
+            case Stmt.Expr(e):
+                 # Transform top level expr
+                 new_expr = self.transform_expr(deref(e).clone())
+                 return Stmt.Expr(box_expr(new_expr))
+            
+            case Stmt.If(i):
+                test = self.transform_expr(deref(i.test).clone())
+                body: Vec[Stmt] = []
+                for s in i.body: body.push(self.transform_stmt(s))
+                orelse: Vec[Stmt] = []
+                for s in i.orelse: orelse.push(self.transform_stmt(s))
+                return make_if_stmt(box_expr(test), body, orelse)
+
+            case Stmt.While(w):
+                 test = self.transform_expr(deref(w.test).clone())
+                 body: Vec[Stmt] = []
+                 for s in w.body: body.push(self.transform_stmt(s))
+                 orelse: Vec[Stmt] = []
+                 for s in w.orelse: orelse.push(self.transform_stmt(s))
+                 return make_while_stmt(box_expr(test), body, orelse)
+
+            case Stmt.For(f):
+                 target = f.target.clone() 
+                 iter = self.transform_expr(deref(f.iter).clone())
+                 body: Vec[Stmt] = []
+                 for s in f.body: body.push(self.transform_stmt(s))
+                 orelse: Vec[Stmt] = []
+                 for s in f.orelse: orelse.push(self.transform_stmt(s))
+                 return make_for_stmt(target, box_expr(iter), body, orelse)
+
+            case Stmt.FunctionDef(f):
+                 # Recurse into body
+                 new_body: Vec[Stmt] = []
+                 # Fix E0382: iterate clone to avoid partial move
+                 for s in f.body.clone():
+                     new_body.push(self.transform_stmt(s))
+                 
+                 return Stmt.FunctionDef(ast_update_func_body(f, new_body))
+            case Stmt.Return(r):
+                 match r:
+                     case Some(e):
+                         inner = deref(e).clone()
+                         return Stmt.Return(Some(box_expr(self.transform_expr(inner))))
+                     case None:
+                         return Stmt.Return(None)
+            case Stmt.Assign(a):
+                 # Transform targets and value
+                 # targets: Vec[Expr]
+                 # value: Box[Expr]
+                 new_targets: Vec[Expr] = []
+                 for t in a.targets:
+                     new_targets.push(self.transform_expr(t))
+                 
+                 val_inner = deref(a.value).clone()
+                 new_val = self.transform_expr(val_inner)
+                 
+                 # Construct Assign
+                 # Need helper? 'ast_create_assign'
+                 # Or Assign { targets: new_targets, value: box_expr(new_val) } (if supported)
+                 # We established struct init not supported.
+                 # I need 'ast_create_assign(targets, val)' helper.
+                 return Stmt.Assign(ast_create_assign(new_targets, box_expr(new_val)))
+                 
+            case Stmt.If(i):
+                test = self.transform_expr(deref(i.test).clone())
+                body: Vec[Stmt] = []
+                for s in i.body: body.push(self.transform_stmt(s))
+                orelse: Vec[Stmt] = []
+                for s in i.orelse: orelse.push(self.transform_stmt(s))
+                return Stmt.If(ast_create_if(box_expr(test), body, orelse))
+
+            case Stmt.For(f):
+                 # target, iter, body, orelse
+                 target = self.transform_expr(deref(f.target).clone())
+                 iter = self.transform_expr(deref(f.iter).clone())
+                 body: Vec[Stmt] = []
+                 for s in f.body: body.push(self.transform_stmt(s))
+                 orelse: Vec[Stmt] = []
+                 for s in f.orelse: orelse.push(self.transform_stmt(s))
+                 return Stmt.For(ast_create_for(box_expr(target), box_expr(iter), body, orelse))
+                 
+            case _:
+                return stmt
+
+    def transform_expr(self, expr: Expr) -> Expr:
+        match expr:
+            case Expr.Call(func=func_box, args=c_args, keywords=ckw):
+                # Check func name
+                func_expr = deref(func_box).clone()
+                
+                # We need to peek function name without consuming func_expr
+                # But to transform/rebuild, we consume it?
+                # We can check name if it is Name(n).
+                func_name = ""
+                has_name = False
+                match func_expr:
+                    case Expr.Name(n):
+                        func_name = n.clone()
+                        has_name = True
+                        func_expr = Expr.Name(n) # Put it back
+                    case _:
+                        has_name = False
+                        
+                # Transform args
+                new_args: Vec[Expr] = []
+                
+                # Check signature
+                sig: Vec[bool] = []
+                if has_name and self.signatures.contains_key(ref(func_name)):
+                    # Clone key just in case
+                    sig = self.signatures.get(ref(func_name)).unwrap().clone()
+                
+                idx = 0
+                for arg in c_args:
+                    new_arg = self.transform_expr(arg)
+                    
+                    if idx < sig.len():
+                        needs_borrow = sig[idx] # vector indexing
+                        if needs_borrow:
+                            # Wrap (auto-borrow)
+                            # Wrap any expression since we need a reference
+                            new_arg = deref(ast_wrap_mutref_call(box_expr(new_arg)))
+
+                    
+                    new_args.push(new_arg)
+                    idx = idx + 1
+                
+                # Reconstruct Call. Need 'ast_create_call'
+                return ast_create_call(box_expr(func_expr), new_args)
+
+            case Expr.Subscript(value=val_box, slice=slice_box):
+                # value[slice]
+                # Cast slice to usize
+                val = self.transform_expr(deref(val_box).clone())
+                slice = self.transform_expr(deref(slice_box).clone())
+                
+                # Auto-Cast heuristic: if slice is likely index (i32) and we are subscripting, cast to usize.
+                # Sudoku uses 'board[row][col]'. 'row' is i32. 
+                # We cast unconditionally if it is Name? Or always?
+                # Usually indices must be usize.
+                new_slice = deref(ast_cast_usize(box_expr(slice)))
+                
+                return ast_create_subscript(box_expr(val), box_expr(new_slice))
+
+            case Expr.BinOp(left=l, op=o, right=r):
+                new_l = self.transform_expr(deref(l).clone())
+                new_r = self.transform_expr(deref(r).clone())
+                return ast_create_binop(box_expr(new_l), o, box_expr(new_r))
+
+            case Expr.UnaryOp(op=o, operand=opd):
+                new_opd = self.transform_expr(deref(opd).clone())
+                return ast_create_unaryop(o, box_expr(new_opd))
+
+            case Expr.BoolOp(op=o, values=vals):
+                new_vals: Vec[Expr] = []
+                for v in vals: new_vals.push(self.transform_expr(v))
+                return ast_create_boolop(o, new_vals)
+
+            case Expr.List(elts):
+                new_elts: Vec[Expr] = []
+                for e in elts: new_elts.push(self.transform_expr(e))
+                return ast_create_list(new_elts)
+
+            case Expr.Name(n):
+                 return Expr.Name(n)
+            case Expr.Constant(c):
+                 return Expr.Constant(c)
+                 
+            # Need to handle assignments constructs? (Assign uses Expr for targets?)
+            # Assign struct has 'targets: Vec[Expr]'.
+            # Stmt.Assign handles assignment.
+            
+            case _:
+                return expr
+
+@extern(path="crate::ast_create_binop")
+def ast_create_binop(left: Box[Expr], op: Operator, right: Box[Expr]) -> Expr: pass
+
+@extern(path="crate::ast_create_unaryop")
+def ast_create_unaryop(op: UnaryOperator, operand: Box[Expr]) -> Expr: pass
+
+@extern(path="crate::ast_create_boolop")
+def ast_create_boolop(op: BoolOperator, values: Vec[Expr]) -> Expr: pass
+
+@extern(path="crate::ast_create_list")
+def ast_create_list(elts: Vec[Expr]) -> Expr: pass
+
+@extern(path="crate::make_if_stmt")
+def make_if_stmt(test: Box[Expr], body: Vec[Stmt], orelse: Vec[Stmt]) -> Stmt: pass
+
+@extern(path="crate::make_while_stmt")
+def make_while_stmt(test: Box[Expr], body: Vec[Stmt], orelse: Vec[Stmt]) -> Stmt: pass
+
+@extern(path="crate::make_for_stmt")
+def make_for_stmt(target: Box[Expr], iter: Box[Expr], body: Vec[Stmt], orelse: Vec[Stmt]) -> Stmt: pass
+
+@extern(path="crate::ast_set_func_args")
+def ast_set_func_args(f: FunctionDef, args: Vec[Arg]) -> FunctionDef: pass
+
+@extern(path="crate::check_first_upper")
+def check_first_upper(s: String) -> bool: pass
+
+@extern(path="crate::ast_create_assign")
+def ast_create_assign(targets: Vec[Expr], value: Box[Expr]) -> Assign: pass
+
+@extern(path="crate::ast_create_if")
+def ast_create_if(test: Box[Expr], body: Vec[Stmt], orelse: Vec[Stmt]) -> IfStmt: pass
+
+@extern(path="crate::ast_create_for")
+def ast_create_for(target: Box[Expr], iter: Box[Expr], body: Vec[Stmt], orelse: Vec[Stmt]) -> ForStmt: pass
+
+@extern(path="crate::ast_create_call")
+def ast_create_call(func: Box[Expr], args: Vec[Expr]) -> Expr: pass
+
+@extern(path="crate::ast_create_subscript")
+def ast_create_subscript(value: Box[Expr], slice: Box[Expr]) -> Expr: pass
+
+
+def transform_module(module: QuicheModule) -> QuicheModule:
+    t = create_Transformer()
+    return t.transform_module(module)

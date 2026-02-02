@@ -8,4 +8,5 @@ workspace = true
 
 [dependencies]
 metaquiche-shared = { path = "../metaquiche-shared" }
+quiche-parser = { path = "../quiche-parser" }
 regex = "1"
