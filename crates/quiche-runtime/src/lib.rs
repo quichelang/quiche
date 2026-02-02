@@ -10,6 +10,9 @@ pub mod introspect {
 pub mod qtest {
     include!(concat!(env!("OUT_DIR"), "/qtest.rs"));
 }
+pub mod pathlib {
+    include!(concat!(env!("OUT_DIR"), "/pathlib.rs"));
+}
 pub mod re;
 
 // Re-export perceus-mem types for use in generated code
@@ -204,7 +207,15 @@ pub mod quiche {
     // Re-export macros
     pub use crate::{call, check, deref, mutref, qref, strcat};
 
-    // Add dummy path_exists etc if needed by codegen, but codegen mostly uses crate::quiche for macros
+    // Path struct for pathlib
+    #[derive(Debug, Clone, Default)]
+    pub struct Path {
+        pub path: String,
+    }
+
+    pub fn create_Path(path: String) -> Path {
+        Path { path }
+    }
 }
 
 pub fn create_QuicheModule(

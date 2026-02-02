@@ -1,0 +1,119 @@
+# Tests for Copy-on-Write (CoW) iterator semantics
+# Verifies that for-loops over &mut Vec<T> correctly use .iter().cloned()
+
+def sum_items(items: mutref[Vec[i32]]) -> i32:
+    """Sum items from a mutable reference to a Vec.
+    Should iterate using CoW semantics (.iter().cloned())."""
+    total: i32 = 0
+    for item in items:
+        total = total + item
+    return total
+
+def double_values(items: mutref[Vec[i32]]) -> Vec[i32]:
+    """Create a new vec with doubled values from a &mut Vec."""
+    result: Vec[i32] = []
+    for item in items:
+        result.push(item * 2)
+    return result
+
+def count_matching(items: mutref[Vec[i32]], target: i32) -> i32:
+    """Count items matching target in a &mut Vec."""
+    count: i32 = 0
+    for item in items:
+        if item == target:
+            count = count + 1
+    return count
+
+def process_and_modify(items: mutref[Vec[i32]]):
+    """Iterate over items (CoW) and then modify the original."""
+    # First iterate - should use .iter().cloned()
+    total: i32 = 0
+    for item in items:
+        total = total + item
+    
+    # Then modify - should work on original vec
+    items.push(total)
+
+# Test with owned Vec (no CoW needed)
+def sum_owned(items: Vec[i32]) -> i32:
+    """Sum items from an owned Vec. No CoW needed."""
+    total: i32 = 0
+    for item in items:
+        total = total + item
+    return total
+
+# Test with iterator method calls (should pass through unchanged)
+def process_string_lines(text: String) -> i32:
+    """Process lines - .lines() is already an iterator, no CoW needed."""
+    count: i32 = 0
+    for line in text.lines():
+        count = count + 1
+    return count
+
+def test_cow_iterator_sum():
+    """Test basic CoW iterator with mutable reference."""
+    numbers: Vec[i32] = [1, 2, 3, 4, 5]
+    result = sum_items(mutref(numbers))
+    assert result == 15
+    # Original should be unchanged
+    assert numbers.len() == 5
+    print("test_cow_iterator_sum: PASSED")
+
+def test_cow_iterator_transform():
+    """Test CoW iterator that transforms values."""
+    numbers: Vec[i32] = [10, 20, 30]
+    doubled = double_values(mutref(numbers))
+    assert doubled.len() == 3
+    assert doubled[0] == 20
+    assert doubled[1] == 40
+    assert doubled[2] == 60
+    # Original unchanged
+    assert numbers[0] == 10
+    print("test_cow_iterator_transform: PASSED")
+
+def test_cow_iterator_count():
+    """Test CoW iterator with conditional logic."""
+    numbers: Vec[i32] = [1, 2, 2, 3, 2, 4]
+    count = count_matching(mutref(numbers), 2)
+    assert count == 3
+    print("test_cow_iterator_count: PASSED")
+
+def test_cow_iterate_then_modify():
+    """Test that CoW iteration and subsequent modification work together."""
+    numbers: Vec[i32] = [1, 2, 3]
+    process_and_modify(mutref(numbers))
+    assert numbers.len() == 4
+    assert numbers[3] == 6  # 1+2+3
+    print("test_cow_iterate_then_modify: PASSED")
+
+def test_owned_vec_iteration():
+    """Test that owned Vec iteration still works (no CoW)."""
+    numbers: Vec[i32] = [5, 10, 15]
+    result = sum_owned(numbers)
+    assert result == 30
+    print("test_owned_vec_iteration: PASSED")
+
+def test_nested_cow_iteration():
+    """Test nested iteration over mutable references via functions."""
+    outer: Vec[i32] = [1, 2, 3]
+    inner: Vec[i32] = [10, 20]
+    
+    total: i32 = 0
+    # Use sum_items for each outer value multiplied by inner sum
+    outer_sum = sum_items(mutref(outer))
+    inner_sum = sum_items(mutref(inner))
+    total = outer_sum * inner_sum
+    
+    # (1+2+3) * (10+20) = 6 * 30 = 180
+    assert total == 180
+    print("test_nested_cow_iteration: PASSED")
+
+def main():
+    print("=== CoW Iterator Semantics Tests ===")
+    test_cow_iterator_sum()
+    test_cow_iterator_transform()
+    test_cow_iterator_count()
+    test_cow_iterate_then_modify()
+    test_owned_vec_iteration()
+    test_nested_cow_iteration()
+    print("=== All CoW Iterator Tests Passed ===")

@@ -278,6 +278,11 @@ pub mod quiche {
     pub fn tr1(key: impl AsRef<str>, name: impl AsRef<str>, value: impl AsRef<str>) -> String {
         metaquiche_shared::i18n::tr1(key.as_ref(), name.as_ref(), value.as_ref())
     }
+
+    /// Find files matching a glob pattern
+    pub fn glob_files(pattern: impl AsRef<str>) -> Vec<String> {
+        crate::glob_files(pattern.as_ref().to_string())
+    }
 }
 pub use compiler::extern_defs;
 
@@ -397,6 +402,93 @@ pub fn list_test_files() -> Vec<String> {
     }
     tests.sort();
     tests
+}
+
+/// Recursively find files matching a pattern (simple glob support)
+/// Pattern: **/*.qrs matches all .qrs files recursively
+/// Pattern: test_*.qrs matches test_*.qrs in current dir
+/// Pattern: (empty) finds all *.qrs and *.q files recursively
+pub fn glob_files(pattern: String) -> Vec<String> {
+    let mut result = Vec::new();
+
+    // Default: find all .qrs and .q files recursively from current dir
+    if pattern.is_empty() {
+        collect_files_recursive(Path::new("."), &["qrs", "q"], &mut result);
+    } else if pattern.starts_with("**/") {
+        // Recursive pattern like **/*.qrs
+        let suffix = &pattern[3..]; // e.g., "*.qrs"
+        let ext = suffix.trim_start_matches("*.");
+        collect_files_recursive(Path::new("."), &[ext], &mut result);
+    } else if pattern.contains('/') {
+        // Path pattern like tests/*.qrs
+        let parts: Vec<&str> = pattern.rsplitn(2, '/').collect();
+        if parts.len() == 2 {
+            let dir = parts[1];
+            let file_pattern = parts[0];
+            collect_files_matching(Path::new(dir), file_pattern, &mut result);
+        }
+    } else {
+        // Simple pattern like test_*.qrs in current dir
+        collect_files_matching(Path::new("."), &pattern, &mut result);
+    }
+
+    result.sort();
+    result
+}
+
+fn collect_files_recursive(dir: &Path, extensions: &[&str], out: &mut Vec<String>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // Skip hidden dirs and common non-source dirs
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !name.starts_with('.') && name != "target" && name != "node_modules" {
+                    collect_files_recursive(&path, extensions, out);
+                }
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if extensions.contains(&ext) {
+                    out.push(path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+}
+
+fn collect_files_matching(dir: &Path, pattern: &str, out: &mut Vec<String>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if matches_pattern(name, pattern) {
+                    out.push(path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+}
+
+fn matches_pattern(name: &str, pattern: &str) -> bool {
+    if pattern.starts_with('*') {
+        // *.qrs matches anything ending with .qrs
+        let suffix = &pattern[1..];
+        name.ends_with(suffix)
+    } else if pattern.ends_with('*') {
+        // test_* matches anything starting with test_
+        let prefix = &pattern[..pattern.len() - 1];
+        name.starts_with(prefix)
+    } else if pattern.contains('*') {
+        // test_*.qrs matches test_ prefix and .qrs suffix
+        let parts: Vec<&str> = pattern.split('*').collect();
+        if parts.len() == 2 {
+            name.starts_with(parts[0]) && name.ends_with(parts[1])
+        } else {
+            name == pattern
+        }
+    } else {
+        name == pattern
+    }
 }
 
 pub fn path_exists(path: String) -> bool {
@@ -681,7 +773,7 @@ impl crate::compiler::codegen::Codegen {
     pub fn create_codegen(
         output: String,
         tuple_vars: HashMap<String, bool>,
-        defined_vars: Vec<HashMap<String, bool>>,
+        defined_vars: Vec<HashMap<String, crate::compiler::extern_defs::TypeInfo>>,
         import_paths: HashMap<String, String>,
         import_kinds: HashMap<String, String>,
         clone_names: bool,

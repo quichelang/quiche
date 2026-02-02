@@ -1,0 +1,264 @@
+# Quiche Pathlib - Python-like path manipulation
+# Inspired by Python's pathlib module
+
+from std.io import Error as IoError
+
+# ============================================================================
+# External Rust functions for filesystem operations
+# ============================================================================
+
+@extern(path="std::fs::read_to_string")
+def fs_read_to_string(path: String) -> Result[String, IoError]: pass
+
+@extern(path="std::fs::read_dir")
+def fs_read_dir(path: String) -> Result[ReadDir, IoError]: pass
+
+@extern(path="std::fs::metadata")
+def fs_metadata(path: String) -> Result[Metadata, IoError]: pass
+
+@extern(path="std::fs::create_dir_all")
+def fs_create_dir_all(path: String) -> Result[Unit, IoError]: pass
+
+@extern(path="std::fs::remove_file")
+def fs_remove_file(path: String) -> Result[Unit, IoError]: pass
+
+@extern(path="std::fs::remove_dir_all")
+def fs_remove_dir_all(path: String) -> Result[Unit, IoError]: pass
+
+@extern(path="std::fs::copy")
+def fs_copy(from_path: String, to_path: String) -> Result[u64, IoError]: pass
+
+@extern(path="std::fs::write")
+def fs_write(path: String, contents: String) -> Result[Unit, IoError]: pass
+
+@extern(path="std::env::current_dir")
+def env_current_dir() -> Result[PathBuf, IoError]: pass
+
+# Unit type alias
+@extern(path="()", no_generic=True)
+class Unit: pass
+
+@extern(path="std::path::PathBuf", no_generic=True)
+class PathBuf:
+    def to_string_lossy(self) -> String: pass
+    def display(self) -> String: pass
+
+@extern(path="std::fs::ReadDir", no_generic=True)
+class ReadDir: pass
+
+@extern(path="std::fs::Metadata", no_generic=True)
+class Metadata:
+    def is_file(self) -> bool: pass
+    def is_dir(self) -> bool: pass
+    def len(self) -> u64: pass
+
+@extern(path="std::fs::DirEntry", no_generic=True)
+class DirEntry:
+    def path(self) -> PathBuf: pass
+    def file_name(self) -> String: pass
+
+# ============================================================================
+# Path class - Python pathlib.Path equivalent
+# ============================================================================
+
+class Path(Struct):
+    """A path object for filesystem operations, similar to Python's pathlib.Path."""
+    path: String
+
+    def new(path: String) -> Path:
+        """Create a new Path from a string."""
+        return create_Path(path)
+
+    def cwd() -> Path:
+        """Return the current working directory."""
+        match env_current_dir():
+            case Ok(p):
+                return Path.new(p.to_string_lossy())
+            case Err(_):
+                return Path.new(".")
+
+    # --- Path properties ---
+
+    def name(self) -> String:
+        """Return the final component of the path (filename)."""
+        p = self.path
+        idx = p.rfind("/")
+        if idx == -1:
+            return p
+        return p[idx + 1..]
+
+    def stem(self) -> String:
+        """Return the filename without the suffix."""
+        n = self.name()
+        idx = n.rfind(".")
+        if idx == -1 or idx == 0:
+            return n
+        return n[..idx]
+
+    def suffix(self) -> String:
+        """Return the file extension including the dot."""
+        n = self.name()
+        idx = n.rfind(".")
+        if idx == -1 or idx == 0:
+            return ""
+        return n[idx..]
+
+    def parent(self) -> Path:
+        """Return the parent directory."""
+        idx = self.path.rfind("/")
+        if idx == -1:
+            return Path.new(".")
+        if idx == 0:
+            return Path.new("/")
+        return Path.new(self.path[..idx])
+
+    # --- Path operations ---
+
+    def join(self, other: String) -> Path:
+        """Join this path with another path component."""
+        if other.starts_with(ref("/")):
+            return Path.new(other)
+        if self.path.ends_with(ref("/")):
+            return Path.new(strcat(self.path, other))
+        return Path.new(strcat(self.path, "/", other))
+
+    def __div__(self, other: String) -> Path:
+        """Allow using / operator: path / "subdir"."""
+        return self.join(other)
+
+    # --- Filesystem queries ---
+
+    def exists(self) -> bool:
+        """Check if the path exists."""
+        match fs_metadata(self.path.clone()):
+            case Ok(_): return True
+            case Err(_): return False
+
+    def is_file(self) -> bool:
+        """Check if the path is a file."""
+        match fs_metadata(self.path.clone()):
+            case Ok(m): return m.is_file()
+            case Err(_): return False
+
+    def is_dir(self) -> bool:
+        """Check if the path is a directory."""
+        match fs_metadata(self.path.clone()):
+            case Ok(m): return m.is_dir()
+            case Err(_): return False
+
+    # --- Filesystem operations ---
+
+    def read_text(self) -> Result[String, IoError]:
+        """Read the file contents as a string."""
+        return fs_read_to_string(self.path.clone())
+
+    def write_text(self, content: String) -> Result[Unit, IoError]:
+        """Write a string to the file."""
+        return fs_write(self.path.clone(), content)
+
+    def mkdir(self, parents: bool) -> Result[Unit, IoError]:
+        """Create directory (and parents if parents=True)."""
+        return fs_create_dir_all(self.path.clone())
+
+    def unlink(self) -> Result[Unit, IoError]:
+        """Remove a file."""
+        return fs_remove_file(self.path.clone())
+
+    def rmtree(self) -> Result[Unit, IoError]:
+        """Remove a directory and all its contents."""
+        return fs_remove_dir_all(self.path.clone())
+
+    # --- Glob support ---
+
+    def glob(self, pattern: String) -> Vec[Path]:
+        """Find all paths matching the pattern (relative to this path).
+        
+        Patterns:
+          *.qrs     - files ending in .qrs in this directory
+          **/*.qrs  - files ending in .qrs recursively
+          test_*    - files starting with test_
+        """
+        result: Vec[Path] = Vec.new()
+        
+        if pattern.starts_with(ref("**/")):
+            # Recursive pattern
+            suffix = pattern[3..]
+            self._glob_recursive(suffix, mutref(result))
+        else:
+            # Non-recursive pattern  
+            self._glob_dir(pattern, mutref(result))
+        
+        return result
+
+    def _glob_dir(self, pattern: String, result: mutref[Vec[Path]]):
+        """Find matching files in this directory only."""
+        match fs_read_dir(self.path.clone()):
+            case Ok(entries):
+                for entry in entries:
+                    name = entry.file_name()
+                    if self._matches_pattern(name, pattern):
+                        deref(result).push(Path.new(entry.path().to_string_lossy()))
+            case Err(_):
+                pass
+
+    def _glob_recursive(self, pattern: String, result: mutref[Vec[Path]]):
+        """Find matching files recursively."""
+        match fs_read_dir(self.path.clone()):
+            case Ok(entries):
+                for entry in entries:
+                    entry_path = Path.new(entry.path().to_string_lossy())
+                    name = entry.file_name()
+                    
+                    # Check if file matches
+                    if entry_path.is_file():
+                        if self._matches_pattern(name, pattern):
+                            deref(result).push(entry_path)
+                    # Recurse into directories (skip hidden/target)
+                    elif entry_path.is_dir():
+                        if not name.starts_with(ref(".")) and name != "target" and name != "node_modules":
+                            entry_path._glob_recursive(pattern, result)
+            case Err(_):
+                pass
+
+    def _matches_pattern(self, name: String, pattern: String) -> bool:
+        """Check if a filename matches a glob pattern."""
+        if pattern.starts_with(ref("*")):
+            # *.qrs - matches anything ending with .qrs
+            suffix = pattern[1..]
+            return name.ends_with(ref(suffix))
+        elif pattern.ends_with(ref("*")):
+            # test_* - matches anything starting with test_
+            prefix = pattern[..pattern.len() - 1]
+            return name.starts_with(ref(prefix))
+        elif pattern.contains("*"):
+            # test_*.qrs - matches prefix and suffix
+            idx = pattern.find("*")
+            if idx != -1:
+                prefix = pattern[..idx]
+                suffix = pattern[idx + 1..]
+                return name.starts_with(ref(prefix)) and name.ends_with(ref(suffix))
+            return name == pattern
+        else:
+            return name == pattern
+
+    def iterdir(self) -> Vec[Path]:
+        """Iterate over the directory contents."""
+        result: Vec[Path] = Vec.new()
+        match fs_read_dir(self.path.clone()):
+            case Ok(entries):
+                for entry in entries:
+                    result.push(Path.new(entry.path().to_string_lossy()))
+            case Err(_):
+                pass
+        return result
+
+    def __str__(self) -> String:
+        """Return the path as a string."""
+        return self.path.clone()
+
+    def as_str(self) -> ref[str]:
+        """Return the path as a string reference."""
+        return self.path.as_str()
+
+@extern(path="crate::quiche::create_Path")
+def create_Path(path: String) -> Path: pass

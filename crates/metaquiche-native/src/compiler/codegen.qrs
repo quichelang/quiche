@@ -17,13 +17,31 @@ from compiler.type_utils import is_type_or_module as util_is_type_or_module
 from compiler.type_utils import contains_name as util_contains_name
 # Using extern_defs from wrapper
 # ============================================================================
+# TYPE TRACKING - Stores type information for variables in scope
+# ============================================================================
+
+# TypeInfo is defined in extern_defs (mod.rs) and imported here
+@extern(path="super::extern_defs::TypeInfo", no_generic=True)
+class TypeInfo(Extern):
+    type_str: String
+    is_ref: bool
+    is_mut_ref: bool
+    is_iterable_ref: bool
+
+@extern(path="super::extern_defs::create_type_info")
+def create_type_info(type_str: String) -> TypeInfo: pass
+
+@extern(path="super::extern_defs::create_type_info_simple")
+def create_type_info_simple() -> TypeInfo: pass
+
+# ============================================================================
 # CODEGEN CORE - Main class, fields, constructors, and core utilities
 # ============================================================================
 
 class Codegen:
     output: RustString
     tuple_vars: HashMap[String, bool]
-    defined_vars: Vec[HashMap[String, bool]]
+    defined_vars: Vec[HashMap[String, TypeInfo]]
     import_paths: HashMap[String, String]
     in_trait_or_impl: bool
 
@@ -49,6 +67,23 @@ class Codegen:
                 case Some(_): return True
                 case None: pass
         return False
+
+    def get_var_type_info(self, name: String) -> Option[TypeInfo]:
+        """Look up type info for a variable across all scopes."""
+        i = self.defined_vars.len()
+        while i > 0:
+            i = i - 1
+            scope = ref(self.defined_vars[i.clone()])
+            match scope.get(ref(name.clone())):
+                case Some(ti): return Some(ti.clone())
+                case None: pass
+        return None
+
+    def is_mut_ref_iterable(self, name: String) -> bool:
+        """Check if variable is a &mut reference to an iterable (Vec, String, etc)."""
+        match self.get_var_type_info(name):
+            case Some(ti): return ti.is_iterable_ref
+            case None: return False
 
     def get_root_name(self, expr: q_ast.Expr) -> Option[String]:
         match expr:
@@ -83,7 +118,7 @@ class Codegen:
         return False
 
     def enter_var_scope(self):
-        self.defined_vars.push(HashMap[String, bool].new())
+        self.defined_vars.push(HashMap[String, TypeInfo].new())
 
     def exit_var_scope(self):
         sz = self.defined_vars.len()
@@ -91,14 +126,23 @@ class Codegen:
             self.defined_vars.pop()
 
     def mark_var_defined(self, name: String):
+        """Mark variable as defined with empty type info (legacy compatibility)."""
+        self.mark_var_defined_with_type(name, create_type_info_simple())
+
+    def mark_var_defined_with_type(self, name: String, type_info: TypeInfo):
+        """Mark variable as defined with full type information."""
         sz = self.defined_vars.len()
         idx = sz - 1
-        current_scope: HashMap[String, bool] = self.defined_vars[idx.clone()]
-        current_scope.insert(name, True)
+        current_scope: HashMap[String, TypeInfo] = self.defined_vars[idx.clone()]
+        current_scope.insert(name, type_info)
         self.defined_vars[idx.clone()] = current_scope
     
     def define_var(self, name: String):
         self.mark_var_defined(name)
+
+    def define_var_with_type(self, name: String, type_str: String):
+        """Define a variable with its type string for later lookup."""
+        self.mark_var_defined_with_type(name, create_type_info(type_str))
 
     def expr_contains_name(self, expr: q_ast.Expr, name: String) -> bool:
         return util_contains_name(expr, name)
@@ -189,7 +233,7 @@ class Codegen:
     def __init__(self):
         self.output = RustString.new()
         self.tuple_vars = HashMap[String, bool].new()
-        self.defined_vars = [HashMap[String, bool].new()]
+        self.defined_vars = [HashMap[String, TypeInfo].new()]
         self.import_paths = HashMap[String, String].new()
         self.import_kinds = HashMap[String, String].new()
         self.clone_names = True
@@ -198,16 +242,16 @@ class Codegen:
         self.current_class = ""
 
     def new() -> Codegen:
-        return extern_defs.create_codegen(output=RustString.new(), tuple_vars=HashMap[String, bool].new(), defined_vars=[HashMap[String, bool].new()], import_paths=HashMap[String, String].new(), import_kinds=HashMap[String, String].new(), clone_names=True, current_module_path="", class_fields=HashMap.new(), current_class="")
+        return extern_defs.create_codegen(output=RustString.new(), tuple_vars=HashMap[String, bool].new(), defined_vars=[HashMap[String, TypeInfo].new()], import_paths=HashMap[String, String].new(), import_kinds=HashMap[String, String].new(), clone_names=True, current_module_path="", class_fields=HashMap.new(), current_class="")
 
     def new_with_imports(import_paths: HashMap[String, String], import_kinds: HashMap[String, String]) -> Codegen:
-        return extern_defs.create_codegen(output=RustString.new(), tuple_vars=HashMap[String, bool].new(), defined_vars=[HashMap[String, bool].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path="", class_fields=HashMap.new(), current_class="")
+        return extern_defs.create_codegen(output=RustString.new(), tuple_vars=HashMap[String, bool].new(), defined_vars=[HashMap[String, TypeInfo].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path="", class_fields=HashMap.new(), current_class="")
 
     def new_with_imports_and_module(import_paths: HashMap[String, String], import_kinds: HashMap[String, String], current_module_path: String) -> Codegen:
         return extern_defs.create_codegen(
             output=RustString.new(),
             tuple_vars=HashMap[String, bool].new(),
-            defined_vars=[HashMap[String, bool].new()],
+            defined_vars=[HashMap[String, TypeInfo].new()],
             import_paths=import_paths,
             import_kinds=import_kinds,
             clone_names=True,
@@ -466,10 +510,11 @@ class Codegen:
                     ann_expr = deref(ann.clone())
                     type_name = self.type_to_string(ann_expr)
                     self.emit(type_name.clone())
-                    self.mark_var_defined(param.arg.to_string())
+                    # Register param with full type info for CoW iterator support
+                    self.define_var_with_type(param.arg.to_string(), type_name.clone())
                 else:
                     self.emit("Any")
-                    pass
+                    self.mark_var_defined(param.arg.to_string())
         self.T("rparen")
         if f.returns.is_some():
             ret = f.returns.clone().unwrap()
@@ -490,6 +535,7 @@ class Codegen:
         
         if is_signature_only:
             self.emit(";\n")
+            self.exit_var_scope()  # Balance enter_var_scope() even for signatures
         else:
             self.emit(" {\n")
             for s in f.body:
@@ -534,8 +580,18 @@ class Codegen:
                 if not is_existing:
                     if self.expr_contains_name(Clone.clone(ref(deref(a.value))), name_assign.clone()):
                         is_existing = True
+                
+                self.emit("/* assign check: ")
+                self.emit(name_assign.clone())
+                self.emit(" existing=")
+                if is_existing: self.emit("true") 
+                else: self.emit("false")
+                self.emit(" */")
+
                 if not is_existing:
+                    self.emit("/* emit let mut */")
                     self.T("kw_let_mut")
+                
                 self.emit(name_assign.clone())
                 self.T("assign_op")
                 assign_val_type = self.infer_expr_type(Clone.clone(ref(deref(a.value))))
@@ -574,7 +630,8 @@ class Codegen:
                 self.T("colon_sep")
                 self.emit(ann_type_name.clone())
                 self.T("assign_op")
-                self.mark_var_defined(n.to_string())
+                # Register local variable with full type info for CoW support
+                self.define_var_with_type(n.to_string(), ann_type_name.clone())
                 if is_tuple_ann:
                     self.tuple_vars.insert(n.to_string(), True)
             case _: pass
@@ -590,12 +647,19 @@ class Codegen:
         prev_clone = self.clone_names
         self.clone_names = True
         self.emit("for __q in (")
+        # Check if iterating over a &mut Vec - if so, use .iter().cloned() for CoW semantics
+        is_mut_ref_iter = False
         match ref(deref(f.iter)):
             case q_ast.Expr.Name(n):
-                self.emit(n.to_string())
+                iter_name = n.to_string()
+                is_mut_ref_iter = self.is_mut_ref_iterable(iter_name.clone())
+                self.emit(iter_name)
             case _:
                 self.generate_expr(deref(f.iter))
-        self.emit(") {\n")
+        if is_mut_ref_iter:
+            self.emit(").iter().cloned() {\n")
+        else:
+            self.emit(") {\n")
         self.T("kw_let")
         match ref(deref(f.target)):
             case q_ast.Expr.Name(n):
