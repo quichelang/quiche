@@ -1094,7 +1094,9 @@ class Codegen:
             case q_ast.Expr.Tuple(t): self.emit_expr_tuple(t)
             case q_ast.Expr.Attribute(value=value, attr=attr): self.emit_attribute(value, attr)
             case q_ast.Expr.Subscript(value=value, slice=slice): self.emit_subscript(value, slice)
-            case q_ast.Expr.Lambda(args=args, body=body): self.emit_lambda(args, body)
+            case q_ast.Expr.Lambda(args=args, return_type=return_type, body=body): self.emit_lambda(args, return_type, body)
+            case q_ast.Expr.ListComp(element=element, generators=generators): self.emit_list_comp(element, generators)
+            case q_ast.Expr.DictComp(key=key, value=value, generators=generators): self.emit_dict_comp(key, value, generators)
             case q_ast.Expr.Cast(expr=expr, target_type=target_type):
                 self.generate_expr(deref(expr))
                 self.emit(" as ")
@@ -1116,7 +1118,7 @@ class Codegen:
     def emit_call(self, func: Box[q_ast.Expr], args: Vec[q_ast.Expr], keywords: Vec[q_ast.Keyword]):
         func_name_c: String = "".to_string()
         match ref(deref(func)):
-            case q_ast.Expr.Lambda(args=l_args, body=l_body):
+            case q_ast.Expr.Lambda(args=l_args, return_type=l_ret, body=l_body):
                 self.generate_expr(deref(func))
                 self.T("lparen")
                 idx_lc = 0
@@ -1625,17 +1627,77 @@ class Codegen:
                 self.generate_expr(sl_s)
                 self.T("close_bracket_clone")
 
-    def emit_lambda(self, args: Vec[String], body: Box[q_ast.Expr]):
-        self.T("lparen")
+    def emit_lambda(self, args: Vec[q_ast.LambdaArg], return_type: Option[Box[q_ast.Expr]], body: q_ast.LambdaBody):
         self.T("op_bitor")
         idx_lam = 0
         for arg in args.clone():
             if idx_lam > 0: self.T("comma_sep")
-            self.emit(arg)
+            self.emit(arg.name)
+            match arg.ty:
+                case Some(ty):
+                    self.emit(": ")
+                    self.generate_expr(deref(ty))
+                case None: pass
             idx_lam = idx_lam + 1
         self.T("op_bitor")
+        match return_type:
+            case Some(ret):
+                self.emit(" -> ")
+                self.generate_expr(deref(ret))
+            case None: pass
         self.T("space")
-        self.generate_expr_no_clone(deref(body))
-        self.T("rparen")
+        match body:
+            case q_ast.LambdaBody.Expr(e):
+                self.generate_expr_no_clone(deref(e))
+            case q_ast.LambdaBody.Block(stmts):
+                self.emit("{\n")
+                for stmt in stmts:
+                    self.generate_stmt(stmt)
+                self.emit("}")
+
+    def emit_list_comp(self, element: Box[q_ast.Expr], generators: Vec[q_ast.Comprehension]):
+        # Generate: iter.into_iter()[.filter(|x| cond)].map(|x| element).collect::<Vec<_>>()
+        self.emit_comprehension_iter(generators.clone())
+        self.emit(".map(|")
+        self.emit_comprehension_target(generators.clone())
+        self.emit("| ")
+        self.generate_expr(deref(element))
+        self.emit(").collect::<Vec<_>>()")
+
+    def emit_dict_comp(self, key: Box[q_ast.Expr], value: Box[q_ast.Expr], generators: Vec[q_ast.Comprehension]):
+        # Generate: iter.into_iter()[.filter(|x| cond)].map(|(k, v)| (key, value)).collect::<HashMap<_,_>>()
+        self.emit_comprehension_iter(generators.clone())
+        self.emit(".map(|")
+        self.emit_comprehension_target(generators.clone())
+        self.emit("| (")
+        self.generate_expr(deref(key))
+        self.emit(", ")
+        self.generate_expr(deref(value))
+        self.emit(")).collect::<std::collections::HashMap<_, _>>()")
+
+    def emit_comprehension_iter(self, generators: Vec[q_ast.Comprehension]):
+        # For simplicity, only single generator supported
+        if generators.len() > 0:
+            generator = generators[0]
+            self.generate_expr(deref(generator.iter))
+            self.emit(".into_iter()")
+            # Generate filter if there are conditions
+            if generator.ifs.len() > 0:
+                self.emit(".filter(|")
+                self.emit_comprehension_target(generators.clone())
+                self.emit("| ")
+                idx_cond = 0
+                for cond in generator.ifs.clone():
+                    if idx_cond > 0: self.emit(" && ")
+                    self.emit("(")
+                    self.generate_expr(cond)
+                    self.emit(")")
+                    idx_cond = idx_cond + 1
+                self.emit(")")
+
+    def emit_comprehension_target(self, generators: Vec[q_ast.Comprehension]):
+        if generators.len() > 0:
+            generator = generators[0]
+            self.generate_expr(deref(generator.target))
 
 

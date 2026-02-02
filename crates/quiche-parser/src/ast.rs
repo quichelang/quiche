@@ -71,10 +71,23 @@ pub enum QuicheExpr {
     Constant(Constant),
     List(Vec<QuicheExpr>),
     Tuple(Vec<QuicheExpr>),
+    /// Rust-style closure: |x: T, y: U| expr or |x: T| -> R { stmts }
     Lambda {
-        args: Vec<String>,
-        body: Box<QuicheExpr>,
-    }, // Simplified args
+        args: Vec<LambdaArg>,
+        return_type: Option<Box<QuicheExpr>>,
+        body: LambdaBody,
+    },
+    /// List comprehension: [expr for x in iter if cond]
+    ListComp {
+        element: Box<QuicheExpr>,
+        generators: Vec<Comprehension>,
+    },
+    /// Dict comprehension: {key: value for x in iter if cond}
+    DictComp {
+        key: Box<QuicheExpr>,
+        value: Box<QuicheExpr>,
+        generators: Vec<Comprehension>,
+    },
     IfExp {
         test: Box<QuicheExpr>,
         body: Box<QuicheExpr>,
@@ -165,6 +178,33 @@ pub struct Arg {
 pub struct Keyword {
     pub arg: Option<String>,
     pub value: Box<QuicheExpr>,
+}
+
+/// Argument for a lambda/closure with optional type annotation
+#[derive(Debug, Clone)]
+pub struct LambdaArg {
+    pub name: String,
+    pub ty: Option<Box<QuicheExpr>>,
+}
+
+/// Lambda body: either a single expression or a block of statements
+#[derive(Debug, Clone)]
+pub enum LambdaBody {
+    /// Single expression: |x| x + 1
+    Expr(Box<QuicheExpr>),
+    /// Block of statements: |x| { let y = x + 1; y }
+    Block(Vec<QuicheStmt>),
+}
+
+/// Generator in a comprehension: for x in iter [if cond1 if cond2]
+#[derive(Debug, Clone)]
+pub struct Comprehension {
+    /// Loop variable (can be Name or Tuple for destructuring)
+    pub target: Box<QuicheExpr>,
+    /// Iterable expression
+    pub iter: Box<QuicheExpr>,
+    /// Filter conditions (multiple ifs are ANDed together)
+    pub ifs: Vec<QuicheExpr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

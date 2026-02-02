@@ -1534,24 +1534,192 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LBracket => {
                 self.advance()?;
-                let elements = self.parse_expr_list()?;
-                self.expect(&TokenKind::RBracket)?;
-                Ok(QuicheExpr::List(elements))
+                // Check for list comprehension: [expr for x in iter]
+                if !self.check(&TokenKind::RBracket) {
+                    let first = self.parse_expression()?;
+                    if self.check_keyword(Keyword::For) {
+                        // List comprehension
+                        let generators = self.parse_comprehension_generators()?;
+                        self.expect(&TokenKind::RBracket)?;
+                        return Ok(QuicheExpr::ListComp {
+                            element: Box::new(first),
+                            generators,
+                        });
+                    }
+                    // Regular list literal
+                    let mut elements = vec![first];
+                    while self.eat(&TokenKind::Comma)? {
+                        if self.check(&TokenKind::RBracket) {
+                            break; // trailing comma
+                        }
+                        elements.push(self.parse_expression()?);
+                    }
+                    self.expect(&TokenKind::RBracket)?;
+                    Ok(QuicheExpr::List(elements))
+                } else {
+                    self.advance()?; // consume ]
+                    Ok(QuicheExpr::List(Vec::new()))
+                }
+            }
+            TokenKind::LBrace => {
+                self.advance()?;
+                // Check for dict comprehension: {k: v for x in iter}
+                if !self.check(&TokenKind::RBrace) {
+                    let first_key = self.parse_expression()?;
+                    if self.check(&TokenKind::Colon) {
+                        self.advance()?; // consume :
+                        let first_value = self.parse_expression()?;
+                        if self.check_keyword(Keyword::For) {
+                            // Dict comprehension
+                            let generators = self.parse_comprehension_generators()?;
+                            self.expect(&TokenKind::RBrace)?;
+                            return Ok(QuicheExpr::DictComp {
+                                key: Box::new(first_key),
+                                value: Box::new(first_value),
+                                generators,
+                            });
+                        }
+                        // Regular dict literal (not yet implemented - fall through to error)
+                    }
+                }
+                Err(self.error("Dict literals not yet supported, use HashMap::new()".to_string()))
+            }
+            TokenKind::Pipe => {
+                // Rust-style closure: |x: T, y: U| expr or |x: T| -> R { stmts }
+                self.parse_closure()
             }
             TokenKind::Keyword(Keyword::Lambda) => {
+                // Python-style lambda (deprecated, kept for backwards compat)
                 self.advance()?;
                 let mut args = Vec::new();
                 while !self.check(&TokenKind::Colon) {
-                    args.push(self.expect_ident()?);
+                    let name = self.expect_ident()?;
+                    args.push(LambdaArg { name, ty: None });
                     if !self.eat(&TokenKind::Comma)? {
                         break;
                     }
                 }
                 self.expect(&TokenKind::Colon)?;
                 let body = Box::new(self.parse_expression()?);
-                Ok(QuicheExpr::Lambda { args, body })
+                Ok(QuicheExpr::Lambda {
+                    args,
+                    return_type: None,
+                    body: LambdaBody::Expr(body),
+                })
             }
             _ => Err(self.error(format!("Unexpected token: {:?}", self.current_kind()))),
+        }
+    }
+
+    /// Parse a Rust-style closure: |x: T, y: U| expr or |x: T| -> R { stmts }
+    fn parse_closure(&mut self) -> Result<QuicheExpr, ParseError> {
+        self.expect(&TokenKind::Pipe)?; // consume opening |
+
+        // Parse arguments
+        let mut args = Vec::new();
+        while !self.check(&TokenKind::Pipe) {
+            let name = self.expect_ident()?;
+            // Parse type annotation if present, use restricted parsing (stop at |, ,)
+            let ty = if self.eat(&TokenKind::Colon)? {
+                Some(Box::new(self.parse_type_annotation()?))
+            } else {
+                None
+            };
+            args.push(LambdaArg { name, ty });
+            if !self.eat(&TokenKind::Comma)? {
+                break;
+            }
+        }
+        self.expect(&TokenKind::Pipe)?; // consume closing |
+
+        // Check for return type: -> Type
+        let return_type = if self.check(&TokenKind::Arrow) {
+            self.advance()?;
+            Some(Box::new(self.parse_type_annotation()?))
+        } else {
+            None
+        };
+
+        // Check for block body: { stmts }
+        let body = if self.check(&TokenKind::LBrace) {
+            self.advance()?;
+            let mut stmts = Vec::new();
+            self.skip_newlines()?;
+            while !self.check(&TokenKind::RBrace) {
+                stmts.push(self.parse_statement()?);
+                self.skip_newlines()?;
+            }
+            self.expect(&TokenKind::RBrace)?;
+            LambdaBody::Block(stmts)
+        } else {
+            // Single expression body
+            LambdaBody::Expr(Box::new(self.parse_expression()?))
+        };
+
+        Ok(QuicheExpr::Lambda {
+            args,
+            return_type,
+            body,
+        })
+    }
+
+    /// Parse a type annotation (stops at operators like |, ,, etc.)
+    fn parse_type_annotation(&mut self) -> Result<QuicheExpr, ParseError> {
+        // Types are typically Name, Name[T], or Name.Attr patterns
+        // Use postfix parsing which handles these without binary operators
+        self.parse_postfix()
+    }
+
+    /// Parse comprehension generators: for x in iter [if cond] [for y in iter2 ...]
+    fn parse_comprehension_generators(&mut self) -> Result<Vec<Comprehension>, ParseError> {
+        let mut generators = Vec::new();
+
+        while self.check_keyword(Keyword::For) {
+            self.advance()?; // consume 'for'
+            // Parse target - typically a simple name or tuple pattern
+            let target = Box::new(self.parse_comp_target()?);
+            self.expect_keyword(Keyword::In)?;
+            // Parse iterator - stop at 'if', 'for', ']', '}'
+            let iter = Box::new(self.parse_comp_expr()?);
+
+            // Parse optional 'if' conditions
+            let mut ifs = Vec::new();
+            while self.check_keyword(Keyword::If) {
+                self.advance()?;
+                // Parse condition - stop at 'if', 'for', ']', '}'
+                ifs.push(self.parse_comp_expr()?);
+            }
+
+            generators.push(Comprehension { target, iter, ifs });
+        }
+
+        Ok(generators)
+    }
+
+    /// Parse an expression in comprehension context (stops at for/if/]/})
+    fn parse_comp_expr(&mut self) -> Result<QuicheExpr, ParseError> {
+        // Parse until we hit a comprehension boundary (for, if, ], })
+        // This is essentially parse_or() level and below
+        self.parse_or()
+    }
+
+    /// Parse a comprehension target (typically Name or Tuple)
+    fn parse_comp_target(&mut self) -> Result<QuicheExpr, ParseError> {
+        // Check for tuple pattern: (a, b) or a, b
+        if self.check(&TokenKind::LParen) {
+            self.advance()?;
+            let mut elements = vec![self.parse_atom()?];
+            while self.eat(&TokenKind::Comma)? {
+                if self.check(&TokenKind::RParen) {
+                    break;
+                }
+                elements.push(self.parse_atom()?);
+            }
+            self.expect(&TokenKind::RParen)?;
+            Ok(QuicheExpr::Tuple(elements))
+        } else {
+            // Simple name
+            self.parse_atom()
         }
     }
 

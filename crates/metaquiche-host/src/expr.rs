@@ -434,17 +434,69 @@ impl Codegen {
                     self.output.push_str("].clone()");
                 }
             }
-            ast::QuicheExpr::Lambda { args, body } => {
-                self.output.push_str("(|");
+            ast::QuicheExpr::Lambda {
+                args,
+                return_type,
+                body,
+            } => {
+                self.output.push_str("|");
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.output.push_str(arg);
+                    self.output.push_str(&arg.name);
+                    if let Some(ty) = &arg.ty {
+                        self.output.push_str(": ");
+                        self.generate_expr(*ty.clone());
+                    }
                 }
+                self.output.push_str("|");
+                if let Some(ret) = return_type {
+                    self.output.push_str(" -> ");
+                    self.generate_expr(*ret);
+                }
+                self.output.push_str(" ");
+                match body {
+                    ast::LambdaBody::Expr(e) => {
+                        self.generate_expr(*e);
+                    }
+                    ast::LambdaBody::Block(stmts) => {
+                        self.output.push_str("{\n");
+                        for stmt in stmts {
+                            self.generate_stmt(stmt);
+                        }
+                        self.output.push_str("}");
+                    }
+                }
+            }
+            ast::QuicheExpr::ListComp {
+                element,
+                generators,
+            } => {
+                // Generate: iter.into_iter()[.filter(|x| cond)].map(|x| element).collect::<Vec<_>>()
+                self.generate_comprehension_iter(&generators);
+                self.output.push_str(".map(|");
+                // Extract target names for the closure param
+                self.generate_comprehension_target(&generators);
                 self.output.push_str("| ");
-                self.generate_expr(*body);
-                self.output.push_str(")");
+                self.generate_expr(*element);
+                self.output.push_str(").collect::<Vec<_>>()");
+            }
+            ast::QuicheExpr::DictComp {
+                key,
+                value,
+                generators,
+            } => {
+                // Generate: iter.into_iter()[.filter(|x| cond)].map(|(k, v)| (key, value)).collect::<HashMap<_,_>>()
+                self.generate_comprehension_iter(&generators);
+                self.output.push_str(".map(|");
+                self.generate_comprehension_target(&generators);
+                self.output.push_str("| (");
+                self.generate_expr(*key);
+                self.output.push_str(", ");
+                self.generate_expr(*value);
+                self.output
+                    .push_str(")).collect::<std::collections::HashMap<_, _>>()");
             }
             ast::QuicheExpr::Cast { expr, target_type } => {
                 self.generate_expr(*expr);
@@ -480,6 +532,79 @@ impl Codegen {
                 self.output
                     .push_str(&format!("/* unhandled expr: {:?} */", expr));
             }
+        }
+    }
+
+    /// Generate the iterator chain for a comprehension, including filters
+    /// Output: iter.into_iter()[.filter(|x| cond1 && cond2)]
+    fn generate_comprehension_iter(&mut self, generators: &[ast::Comprehension]) {
+        // For simplicity, we only support single generator for now
+        // Nested generators require more complex flattening
+        if let Some(gen) = generators.first() {
+            // Generate the base iterator
+            self.generate_expr(*gen.iter.clone());
+            self.output.push_str(".into_iter()");
+
+            // Generate filter if there are any conditions
+            if !gen.ifs.is_empty() {
+                self.output.push_str(".filter(|");
+                self.generate_comprehension_target(generators);
+                self.output.push_str("| ");
+
+                // Combine all conditions with &&
+                for (i, cond) in gen.ifs.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(" && ");
+                    }
+                    self.output.push_str("(");
+                    self.generate_expr(cond.clone());
+                    self.output.push_str(")");
+                }
+                self.output.push_str(")");
+            }
+
+            // Handle nested generators by flat_map
+            for nested_gen in generators.iter().skip(1) {
+                self.output.push_str(".flat_map(|");
+                self.generate_comprehension_target(&[generators[0].clone()]);
+                self.output.push_str("| ");
+                self.generate_expr(*nested_gen.iter.clone());
+                self.output.push_str(".into_iter()");
+
+                // Nested filters
+                if !nested_gen.ifs.is_empty() {
+                    self.output.push_str(".filter(|");
+                    self.generate_expr(*nested_gen.target.clone());
+                    self.output.push_str("| ");
+                    for (i, cond) in nested_gen.ifs.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(" && ");
+                        }
+                        self.output.push_str("(");
+                        self.generate_expr(cond.clone());
+                        self.output.push_str(")");
+                    }
+                    self.output.push_str(")");
+                }
+
+                // Map to tuple combining outer and inner targets
+                self.output.push_str(".map(|");
+                self.generate_expr(*nested_gen.target.clone());
+                self.output.push_str("| (");
+                self.generate_comprehension_target(&[generators[0].clone()]);
+                self.output.push_str(", ");
+                self.generate_expr(*nested_gen.target.clone());
+                self.output.push_str("))");
+
+                self.output.push_str(")");
+            }
+        }
+    }
+
+    /// Generate the target pattern for a comprehension closure param
+    fn generate_comprehension_target(&mut self, generators: &[ast::Comprehension]) {
+        if let Some(gen) = generators.first() {
+            self.generate_expr(*gen.target.clone());
         }
     }
 }
