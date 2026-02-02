@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod error_fmt;
+pub mod lexer;
 pub mod parser;
 
 pub use ast::QuicheModule;
