@@ -6,7 +6,9 @@
     unused_imports,
     unused_mut,
     unused_parens,
-    unused_variables
+    unused_variables,
+    non_snake_case,
+    non_shorthand_field_patterns
 )]
 #![allow(unused_macros, unused_imports)]
 // Allow in handwritten Rust helpers (generated Quiche code should not use these)

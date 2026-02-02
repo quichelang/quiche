@@ -441,17 +441,14 @@ impl<'a> Parser<'a> {
 
         let mut orelse = Vec::new();
 
-        // Handle elif chains
+        // Handle elif chains - build from inside out
+        let mut elif_chain: Vec<(Box<QuicheExpr>, Vec<QuicheStmt>)> = Vec::new();
         while self.check_keyword(Keyword::Elif) {
             self.advance()?;
             let elif_test = Box::new(self.parse_expression()?);
             self.expect(&TokenKind::Colon)?;
             let elif_body = self.parse_block()?;
-            orelse = vec![QuicheStmt::If(IfStmt {
-                test: elif_test,
-                body: elif_body,
-                orelse: std::mem::take(&mut orelse),
-            })];
+            elif_chain.push((elif_test, elif_body));
         }
 
         // Handle else
@@ -459,6 +456,15 @@ impl<'a> Parser<'a> {
             self.advance()?;
             self.expect(&TokenKind::Colon)?;
             orelse = self.parse_block()?;
+        }
+
+        // Build elif chain from inside out (last elif wraps the else, etc.)
+        for (elif_test, elif_body) in elif_chain.into_iter().rev() {
+            orelse = vec![QuicheStmt::If(IfStmt {
+                test: elif_test,
+                body: elif_body,
+                orelse,
+            })];
         }
 
         Ok(QuicheStmt::If(IfStmt { test, body, orelse }))
@@ -694,17 +700,46 @@ impl<'a> Parser<'a> {
             });
         }
 
-        // Check for class pattern: Name(...)
-        if let QuicheExpr::Call { func, args, .. } = expr {
+        // Check for class pattern: Name(...) or Name(key=value, ...)
+        if let QuicheExpr::Call {
+            func,
+            args,
+            keywords,
+        } = expr
+        {
+            // Positional arguments become patterns
             let patterns = args
                 .into_iter()
                 .map(|a| Pattern::MatchValue(Box::new(a)))
                 .collect();
+
+            // Keyword arguments become kwd_attrs and kwd_patterns
+            let (kwd_attrs, kwd_patterns): (Vec<_>, Vec<_>) = keywords
+                .into_iter()
+                .filter_map(|kw| {
+                    kw.arg.map(|name| {
+                        let binding_name = match *kw.value {
+                            // If the value is a simple Name, use that as the binding name
+                            QuicheExpr::Name(ref n) => n.clone(),
+                            // Otherwise, use the key name as the binding
+                            _ => name.clone(),
+                        };
+                        (
+                            name,
+                            Pattern::MatchAs {
+                                pattern: None,
+                                name: Some(binding_name),
+                            },
+                        )
+                    })
+                })
+                .unzip();
+
             return Ok(Pattern::MatchClass(MatchClassPattern {
                 cls: func,
                 patterns,
-                kwd_attrs: Vec::new(),
-                kwd_patterns: Vec::new(),
+                kwd_attrs,
+                kwd_patterns,
             }));
         }
 
@@ -803,10 +838,12 @@ impl<'a> Parser<'a> {
 
     /// Parse indented block or inline statement
     fn parse_block(&mut self) -> Result<Vec<QuicheStmt>, ParseError> {
-        // Check for inline statement (e.g., "def foo(): pass")
+        // Check for inline statement (e.g., "def foo(): pass" or "case Ok(v): return v")
         if !matches!(self.current_kind(), TokenKind::Newline) {
             // Inline statement - parse single statement
             let stmt = self.parse_simple_statement()?;
+            // Consume trailing newline if present
+            self.eat(&TokenKind::Newline)?;
             return Ok(vec![stmt]);
         }
 
@@ -1224,8 +1261,21 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::LBracket => {
                     self.advance()?;
-                    let slice = self.parse_expression()?;
+                    // Parse comma-separated type parameters (e.g., HashMap[String, bool])
+                    let mut elements = vec![self.parse_expression()?];
+                    while self.eat(&TokenKind::Comma)? {
+                        if self.check(&TokenKind::RBracket) {
+                            break; // trailing comma
+                        }
+                        elements.push(self.parse_expression()?);
+                    }
                     self.expect(&TokenKind::RBracket)?;
+                    // If multiple elements, wrap in tuple; otherwise use single expression
+                    let slice = if elements.len() == 1 {
+                        elements.pop().unwrap()
+                    } else {
+                        QuicheExpr::Tuple(elements)
+                    };
                     expr = QuicheExpr::Subscript {
                         value: Box::new(expr),
                         slice: Box::new(slice),
@@ -1529,6 +1579,156 @@ mod tests {
                 _ => panic!("Expected Or BoolOp"),
             },
             _ => panic!("Expected Expr"),
+        }
+    }
+
+    #[test]
+    fn test_parse_multiline_docstring_then_if() {
+        // This is a regression test for a bug where multi-line docstrings
+        // caused the following `if` statement to be parsed as a ternary expression
+        let source = r#"def test(self):
+    """Multi
+    line
+    doc"""
+    if x > 0:
+        pass
+"#;
+        let module = parse_new(source).expect("Should parse successfully");
+        assert_eq!(module.body.len(), 1);
+        match &module.body[0] {
+            QuicheStmt::FunctionDef(f) => {
+                assert_eq!(f.name, "test");
+                // Should have docstring and if statement in body
+                assert!(
+                    f.body.len() >= 2,
+                    "Function body should have at least 2 statements"
+                );
+                // First statement should be docstring (expression)
+                match &f.body[0] {
+                    QuicheStmt::Expr(_) => {}
+                    _ => panic!(
+                        "First statement should be docstring expression, got {:?}",
+                        f.body[0]
+                    ),
+                }
+                // Second statement should be if
+                match &f.body[1] {
+                    QuicheStmt::If(_) => {}
+                    _ => panic!("Second statement should be If, got {:?}", f.body[1]),
+                }
+            }
+            _ => panic!("Expected FunctionDef"),
+        }
+    }
+
+    #[test]
+    fn test_parse_multiline_function_call() {
+        // Test parsing multi-line function calls
+        let source = r#"result = foo(
+    1,
+    2,
+    3
+)
+"#;
+        let module = parse_new(source).expect("Should parse multiline function call");
+        assert_eq!(module.body.len(), 1);
+        match &module.body[0] {
+            QuicheStmt::Assign(a) => match a.value.as_ref() {
+                QuicheExpr::Call { args, .. } => {
+                    assert_eq!(args.len(), 3);
+                }
+                _ => panic!("Expected Call"),
+            },
+            _ => panic!("Expected Assign"),
+        }
+    }
+
+    #[test]
+    fn test_parse_single_line_match_case() {
+        // Test single-line match cases like "case Ok(v): return v"
+        let source = r#"match result:
+    case Ok(v): return v
+    case Err(e):
+        print(e)
+"#;
+        let module = parse_new(source).expect("Should parse single-line match cases");
+        match &module.body[0] {
+            QuicheStmt::Match(m) => {
+                assert_eq!(m.cases.len(), 2);
+                // First case should have a return statement
+                match &m.cases[0].body[0] {
+                    QuicheStmt::Return(_) => {}
+                    _ => panic!(
+                        "First case should have Return, got {:?}",
+                        m.cases[0].body[0]
+                    ),
+                }
+            }
+            _ => panic!("Expected Match"),
+        }
+    }
+
+    #[test]
+    fn test_parse_if_elif_else() {
+        // Regression test for elif chain bug - elif branches must not be
+        // overwritten by else
+        let source = r#"if a > 0:
+    x = 1
+elif b > 0:
+    x = 2
+elif c > 0:
+    x = 3
+else:
+    x = 4
+"#;
+        let module = parse_new(source).expect("Should parse if/elif/else");
+        assert_eq!(module.body.len(), 1);
+
+        // Check structure: if -> orelse contains elif -> orelse contains elif -> orelse contains else
+        match &module.body[0] {
+            QuicheStmt::If(if1) => {
+                assert_eq!(if1.body.len(), 1, "if body should have 1 statement");
+                assert_eq!(if1.orelse.len(), 1, "if orelse should have 1 elif");
+
+                // First elif
+                match &if1.orelse[0] {
+                    QuicheStmt::If(elif1) => {
+                        assert_eq!(elif1.body.len(), 1, "elif1 body should have 1 statement");
+                        assert_eq!(elif1.orelse.len(), 1, "elif1 orelse should have 1 elif");
+
+                        // Second elif
+                        match &elif1.orelse[0] {
+                            QuicheStmt::If(elif2) => {
+                                assert_eq!(
+                                    elif2.body.len(),
+                                    1,
+                                    "elif2 body should have 1 statement"
+                                );
+                                assert_eq!(
+                                    elif2.orelse.len(),
+                                    1,
+                                    "elif2 orelse should have else body"
+                                );
+
+                                // Final else body (not wrapped in If)
+                                match &elif2.orelse[0] {
+                                    QuicheStmt::Assign(_) => {} // else: x = 4
+                                    _ => panic!(
+                                        "else body should be Assign, got {:?}",
+                                        elif2.orelse[0]
+                                    ),
+                                }
+                            }
+                            _ => panic!(
+                                "elif1.orelse should be If (elif2), got {:?}",
+                                elif1.orelse[0]
+                            ),
+                        }
+                    }
+                    _ => panic!("if.orelse should be If (elif1), got {:?}", if1.orelse[0]),
+                }
+            }
+            _ => panic!("Expected If"),
         }
     }
 }

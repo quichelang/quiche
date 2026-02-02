@@ -3,15 +3,6 @@ use crate::Codegen;
 use quiche_parser::ast;
 
 impl Codegen {
-    pub(crate) fn self_field_type(&self, attr: &str, value: &ast::QuicheExpr) -> Option<String> {
-        if let ast::QuicheExpr::Name(n) = value {
-            if n == "self" {
-                return self.get_self_field_type(attr);
-            }
-        }
-        None
-    }
-
     pub(crate) fn generate_expr(&mut self, expr: ast::QuicheExpr) {
         match expr {
             ast::QuicheExpr::BinOp { left, op, right } => {
@@ -287,7 +278,7 @@ impl Codegen {
             ast::QuicheExpr::Attribute { value, attr } => {
                 // Determine separator
                 let base_str = self.expr_to_string(&*value);
-                let is_constr = if let Some(cls) = self.current_class.clone() {
+                let _is_constr = if let Some(cls) = self.current_class.clone() {
                     {
                         use std::io::Write;
                         if let Ok(mut f) = std::fs::OpenOptions::new()

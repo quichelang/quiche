@@ -268,6 +268,8 @@ pub struct Lexer<'a> {
     pending_dedents: usize,
     at_line_start: bool,
     patterns: LexerPatterns,
+    /// Track depth of nested brackets - newlines inside () [] {} are ignored
+    bracket_depth: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -282,6 +284,7 @@ impl<'a> Lexer<'a> {
             pending_dedents: 0,
             at_line_start: true,
             patterns: LexerPatterns::new()?,
+            bracket_depth: 0,
         })
     }
 
@@ -385,6 +388,12 @@ impl<'a> Lexer<'a> {
                 self.line,
                 self.column,
             )));
+        }
+
+        // Skip indentation handling when inside brackets (Python implicit line continuation)
+        if self.bracket_depth > 0 {
+            self.at_line_start = false;
+            return Ok(Option::None);
         }
 
         if !self.at_line_start {
@@ -528,9 +537,13 @@ impl<'a> Lexer<'a> {
         let line = self.line;
         let column = self.column;
 
-        // Newline
+        // Newline - skip if inside brackets (Python implicit line continuation)
         if ch == '\n' {
             self.advance();
+            if self.bracket_depth > 0 {
+                // Inside brackets - skip newline, recurse to get next token
+                return self.next_token();
+            }
             return Ok(Token::new(
                 TokenKind::Newline,
                 start,
@@ -560,6 +573,16 @@ impl<'a> Lexer<'a> {
         // Single-character operators and delimiters
         if let Some(kind) = self.try_single_char_op() {
             self.advance();
+            // Track bracket depth for implicit line continuation
+            match &kind {
+                TokenKind::LParen | TokenKind::LBracket | TokenKind::LBrace => {
+                    self.bracket_depth += 1;
+                }
+                TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
+                    self.bracket_depth = self.bracket_depth.saturating_sub(1);
+                }
+                _ => {}
+            }
             return Ok(Token::new(kind, start, self.pos, line, column));
         }
 
@@ -775,7 +798,6 @@ impl<'a> Lexer<'a> {
         let quote_len = if is_triple { 3 } else { 1 };
         self.advance_by(quote_len);
 
-        let content_start = self.pos;
         let mut content = String::new();
 
         // Scan for end of string
@@ -827,6 +849,13 @@ impl<'a> Lexer<'a> {
 
         // Skip closing quote(s)
         self.advance_by(quote_len);
+
+        // Reset at_line_start for multi-line strings - crossing newlines inside
+        // strings shouldn't affect indentation tracking. We just finished lexing
+        // a token that may have spanned multiple lines, so we're not at line start.
+        if is_triple {
+            self.at_line_start = false;
+        }
 
         // TODO: Handle f-strings properly (parse interpolations)
         // For now, just return the raw content
@@ -1134,6 +1163,66 @@ mod tests {
                 TokenKind::Newline,
                 TokenKind::Eof,
             ]
+        );
+    }
+
+    #[test]
+    fn test_multiline_docstring() {
+        // Test that multi-line docstrings don't break indentation
+        let source =
+            "def test():\n    \"\"\"Multi\n    line\n    doc\"\"\"\n    if x:\n        pass\n";
+        let tokens = tok_kinds(source);
+        // Should have: def, test, (, ), :, Newline, Indent, String, Newline, if, x, :, Newline, Indent, pass, Newline, Dedent, Dedent, Eof
+        // Key: after the docstring, we should get a Newline then `if` keyword
+        assert!(tokens.contains(&TokenKind::Keyword(Keyword::Def)));
+        assert!(tokens.contains(&TokenKind::Keyword(Keyword::If)));
+        // Verify we get Indent tokens (means indentation tracking worked)
+        let indent_count = tokens
+            .iter()
+            .filter(|t| matches!(t, TokenKind::Indent))
+            .count();
+        assert!(
+            indent_count >= 2,
+            "Should have at least 2 Indent tokens, got {}",
+            indent_count
+        );
+    }
+
+    #[test]
+    fn test_multiline_function_call() {
+        // Test that newlines inside parens are skipped
+        let source = "foo(\n    1,\n    2\n)\n";
+        let tokens = tok_kinds(source);
+        // Should NOT have any Newline tokens inside the parens
+        // Tokens: foo, (, 1, ,, 2, ), Newline, Eof
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Ident("foo".into()),
+                TokenKind::LParen,
+                TokenKind::Int(1),
+                TokenKind::Comma,
+                TokenKind::Int(2),
+                TokenKind::RParen,
+                TokenKind::Newline,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiline_brackets() {
+        // Test that newlines inside brackets are skipped
+        let source = "x = [\n    1,\n    2\n]\n";
+        let tokens = tok_kinds(source);
+        // Should NOT have Newline or Indent tokens inside the brackets
+        assert!(
+            !tokens[1..tokens.len() - 2].iter().any(|t| matches!(
+                t,
+                TokenKind::Newline | TokenKind::Indent | TokenKind::Dedent
+            )),
+            "Should not have Newline/Indent/Dedent inside brackets: {:?}",
+            tokens
         );
     }
 }

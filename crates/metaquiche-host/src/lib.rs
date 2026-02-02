@@ -19,25 +19,14 @@ macro_rules! codegen_template {
     };
 }
 
-/// Shorthand for codegen_template! to reduce verbosity
-macro_rules! T {
-    ($key:expr) => {
-        codegen_template!($key)
-    };
-}
-pub(crate) use T;
-
 pub struct Codegen {
     pub(crate) output: String,
     pub(crate) indent_level: usize,
     pub(crate) scopes: Vec<HashMap<String, String>>,
     pub(crate) defined_vars: Vec<HashSet<String>>,
-    pub(crate) foreign_symbols: HashSet<String>,
     pub(crate) linked_modules: HashSet<String>,
     pub(crate) import_kinds: HashMap<String, String>,
-    pub(crate) class_fields: HashMap<String, HashMap<String, String>>,
     pub(crate) current_class: Option<String>,
-    pub(crate) source_stack: Vec<String>,
 }
 
 impl Codegen {
@@ -47,12 +36,9 @@ impl Codegen {
             indent_level: 0,
             scopes: vec![HashMap::new()],
             defined_vars: vec![HashSet::new()],
-            foreign_symbols: HashSet::new(),
             linked_modules: HashSet::new(),
             import_kinds: HashMap::new(),
-            class_fields: HashMap::new(),
             current_class: None,
-            source_stack: Vec::new(),
         }
     }
 
@@ -200,28 +186,6 @@ impl Codegen {
             }
         }
     }
-
-    pub(crate) fn register_class_field(&mut self, class: &str, field: &str, ty: String) {
-        self.class_fields
-            .entry(class.to_string())
-            .or_default()
-            .insert(field.to_string(), ty);
-    }
-
-    pub(crate) fn set_current_class(&mut self, class: &str) {
-        self.current_class = Some(class.to_string());
-    }
-
-    pub(crate) fn clear_current_class(&mut self) {
-        self.current_class = None;
-    }
-
-    pub(crate) fn get_self_field_type(&self, field: &str) -> Option<String> {
-        let class = self.current_class.as_ref()?;
-        self.class_fields
-            .get(class)
-            .and_then(|fields| fields.get(field).cloned())
-    }
 }
 
 /// Compile source code with proper error reporting using telemetry
@@ -272,11 +236,9 @@ fn extract_byte_offset(message: &str) -> Option<usize> {
 }
 
 fn dedup_shadowed_let_mut(code: &str) -> String {
-    let mut out = String::new();
     let mut scopes: Vec<HashSet<String>> = vec![HashSet::new()];
 
     for line in code.lines() {
-        let mut line_out = line.to_string();
         let mut in_string = false;
         let mut escape = false;
 
@@ -300,26 +262,6 @@ fn dedup_shadowed_let_mut(code: &str) -> String {
                 }
             }
         }
-
-        let mut search_start = 0;
-        let mut in_str_detect = false;
-        let mut esc_detect = false;
-
-        loop {
-            // Find "let mut " but verify it's not in a string
-            // This naive search needs to respect string boundaries too
-            // Reuse string tracking for replacement as well to be safe
-            // But for simplicity, let's assume "let mut " doesn't appear in strings in a way that breaks this unique logic easily?
-            // Actually, if we have print!("let mut "), we shouldn't replace it.
-
-            // Simpler approach: Iterate chars and track state, buffer output
-            break; // Breaking the loop to rewrite validly below
-        }
-
-        // Re-implement the whole logic with proper char iteration
-        // This is getting complex to patch.
-        // Let's stick to the previous loop structure but add string guard for BRACES mainly,
-        // and string guard for 'let mut' search.
     }
 
     // Better implementation replacing the entire function content:

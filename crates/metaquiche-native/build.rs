@@ -192,10 +192,6 @@ pub struct Codegen {
     };
 
     for path in &qrs_files {
-        let stem = match path.file_stem().and_then(|s| s.to_str()) {
-            Some(s) => s,
-            None => continue,
-        };
         let rel = path.strip_prefix(src_dir).unwrap_or(path);
         let (module_path, is_mod) = module_path_from_rel(rel);
         let out_rel = output_rel_from_rel(rel, is_mod);

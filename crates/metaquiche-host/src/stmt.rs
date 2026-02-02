@@ -533,8 +533,8 @@ impl Codegen {
                 self.output.push_str(")");
             }
             ast::Pattern::MatchMapping {
-                keys,
-                patterns,
+                keys: _,
+                patterns: _,
                 rest: _,
             } => {
                 // Rust doesn't support easy map matching in syntax pattern.
@@ -671,7 +671,7 @@ impl Codegen {
         for d in decorators {
             if let ast::QuicheExpr::Call {
                 func,
-                args,
+                args: _,
                 keywords,
             } = d
             {
