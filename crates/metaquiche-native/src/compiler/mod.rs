@@ -52,6 +52,7 @@ pub mod extern_defs {
             current_module_path,
             class_fields,
             current_class,
+            in_trait_or_impl: false,
         }
     }
 }

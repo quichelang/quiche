@@ -27,6 +27,7 @@ pub struct Codegen {
     pub(crate) linked_modules: HashSet<String>,
     pub(crate) import_kinds: HashMap<String, String>,
     pub(crate) current_class: Option<String>,
+    pub(crate) in_trait_or_impl: bool,
 }
 
 impl Codegen {
@@ -39,6 +40,7 @@ impl Codegen {
             linked_modules: HashSet::new(),
             import_kinds: HashMap::new(),
             current_class: None,
+            in_trait_or_impl: false,
         }
     }
 

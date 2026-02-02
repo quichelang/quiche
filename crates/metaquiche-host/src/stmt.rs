@@ -224,9 +224,11 @@ impl Codegen {
                 self.output.push_str(" {\n");
                 self.indent_level += 1;
 
+                self.in_trait_or_impl = true;
                 for stmt in i.body {
                     self.generate_stmt(stmt);
                 }
+                self.in_trait_or_impl = false;
 
                 self.indent_level -= 1;
                 self.push_indent();
@@ -236,9 +238,11 @@ impl Codegen {
                 self.push_indent();
                 self.output.push_str(&format!("pub trait {} {{\n", t.name));
                 self.indent_level += 1;
+                self.in_trait_or_impl = true;
                 for stmt in t.body {
                     self.generate_stmt(stmt);
                 }
+                self.in_trait_or_impl = false;
                 self.indent_level -= 1;
                 self.push_indent();
                 self.output.push_str("}\n\n");
@@ -573,7 +577,12 @@ impl Codegen {
                 self.output.push_str("#[test]\n");
                 self.push_indent();
             }
-            self.output.push_str(&format!("pub fn {}", f.name));
+            // Use 'fn' instead of 'pub fn' when inside trait/impl
+            if self.in_trait_or_impl {
+                self.output.push_str(&format!("fn {}", f.name));
+            } else {
+                self.output.push_str(&format!("pub fn {}", f.name));
+            }
 
             // Emit generic type parameters if present
             if !f.type_params.is_empty() {
@@ -606,9 +615,20 @@ impl Codegen {
             self.output.push_str(")");
 
             // Return type
-            if let Some(ret_expr) = f.returns {
+            if let Some(ref ret_expr) = f.returns {
                 self.output
-                    .push_str(&format!(" -> {}", self.map_type(&ret_expr)));
+                    .push_str(&format!(" -> {}", self.map_type(ret_expr)));
+            }
+
+            // Check if this is a trait method signature (empty or pass-only body)
+            let is_signature_only = self.in_trait_or_impl && {
+                f.body.is_empty()
+                    || (f.body.len() == 1 && matches!(f.body[0], ast::QuicheStmt::Pass))
+            };
+
+            if is_signature_only {
+                self.output.push_str(";\n");
+                return;
             }
 
             self.output.push_str(" {\n");

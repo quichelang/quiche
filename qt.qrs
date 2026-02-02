@@ -1,6 +1,15 @@
+class Point(Struct):
+    x: i32
+    y: i32
+
+class Printable(Trait):
+    def display(self) -> String: pass
+
+@impl(Printable)
+class Point:
+    def display(self) -> String:
+        return "Point"
+
 def main():
-    nums: Vec[i32] = Vec.new()
-    nums.push(1)
-    nums.push(2)
-    doubled: Vec[i32] = nums.iter().map(lambda x: x * 2).collect()
-    rust(r"""println!("{}", "HIHI");""")
+    p: Point = Point.default()
+    print(p.display())
