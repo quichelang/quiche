@@ -205,3 +205,28 @@ make stage2   # Native compiles Native
 make verify   # Compare Stage 1 = Stage 2
 make test     # Run test suite
 ```
+
+---
+
+## Template System
+
+The compiler uses a zero-dependency template system to share code between Host and Native implementations, ensuring byte-identical output.
+
+- **Location**: `crates/metaquiche-shared/templates/*.toml`
+    - [codegen.toml](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/templates/codegen.toml): Code generation templates.
+    - [project.toml](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/templates/project.toml): Project scaffolding (Cargo.toml, main.rs, etc).
+    - [runtime.toml](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/templates/runtime.toml): Runtime wrappers and macros.
+    - [messages.toml](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/templates/messages.toml): i18n strings.
+
+- **Access**: `metaquiche_shared::template::templates()` loads these at runtime (embedded).
+
+## Bootstrapping & Runner
+
+The native compiler (`metaquiche-native`) is written in Quiche (`src/main.qrs`), but requires a Rust entry point to be compiled by Cargo during the bootstrap process.
+
+- **[metaquiche-native/src/main.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-native/src/main.rs)**:
+    - This file is a **thin bootstrap wrapper**.
+    - It acts as the bridge between the generated Rust code (from `main.qrs`) and the Rust standard library / Cargo.
+    - Logic for executing Rust code (`run_rust_code`) and Cargo commands (`run_cargo_command`) is delegated to **[metaquiche_shared::runner](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/src/runner.rs)**.
+    - **Do not modify logic in `main.rs` directly.** Instead, modify the shared runner or `main.qrs`.
+

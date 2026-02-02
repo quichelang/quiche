@@ -37,15 +37,23 @@ fn main() {
             }
         }
         "build" => {
-            let (_warn, _strict, _warn_all, _warn_quiche, _emit_rust, rest) =
+            let (_warn, _strict, _warn_all, _warn_quiche, _emit_rust, release, rest) =
                 parse_flags(&args[2..]);
-            run_cargo_command("build", &rest);
+            let mut cmd_args = rest;
+            if release {
+                cmd_args.push("--release".to_string());
+            }
+            run_cargo_command("build", &cmd_args);
         }
         "run" => {
-            let (_warn, _strict, _warn_all, _warn_quiche, _emit_rust, rest) =
+            let (_warn, _strict, _warn_all, _warn_quiche, _emit_rust, release, rest) =
                 parse_flags(&args[2..]);
             if Path::new("Cargo.toml").exists() {
-                run_cargo_command("run", &rest);
+                let mut cmd_args = rest;
+                if release {
+                    cmd_args.push("--release".to_string());
+                }
+                run_cargo_command("run", &cmd_args);
             } else {
                 eprintln!("{}", tr("cli.error.no_cargo_toml"));
                 eprintln!("{}", tr("cli.hint.single_script"));
@@ -53,7 +61,8 @@ fn main() {
             }
         }
         "test" => {
-            let (warn, strict, warn_all, warn_quiche, emit_rust, rest) = parse_flags(&args[2..]);
+            let (warn, strict, warn_all, warn_quiche, emit_rust, release, rest) =
+                parse_flags(&args[2..]);
             if Path::new("tests/runner.qrs").exists() {
                 if let Ok(exe) = env::current_exe() {
                     if let Some(exe_str) = exe.to_str() {
@@ -75,9 +84,14 @@ fn main() {
                     warn,
                     strict,
                     emit_rust,
+                    release,
                 );
             } else if Path::new("Cargo.toml").exists() {
-                run_cargo_command("test", &rest);
+                let mut cmd_args = rest;
+                if release {
+                    cmd_args.push("--release".to_string());
+                }
+                run_cargo_command("test", &cmd_args);
             } else {
                 eprintln!("{}", tr("cli.error.no_tests_found"));
                 std::process::exit(1);
@@ -89,7 +103,7 @@ fn main() {
                     eprintln!("{}", tr1("cli.error.file_not_found", "file", arg));
                     std::process::exit(1);
                 }
-                let (warn, strict, warn_all, warn_quiche, emit_rust, rest) =
+                let (warn, strict, warn_all, warn_quiche, emit_rust, release, rest) =
                     parse_flags(&args[2..]);
                 if warn_all {
                     env::set_var("QUICHE_WARN_ALL", "1");
@@ -98,7 +112,7 @@ fn main() {
                     env::set_var("QUICHE_WARN_QUICHE", "1");
                 }
                 run_single_file_with_options(
-                    arg, &rest, false, false, false, warn, strict, emit_rust,
+                    arg, &rest, false, false, false, warn, strict, emit_rust, release,
                 );
             } else {
                 eprintln!("{}", tr1("cli.error.unrecognized_command", "cmd", arg));
@@ -137,6 +151,7 @@ fn print_usage() {
     println!("  --warn-all           Show all warnings (Quiche + Rust)");
     println!("  --warn-quiche        Show only Quiche warnings");
     println!("  -m, --emit-rust      Emit generated Rust code instead of running");
+    println!("  -r, --release        Build in release mode (optimized)");
 }
 
 fn create_new_project(name: &str, is_lib: bool) {
@@ -248,6 +263,7 @@ fn run_single_file_with_options(
     warn: bool,
     strict: bool,
     emit_rust: bool,
+    release: bool,
 ) {
     let source_raw = match fs::read_to_string(filename) {
         Ok(s) => s,
@@ -418,6 +434,10 @@ mod quiche {
                 .stderr(Stdio::null());
         }
 
+        if release {
+            rustc.arg("-Copt-level=3");
+        }
+
         let status = rustc
             .status()
             .unwrap_or_exit()
@@ -465,12 +485,13 @@ mod quiche {
     }
 }
 
-fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, bool, Vec<String>) {
+fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, bool, bool, Vec<String>) {
     let mut warn = false;
     let mut strict = false;
     let mut warn_all = false;
     let mut warn_quiche = false;
     let mut emit_rust = false;
+    let mut release = false;
     let mut rest = Vec::new();
     for a in args {
         match a.as_str() {
@@ -479,6 +500,7 @@ fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, bool, Vec<String>) {
             "--warn-all" => warn_all = true,
             "--warn-quiche" => warn_quiche = true,
             "--emit-rust" | "-m" => emit_rust = true,
+            "--release" | "-r" => release = true,
             _ => rest.push(a.clone()),
         }
     }
@@ -488,5 +510,13 @@ fn parse_flags(args: &[String]) -> (bool, bool, bool, bool, bool, Vec<String>) {
     if warn_all {
         warn = true;
     }
-    (warn, strict, warn_all, warn_quiche, emit_rust, rest)
+    (
+        warn,
+        strict,
+        warn_all,
+        warn_quiche,
+        emit_rust,
+        release,
+        rest,
+    )
 }

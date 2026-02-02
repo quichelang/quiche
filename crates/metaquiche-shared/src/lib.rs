@@ -7,5 +7,6 @@
 pub mod error_exit;
 pub mod i18n;
 pub mod macros;
+pub mod runner;
 pub mod telemetry;
 pub mod template;

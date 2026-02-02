@@ -116,7 +116,7 @@ def current_exe_path() -> String: pass
 def run_cargo_command(cmd: String, args: Vec[String]) -> bool: pass
 
 @extern(path="crate::quiche::run_rust_code")
-def run_rust_code(user_code: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool) -> i32: pass
+def run_rust_code(user_code: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, release: bool) -> i32: pass
 
 @extern(path="crate::quiche::compiler_path_for_new")
 def compiler_path_for_new() -> String: pass
@@ -337,6 +337,9 @@ def print_usage():
     print("  --warn-all           Show all warnings (Quiche + Rust)")
     print("  --warn-quiche        Show only Quiche warnings")
     print("  -m, --emit-rust      Emit generated Rust code instead of running")
+    print("  -v, --verbose        Show verbose output")
+    print("  -r, --release        Build in release mode (optimized)")
+    print("  -o, --out <file>     Write output to file")
 
 def build_flag_parser(include_lib: bool) -> Parsley:
     parser = Parsley.new()
@@ -345,6 +348,7 @@ def build_flag_parser(include_lib: bool) -> Parsley:
     parser.add_flag("strict", [], False)
     parser.add_flag("emit-rust", ["-m"], False)
     parser.add_flag("verbose", ["-v"], False)
+    parser.add_flag("release", ["-r", "--release"], False)
     parser.add_option("output", ["-o", "--out"], "", False)
     if include_lib:
         parser.add_flag("lib", [], False)
@@ -412,14 +416,14 @@ def create_new_project(name: String, is_lib: bool):
 
     print(tr1("cli.success.project_created", "name", name))
 
-def run_transpiled_file(filename: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool, output: String, verbose: bool):
+def run_transpiled_file(filename: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool, output: String, verbose: bool, release: bool):
     source = unwrap_or_exit_io(read_to_string(filename.clone()), "Failed to read source file")
     rust_code = compile_source_to_string(source, filename.clone(), warn_quiche, strict, verbose)
     # The original instruction had a syntax error and undefined 'success'.
     # Assuming the intent was to ensure exit_code is an i32, and run_rust_code returns an i32.
     # If `run_rust_code` returns a boolean or similar, this would need adjustment.
     # For now, we keep the original call and add a type hint.
-    exit_code: i32 = run_rust_code(rust_code, script_args, quiet, suppress_output, raw_output, warn, strict)
+    exit_code: i32 = run_rust_code(rust_code, script_args, quiet, suppress_output, raw_output, warn, strict, release)
     
     if output != "":
         # Save binary
@@ -486,7 +490,14 @@ def main():
                     print(e)
                 print_usage()
                 exit(1)
-            success: bool = run_cargo_command("build", result.positionals)
+            
+            cargo_args = result.positionals.clone()
+            release_cmd = False
+            release_cmd = get_flag_bool(result.flags.clone(), "release")
+            if release_cmd:
+                cargo_args.push("--release")
+
+            success: bool = run_cargo_command("build", cargo_args)
             if not success:
                 exit(1)
             return
@@ -500,7 +511,13 @@ def main():
                 print_usage()
                 exit(1)
             if path_exists("Cargo.toml"):
-                success_run: bool = run_cargo_command("run", result.positionals)
+                cargo_args = result.positionals.clone()
+                release_cmd = False
+                release_cmd = get_flag_bool(result.flags.clone(), "release")
+                if release_cmd:
+                    cargo_args.push("--release")
+
+                success_run: bool = run_cargo_command("run", cargo_args)
                 if not success_run:
                     exit(1)
             else:
@@ -532,9 +549,18 @@ def main():
                 verbose = False
                 verbose = get_flag_bool(result.flags.clone(), "verbose")
 
-                run_transpiled_file("tests/runner.qrs", result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche, "", verbose)
+                release = False
+                release = get_flag_bool(result.flags.clone(), "release")
+
+                run_transpiled_file("tests/runner.qrs", result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche, "", verbose, release)
             elif path_exists("Cargo.toml"):
-                success_test: bool = run_cargo_command("test", result.positionals)
+                cargo_args = result.positionals.clone()
+                release_cmd = False
+                release_cmd = get_flag_bool(result.flags.clone(), "release")
+                if release_cmd:
+                    cargo_args.push("--release")
+
+                success_test: bool = run_cargo_command("test", cargo_args)
                 if not success_test:
                     exit(1)
             else:
@@ -575,7 +601,6 @@ def main():
         
         emit_rust = False
         k_er = "emit-rust"
-        k_er = "emit-rust"
         emit_rust = get_flag_bool(result.flags.clone(), k_er)
 
         verbose = False
@@ -588,6 +613,9 @@ def main():
             case Some(v): output = v.clone()
             case None: pass
 
+        release = False
+        release = get_flag_bool(result.flags.clone(), "release")
+
         if emit_rust:
              source = unwrap_or_exit_io(read_to_string(cmd.clone()), "Failed to read source file")
              code = compile_source_to_string(source, cmd.clone(), flags.warn_quiche, flags.strict, verbose)
@@ -596,7 +624,7 @@ def main():
 
         if flags.warn_all:
             flags.warn_quiche = True
-        run_transpiled_file(cmd.clone(), result.positionals, False, False, True, flags.warn, flags.strict, flags.warn_quiche, output, verbose)
+        run_transpiled_file(cmd.clone(), result.positionals, False, False, True, flags.warn, flags.strict, flags.warn_quiche, output, verbose, release)
         return
 
     print(tr1("cli.error.unrecognized_command", "cmd", cmd))
