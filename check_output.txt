@@ -1,0 +1,512 @@
+    Checking quiche-runtime v0.1.0 (/Volumes/Dev/code/jagtesh/quiche/crates/quiche-runtime)
+error[E0433]: failed to resolve: could not find `QuicheIdentifier` in `ast`
+   --> crates/quiche-runtime/src/lib.rs:198:35
+    |
+198 | ...parser::ast::QuicheIdentifier::new(&attr),
+    |                 ^^^^^^^^^^^^^^^^ could not find `QuicheIdentifier` in `ast`
+
+warning: unused import: `quiche_parser::ast::Operator`
+ --> crates/quiche-runtime/src/ast_transformer.rs:6:5
+  |
+6 | use quiche_parser::ast::Operator;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `quiche_parser::ast::BoolOperator`
+ --> crates/quiche-runtime/src/ast_transformer.rs:7:5
+  |
+7 | use quiche_parser::ast::BoolOperator;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `quiche_parser::ast::UnaryOperator`
+ --> crates/quiche-runtime/src/ast_transformer.rs:8:5
+  |
+8 | use quiche_parser::ast::UnaryOperator;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `quiche_parser::ast::IfStmt`
+ --> crates/quiche-runtime/src/ast_transformer.rs:9:5
+  |
+9 | use quiche_parser::ast::IfStmt;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `quiche_parser::ast::WhileStmt`
+  --> crates/quiche-runtime/src/ast_transformer.rs:10:5
+   |
+10 | use quiche_parser::ast::WhileStmt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `quiche_parser::ast::ForStmt`
+  --> crates/quiche-runtime/src/ast_transformer.rs:11:5
+   |
+11 | use quiche_parser::ast::ForStmt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> crates/quiche-runtime/src/ast_transformer.rs:12:5
+   |
+12 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unnecessary parentheses around `for` iterator expression
+  --> crates/quiche-runtime/src/ast_transformer.rs:36:12
+   |
+36 | for __q in (module.body) {
+   |            ^           ^
+   |
+   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+   |
+36 - for __q in (module.body) {
+36 + for __q in module.body  {
+   |
+
+warning: unnecessary parentheses around `for` iterator expression
+  --> crates/quiche-runtime/src/ast_transformer.rs:42:12
+   |
+42 | for __q in (pass1_body) {
+   |            ^          ^
+   |
+help: remove these parentheses
+   |
+42 - for __q in (pass1_body) {
+42 + for __q in pass1_body  {
+   |
+
+warning: unnecessary parentheses around `for` iterator expression
+  --> crates/quiche-runtime/src/ast_transformer.rs:55:12
+   |
+55 | for __q in (f.args.clone()) {
+   |            ^              ^
+   |
+help: remove these parentheses
+   |
+55 - for __q in (f.args.clone()) {
+55 + for __q in f.args.clone()  {
+   |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:116:12
+    |
+116 | for __q in (i.body) {
+    |            ^      ^
+    |
+help: remove these parentheses
+    |
+116 - for __q in (i.body) {
+116 + for __q in i.body  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:121:12
+    |
+121 | for __q in (i.orelse) {
+    |            ^        ^
+    |
+help: remove these parentheses
+    |
+121 - for __q in (i.orelse) {
+121 + for __q in i.orelse  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:130:12
+    |
+130 | for __q in (w.body) {
+    |            ^      ^
+    |
+help: remove these parentheses
+    |
+130 - for __q in (w.body) {
+130 + for __q in w.body  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:135:12
+    |
+135 | for __q in (w.orelse) {
+    |            ^        ^
+    |
+help: remove these parentheses
+    |
+135 - for __q in (w.orelse) {
+135 + for __q in w.orelse  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:145:12
+    |
+145 | for __q in (f.body) {
+    |            ^      ^
+    |
+help: remove these parentheses
+    |
+145 - for __q in (f.body) {
+145 + for __q in f.body  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:150:12
+    |
+150 | for __q in (f.orelse) {
+    |            ^        ^
+    |
+help: remove these parentheses
+    |
+150 - for __q in (f.orelse) {
+150 + for __q in f.orelse  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:158:12
+    |
+158 | for __q in (f.body.clone()) {
+    |            ^              ^
+    |
+help: remove these parentheses
+    |
+158 - for __q in (f.body.clone()) {
+158 + for __q in f.body.clone()  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:177:12
+    |
+177 | for __q in (a.targets) {
+    |            ^         ^
+    |
+help: remove these parentheses
+    |
+177 - for __q in (a.targets) {
+177 + for __q in a.targets  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:188:12
+    |
+188 | for __q in (i.body) {
+    |            ^      ^
+    |
+help: remove these parentheses
+    |
+188 - for __q in (i.body) {
+188 + for __q in i.body  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:193:12
+    |
+193 | for __q in (i.orelse) {
+    |            ^        ^
+    |
+help: remove these parentheses
+    |
+193 - for __q in (i.orelse) {
+193 + for __q in i.orelse  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:203:12
+    |
+203 | for __q in (f.body) {
+    |            ^      ^
+    |
+help: remove these parentheses
+    |
+203 - for __q in (f.body) {
+203 + for __q in f.body  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:208:12
+    |
+208 | for __q in (f.orelse) {
+    |            ^        ^
+    |
+help: remove these parentheses
+    |
+208 - for __q in (f.orelse) {
+208 + for __q in f.orelse  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:242:12
+    |
+242 | for __q in (c_args) {
+    |            ^      ^
+    |
+help: remove these parentheses
+    |
+242 - for __q in (c_args) {
+242 + for __q in c_args  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:273:12
+    |
+273 | for __q in (vals) {
+    |            ^    ^
+    |
+help: remove these parentheses
+    |
+273 - for __q in (vals) {
+273 + for __q in vals  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:281:12
+    |
+281 | for __q in (elts) {
+    |            ^    ^
+    |
+help: remove these parentheses
+    |
+281 - for __q in (elts) {
+281 + for __q in elts  {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> crates/quiche-runtime/src/ast_transformer.rs:299:12
+    |
+299 | for __q in (elts) {
+    |            ^    ^
+    |
+help: remove these parentheses
+    |
+299 - for __q in (elts) {
+299 + for __q in elts  {
+    |
+
+warning: variable does not need to be mutable
+  --> crates/quiche-runtime/src/ast_transformer.rs:54:5
+   |
+54 | let mut func_name = ast_get_func_name(crate::quiche::...
+   |     ----^^^^^^^^^
+   |     |
+   |     help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/quiche-runtime/src/ast_transformer.rs:61:5
+   |
+61 | let mut inner = crate::quiche::deref!(ann).clone();
+   |     ----^^^^^
+   |     |
+   |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> crates/quiche-runtime/src/ast_transformer.rs:64:5
+   |
+64 | let mut wrapped = ast_wrap_mutref_type(box_expr(inner));
+   |     ----^^^^^^^
+   |     |
+   |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> crates/quiche-runtime/src/ast_transformer.rs:76:5
+   |
+76 | let mut updated_f = self.update_args(f, new_args);
+   |     ----^^^^^^^^^
+   |     |
+   |     help: remove this `mut`
+
+warning: unused variable: `slice_box`
+  --> crates/quiche-runtime/src/ast_transformer.rs:94:42
+   |
+94 | ... val_box, slice: slice_box, .. } => {
+   |                     ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_slice_box`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+   --> crates/quiche-runtime/src/ast_transformer.rs:185:1
+    |
+113 | Stmt::If(i) => {
+    | ----------- matches all the relevant values
+...
+185 | Stmt::If(i) => {
+    | ^^^^^^^^^^^ no value can reach this
+    |
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+   --> crates/quiche-runtime/src/ast_transformer.rs:199:1
+    |
+141 | Stmt::For(f) => {
+    | ------------ matches all the relevant values
+...
+199 | Stmt::For(f) => {
+    | ^^^^^^^^^^^^ no value can reach this
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:110:5
+    |
+110 | let mut new_expr = self.transform_expr(crate::quiche...
+    |     ----^^^^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:114:5
+    |
+114 | let mut test = self.transform_expr(crate::quiche::de...
+    |     ----^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:128:5
+    |
+128 | let mut test = self.transform_expr(crate::quiche::de...
+    |     ----^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:142:5
+    |
+142 | let mut target = f.target.clone();
+    |     ----^^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:143:5
+    |
+143 | let mut iter = self.transform_expr(crate::quiche::de...
+    |     ----^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:167:5
+    |
+167 | let mut inner = crate::quiche::deref!(e).clone();
+    |     ----^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:181:5
+    |
+181 | let mut val_inner = crate::quiche::deref!(a.value).c...
+    |     ----^^^^^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:182:5
+    |
+182 | let mut new_val = self.transform_expr(val_inner);
+    |     ----^^^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:186:5
+    |
+186 | let mut test = self.transform_expr(crate::quiche::de...
+    |     ----^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:200:5
+    |
+200 | let mut target = self.transform_expr(crate::quiche::...
+    |     ----^^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:201:5
+    |
+201 | let mut iter = self.transform_expr(crate::quiche::de...
+    |     ----^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:246:5
+    |
+246 | let mut needs_borrow = sig[idx].clone();
+    |     ----^^^^^^^^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:257:5
+    |
+257 | let mut val = self.transform_expr(crate::quiche::der...
+    |     ----^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:258:5
+    |
+258 | let mut slice = self.transform_expr(crate::quiche::d...
+    |     ----^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:259:5
+    |
+259 | let mut new_slice = crate::quiche::deref!(ast_cast_u...
+    |     ----^^^^^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:263:5
+    |
+263 | let mut new_l = self.transform_expr(crate::quiche::d...
+    |     ----^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:264:5
+    |
+264 | let mut new_r = self.transform_expr(crate::quiche::d...
+    |     ----^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:268:5
+    |
+268 | let mut new_opd = self.transform_expr(crate::quiche:...
+    |     ----^^^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/quiche-runtime/src/ast_transformer.rs:294:5
+    |
+294 | let mut new_v = self.transform_expr(crate::quiche::d...
+    |     ----^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: unused variable: `ckw`
+   --> crates/quiche-runtime/src/ast_transformer.rs:222:54
+    |
+222 | ... c_args, keywords: ckw, .. } => {
+    |                       ^^^ help: if this is intentional, prefix it with an underscore: `_ckw`
+
+warning: value assigned to `has_name` is never read
+   --> crates/quiche-runtime/src/ast_transformer.rs:225:20
+    |
+225 | let mut has_name = false;
+    |                    ^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `quiche-runtime` (lib) generated 54 warnings
+error: could not compile `quiche-runtime` (lib) due to 1 previous error; 54 warnings emitted

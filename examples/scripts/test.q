@@ -8,7 +8,7 @@ def sum(x: Vec[i32]) -> i32:
 
 def seedling_func(msg: String, num: i32) -> String:
     # [num] creates Vec
-    return msg + " " + sum([1, 2, 3, 4, 5]).to_string()
+    return msg + " " + sum([num]).to_string()
 
 def main():
     print(seedling_func("Hello", 42))

@@ -1020,6 +1020,7 @@ class Codegen:
                 self.generate_expr(deref(expr))
                 self.emit(" as ")
                 self.generate_expr(deref(target_type))
+
             case _: self.emit("/* expr */")
 
 
@@ -1277,6 +1278,7 @@ class Codegen:
             case q_ast.Operator.Sub: self.emit(" - ")
             case q_ast.Operator.Mult: self.emit(" * ")
             case q_ast.Operator.Div: self.emit(" / ")
+            case q_ast.Operator.Mod: self.emit(" % ")
             case _: self.emit(" + ")
         self.generate_expr(deref(right))
     

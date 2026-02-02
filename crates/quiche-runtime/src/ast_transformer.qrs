@@ -30,6 +30,7 @@ def create_Transformer() -> Transformer: pass
 
 class Transformer:
     signatures: HashMap[String, Vec[bool]] # FuncName -> List of "needs_borrow" (true if complex)
+    current_complex_args: Vec[String]
 
     def new() -> Transformer:
         return create_Transformer()
@@ -92,7 +93,9 @@ class Transformer:
                     signature.push(is_complex)
                     new_args.push(new_arg)
                     
-                self.signatures.insert(func_name, signature) 
+                self.signatures.insert(func_name.clone(), signature.clone()) 
+                print("Registered signature for: " + func_name + " -> " + signature.len().to_string())
+
                 
                 # Update function args locally (struct update not easy, we modify 'f.args'?)
                 # f is owned. f.args is pub Vec.
@@ -169,12 +172,33 @@ class Transformer:
                  return make_for_stmt(target, box_expr(iter), body, orelse)
 
             case Stmt.FunctionDef(f):
+                 # Save previous scope args
+                 old_complex = self.current_complex_args.clone()
+
+                 # Populate new args
+                 for arg in f.args.clone():
+                     match arg.annotation:
+                         case Some(ann):
+                             # Check if annotation is mutref[...]
+                             # Structure: Subscript(value=Name("mutref"), slice=...)
+                             match deref(ann).clone():
+                                 case Expr.Subscript(value=v, slice=s):
+                                     match deref(v):
+                                         case Expr.Name(n):
+                                             if n == "mutref":
+                                                 self.current_complex_args.push(arg.arg.clone())
+                                         case _: pass
+                                 case _: pass
+                         case None: pass
+
                  # Recurse into body
                  new_body: Vec[Stmt] = []
-                 # Fix E0382: iterate clone to avoid partial move
                  for s in f.body.clone():
                      new_body.push(self.transform_stmt(s))
                  
+                 # Restore scope
+                 self.current_complex_args = old_complex
+
                  return Stmt.FunctionDef(ast_update_func_body(f, new_body))
             case Stmt.Return(r):
                  match r:
@@ -243,24 +267,45 @@ class Transformer:
                         
                 # Transform args
                 new_args: Vec[Expr] = []
+                if has_name:
+                    pass
                 
+                # Transform func expression (e.g. methods)
+                func_expr = self.transform_expr(func_expr)
+
                 # Check signature
                 sig: Vec[bool] = []
                 if has_name and self.signatures.contains_key(ref(func_name)):
-                    # Clone key just in case
                     sig = self.signatures.get(ref(func_name)).unwrap().clone()
                 
                 idx = 0
                 for arg in c_args:
+                    arg_check = arg.clone()
                     new_arg = self.transform_expr(arg)
                     
                     if idx < sig.len():
-                        needs_borrow = sig[idx] # vector indexing
+                        needs_borrow = sig[idx]
                         if needs_borrow:
-                            # Wrap (auto-borrow)
-                            # Wrap any expression since we need a reference
-                            new_arg = deref(ast_wrap_mutref_call(box_expr(new_arg)))
+                            is_already_ref = False
+                            match arg_check:
+                                case Expr.Name(ncn):
+                                    for ca in self.current_complex_args.clone():
+                                        if ca == ncn: is_already_ref = True
+                                case _: pass
 
+                            if is_already_ref:
+                                # Reborrow: mutref(deref(arg))
+                                # Construct deref(arg)
+                                d_func = box_expr(Expr.Name("deref".to_string()))
+                                d_args: Vec[Expr] = []
+                                d_args.push(new_arg)
+                                deref_call = ast_create_call(d_func, d_args)
+                                
+                                # Wrap in mutref(...)
+                                new_arg = deref(ast_wrap_mutref_call(box_expr(deref_call)))
+                            else:
+                                # Wrap (auto-borrow): mutref(arg)
+                                new_arg = deref(ast_wrap_mutref_call(box_expr(new_arg)))
                     
                     new_args.push(new_arg)
                     idx = idx + 1
@@ -274,10 +319,7 @@ class Transformer:
                 val = self.transform_expr(deref(val_box).clone())
                 slice = self.transform_expr(deref(slice_box).clone())
                 
-                # Auto-Cast heuristic: if slice is likely index (i32) and we are subscripting, cast to usize.
-                # Sudoku uses 'board[row][col]'. 'row' is i32. 
-                # We cast unconditionally if it is Name? Or always?
-                # Usually indices must be usize.
+                # Auto-Cast heuristic
                 new_slice = deref(ast_cast_usize(box_expr(slice)))
                 
                 return ast_create_subscript(box_expr(val), box_expr(new_slice))
@@ -310,6 +352,17 @@ class Transformer:
             # Assign struct has 'targets: Vec[Expr]'.
             # Stmt.Assign handles assignment.
             
+            case Expr.Attribute(value=v, attr=a):
+                 # Transform value recursively (e.g. sum([10]).to_string())
+                 # inner sum call needs transform
+                 new_v = self.transform_expr(deref(v).clone())
+                 return ast_create_attribute(box_expr(new_v), a.to_string())
+
+            case Expr.Tuple(elts):
+                 new_elts: Vec[Expr] = []
+                 for e in elts: new_elts.push(self.transform_expr(e))
+                 return ast_create_tuple(new_elts)
+
             case _:
                 return expr
 
@@ -354,6 +407,12 @@ def ast_create_call(func: Box[Expr], args: Vec[Expr]) -> Expr: pass
 
 @extern(path="crate::ast_create_subscript")
 def ast_create_subscript(value: Box[Expr], slice: Box[Expr]) -> Expr: pass
+
+@extern(path="crate::ast_create_attribute")
+def ast_create_attribute(value: Box[Expr], attr: String) -> Expr: pass
+
+@extern(path="crate::ast_create_tuple")
+def ast_create_tuple(elts: Vec[Expr]) -> Expr: pass
 
 
 def transform_module(module: QuicheModule) -> QuicheModule:

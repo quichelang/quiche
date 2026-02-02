@@ -22,6 +22,7 @@ pub use crate::create_Transformer as create_Transformer;
 #[derive(Clone, Debug, Default)]
 pub struct Transformer  {
 pub signatures: std::collections::HashMap<String, Vec<bool>>,
+pub current_complex_args: Vec<String>,
 }
 
 impl Transformer {
@@ -71,7 +72,8 @@ None => {
 signature.push(is_complex);
 new_args.push(new_arg);
 }
-self.signatures.insert(func_name, signature);
+self.signatures.insert(func_name.clone(), signature.clone());
+println!("{}", crate::quiche::strcat!(String::from("Registered signature for: "), func_name, String::from(" -> "), signature.len().to_string()));
 let mut updated_f = self.update_args(f, new_args);
 return Stmt::FunctionDef(updated_f);
 }
@@ -153,11 +155,37 @@ orelse.push(self.transform_stmt(s));
 return make_for_stmt(target, box_expr(iter), body, orelse);
 }
 Stmt::FunctionDef(f) => {
+let mut old_complex = self.current_complex_args.clone();
+for __q in (f.args.clone()) {
+let arg = __q;
+match arg.annotation {
+Some(ann) => {
+match crate::quiche::deref!(ann).clone() {
+Expr::Subscript { value: v, slice: s, .. } => {
+match crate::quiche::deref!(v) {
+Expr::Name(n) => {
+if n == String::from("mutref") {
+self.current_complex_args.push(arg.arg.clone());
+}
+}
+_ => {
+}
+}
+}
+_ => {
+}
+}
+}
+None => {
+}
+}
+}
 let mut new_body: Vec<Stmt> = vec![];
 for __q in (f.body.clone()) {
 let s = __q;
 new_body.push(self.transform_stmt(s));
 }
+self.current_complex_args = old_complex;
 return Stmt::FunctionDef(ast_update_func_body(f, new_body));
 }
 Stmt::Return(r) => {
@@ -233,6 +261,9 @@ has_name = false;
 }
 }
 let mut new_args: Vec<Expr> = vec![];
+if has_name {
+}
+func_expr = self.transform_expr(func_expr);
 let mut sig: Vec<bool> = vec![];
 if (has_name) && (self.signatures.contains_key(crate::quiche::qref!(func_name))) {
 sig = self.signatures.get(crate::quiche::qref!(func_name)).unwrap().clone();
@@ -240,11 +271,34 @@ sig = self.signatures.get(crate::quiche::qref!(func_name)).unwrap().clone();
 let mut idx = 0;
 for __q in (c_args) {
 let arg = __q;
+let mut arg_check = arg.clone();
 let mut new_arg = self.transform_expr(arg);
 if idx < sig.len() {
 let mut needs_borrow = sig[idx].clone();
 if needs_borrow {
+let mut is_already_ref = false;
+match arg_check {
+Expr::Name(ncn) => {
+for __q in (self.current_complex_args.clone()) {
+let ca = __q;
+if ca == ncn {
+is_already_ref = true;
+}
+}
+}
+_ => {
+}
+}
+if is_already_ref {
+let mut d_func = box_expr(Expr::Name(String::from("deref").to_string()));
+let mut d_args: Vec<Expr> = vec![];
+d_args.push(new_arg);
+let mut deref_call = ast_create_call(d_func, d_args);
+new_arg = crate::quiche::deref!(ast_wrap_mutref_call(box_expr(deref_call)));
+}
+else {
 new_arg = crate::quiche::deref!(ast_wrap_mutref_call(box_expr(new_arg)));
+}
 }
 }
 new_args.push(new_arg);
@@ -289,6 +343,18 @@ return Expr::Name(n);
 Expr::Constant(c) => {
 return Expr::Constant(c);
 }
+Expr::Attribute { value: v, attr: a, .. } => {
+let mut new_v = self.transform_expr(crate::quiche::deref!(v).clone());
+return ast_create_attribute(box_expr(new_v), a.to_string());
+}
+Expr::Tuple(elts) => {
+let mut new_elts: Vec<Expr> = vec![];
+for __q in (elts) {
+let e = __q;
+new_elts.push(self.transform_expr(e));
+}
+return ast_create_tuple(new_elts);
+}
 _ => {
 return expr;
 }
@@ -311,6 +377,8 @@ pub use crate::ast_create_if as ast_create_if;
 pub use crate::ast_create_for as ast_create_for;
 pub use crate::ast_create_call as ast_create_call;
 pub use crate::ast_create_subscript as ast_create_subscript;
+pub use crate::ast_create_attribute as ast_create_attribute;
+pub use crate::ast_create_tuple as ast_create_tuple;
 pub fn transform_module(module: QuicheModule) -> QuicheModule {
 let mut t = create_Transformer();
 return t.transform_module(module);

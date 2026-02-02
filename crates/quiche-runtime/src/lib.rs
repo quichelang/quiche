@@ -189,6 +189,19 @@ pub fn ast_create_list(
     quiche_parser::ast::QuicheExpr::List(elts)
 }
 
+pub fn ast_create_attribute(
+    value: Box<quiche_parser::ast::QuicheExpr>,
+    attr: String,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::Attribute { value, attr }
+}
+
+pub fn ast_create_tuple(
+    elts: Vec<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::Tuple(elts)
+}
+
 pub fn make_if_stmt(
     test: Box<quiche_parser::ast::QuicheExpr>,
     body: Vec<quiche_parser::ast::QuicheStmt>,
