@@ -30,8 +30,8 @@ fn main() {
             env::var("QUICHE_COMPILER_BIN").unwrap_or_else(|_| "../../bin/quiche".to_string());
 
         let output = Command::new(&compiler)
-            .arg("--emit-rust")
             .arg(source_path)
+            .arg("--emit-rust")
             .output()
             .expect(&format!("Failed to run quiche compiler: {}", compiler));
 

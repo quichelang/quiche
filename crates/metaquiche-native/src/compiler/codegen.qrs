@@ -1175,19 +1175,45 @@ class Codegen:
                 self.emit("..")
                 self.generate_expr(Clone.clone(ref(args[1])))
         elif keywords.len() > 0:
-            # Emit as function call with kwargs as positional args
-            self.generate_expr(deref(func))
-            self.T("lparen")
-            i_kw: usize = 0
-            for arg_p in args.clone():
-                if i_kw > 0: self.T("comma_sep")
-                self.generate_expr(arg_p)
-                i_kw = i_kw + 1
-            for kw in keywords:
-                if i_kw > 0: self.T("comma_sep")
-                self.generate_expr(deref(kw.value.clone()))
-                i_kw = i_kw + 1
-            self.T("rparen")
+            # Check if this is a struct constructor (PascalCase name with keywords)
+            is_struct_ctor = False
+            if func_name_c != "" and args.len() == 0:
+                first_char = func_name_c.chars().next()
+                match first_char:
+                    case Some(c):
+                        if c.is_uppercase():
+                            is_struct_ctor = True
+                    case None: pass
+            
+            if is_struct_ctor:
+                # Emit struct literal: StructName { field: value, ... }
+                self.emit(func_name_c)
+                self.emit(" { ")
+                i_kw: usize = 0
+                for kw in keywords:
+                    if i_kw > 0: self.T("comma_sep")
+                    match kw.arg:
+                        case Some(name):
+                            self.emit(name)
+                            self.emit(": ")
+                        case None: pass
+                    self.generate_expr(deref(kw.value.clone()))
+                    i_kw = i_kw + 1
+                self.emit(" }")
+            else:
+                # Emit as function call with kwargs as positional args
+                self.generate_expr(deref(func))
+                self.T("lparen")
+                i_kw: usize = 0
+                for arg_p in args.clone():
+                    if i_kw > 0: self.T("comma_sep")
+                    self.generate_expr(arg_p)
+                    i_kw = i_kw + 1
+                for kw in keywords:
+                    if i_kw > 0: self.T("comma_sep")
+                    self.generate_expr(deref(kw.value.clone()))
+                    i_kw = i_kw + 1
+                self.T("rparen")
         else:
             match ref(deref(func)):
                 case q_ast.Expr.Attribute(value=value, attr=attr):

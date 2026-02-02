@@ -286,6 +286,27 @@ impl Codegen {
                     return;
                 }
 
+                // Struct constructor: PascalCase name with keyword arguments
+                // Parser(name="foo", value=1) -> Parser { name: "foo", value: 1 }
+                let is_pascal_case =
+                    !func_name.is_empty() && func_name.chars().next().unwrap().is_uppercase();
+                if is_pascal_case && !keywords.is_empty() && args.is_empty() {
+                    self.output.push_str(&func_name);
+                    self.output.push_str(" { ");
+                    for (i, kw) in keywords.into_iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        if let Some(name) = kw.arg {
+                            self.output.push_str(&name);
+                            self.output.push_str(": ");
+                        }
+                        self.generate_expr(*kw.value);
+                    }
+                    self.output.push_str(" }");
+                    return;
+                }
+
                 // Default Function Call
                 let is_helper = ["deref", "as_ref", "ref", "mutref", "as_mut", "strcat"]
                     .contains(&func_name.as_str());

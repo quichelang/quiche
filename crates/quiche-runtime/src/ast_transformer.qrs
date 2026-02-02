@@ -1,4 +1,4 @@
-from rust.quiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, Arg, Operator, BoolOperator, UnaryOperator, IfStmt, WhileStmt, ForStmt
+from rust.quiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, Arg, Operator, BoolOperator, UnaryOperator, IfStmt, WhileStmt, ForStmt, Keyword
 from std.collections import HashMap
 
 @extern(path="crate::create_QuicheModule")
@@ -314,19 +314,65 @@ class Transformer:
                     new_args.push(new_arg)
                     idx = idx + 1
                 
-                # Reconstruct Call. Need 'ast_create_call'
-                return ast_create_call(box_expr(func_expr), new_args)
+                # Transform keyword values (for struct constructors)
+                # If func is PascalCase (struct constructor), wrap Name values in deref
+                # to get owned values from &mut refs
+                is_struct_ctor = has_name and (func_name.len() > 0)
+                if is_struct_ctor:
+                    match func_name.chars().next():
+                        case Some(c):
+                            is_struct_ctor = c.is_uppercase()
+                        case None:
+                            is_struct_ctor = False
+                
+                new_keywords: Vec[Keyword] = []
+                for kw in ckw:
+                    kw_value = self.transform_expr(deref(kw.value).clone())
+                    # For struct constructors, wrap Name expressions in deref() to clone
+                    # but ONLY if the Name is in current_complex_args (auto-borrowed params)
+                    if is_struct_ctor:
+                        match ref(kw_value):
+                            case Expr.Name(n):
+                                # Check if this name is an auto-borrowed param
+                                is_complex_arg = False
+                                for ca in self.current_complex_args.clone():
+                                    if ca == deref(n):
+                                        is_complex_arg = True
+                                if is_complex_arg:
+                                    # Wrap with deref(...) to get owned value from &mut ref
+                                    d_func = box_expr(Expr.Name("deref".to_string()))
+                                    d_args: Vec[Expr] = []
+                                    d_args.push(kw_value.clone())
+                                    kw_value = ast_create_call(d_func, d_args)
+                            case _:
+                                pass
+                    new_kw = ast_create_keyword(kw.arg.clone(), box_expr(kw_value))
+                    new_keywords.push(new_kw)
+                
+                # Reconstruct Call with transformed keywords
+                return ast_create_call_with_keywords(box_expr(func_expr), new_args, new_keywords)
 
             case Expr.Subscript(value=val_box, slice=slice_box):
                 # value[slice]
-                # Cast slice to usize
+                # Cast slice to usize (but NOT for Slice/range expressions)
                 val = self.transform_expr(deref(val_box).clone())
                 slice = self.transform_expr(deref(slice_box).clone())
                 
-                # Auto-Cast heuristic
-                new_slice = deref(ast_cast_usize(box_expr(slice)))
+                # Check if this is a Slice (range) expression - don't cast those
+                is_slice_range = False
+                match ref(slice):
+                    case Expr.Slice(lower=l, upper=u, step=s):
+                        is_slice_range = True
+                    case _:
+                        pass
                 
-                return ast_create_subscript(box_expr(val), box_expr(new_slice))
+                if is_slice_range:
+                    # Don't cast Slice ranges to usize
+                    return ast_create_subscript(box_expr(val), box_expr(slice))
+                else:
+                    # Auto-Cast normal indices to usize
+                    new_slice = deref(ast_cast_usize(box_expr(slice)))
+                    return ast_create_subscript(box_expr(val), box_expr(new_slice))
 
             case Expr.BinOp(left=l, op=o, right=r):
                 new_l = self.transform_expr(deref(l).clone())
@@ -408,6 +454,12 @@ def ast_create_for(target: Box[Expr], iter: Box[Expr], body: Vec[Stmt], orelse: 
 
 @extern(path="crate::ast_create_call")
 def ast_create_call(func: Box[Expr], args: Vec[Expr]) -> Expr: pass
+
+@extern(path="crate::ast_create_call_with_keywords")
+def ast_create_call_with_keywords(func: Box[Expr], args: Vec[Expr], keywords: Vec[Keyword]) -> Expr: pass
+
+@extern(path="crate::ast_create_keyword")
+def ast_create_keyword(arg: Option[String], value: Box[Expr]) -> Keyword: pass
 
 @extern(path="crate::ast_create_subscript")
 def ast_create_subscript(value: Box[Expr], slice: Box[Expr]) -> Expr: pass

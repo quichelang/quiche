@@ -1,4 +1,6 @@
-pub mod ast_transformer;
+pub mod ast_transformer {
+    include!(concat!(env!("OUT_DIR"), "/ast_transformer.rs"));
+}
 pub mod re;
 
 pub mod quiche {
@@ -152,6 +154,25 @@ pub fn ast_create_call(
         args,
         keywords: vec![],
     }
+}
+
+pub fn ast_create_call_with_keywords(
+    func: Box<quiche_parser::ast::QuicheExpr>,
+    args: Vec<quiche_parser::ast::QuicheExpr>,
+    keywords: Vec<quiche_parser::ast::Keyword>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::Call {
+        func,
+        args,
+        keywords,
+    }
+}
+
+pub fn ast_create_keyword(
+    arg: Option<String>,
+    value: Box<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::Keyword {
+    quiche_parser::ast::Keyword { arg, value }
 }
 
 pub fn ast_create_subscript(
@@ -446,6 +467,22 @@ impl<T: Clone> QuicheDeref for Option<Box<T>> {
                 std::process::exit(1);
             }
         }
+    }
+}
+
+/// Blanket impl for mutable references - returns clone of inner value
+impl<T: Clone> QuicheDeref for &mut T {
+    type Target = T;
+    fn quiche_deref(&self) -> T {
+        (*self).clone()
+    }
+}
+
+/// Blanket impl for immutable references - returns clone of inner value
+impl<T: Clone> QuicheDeref for &T {
+    type Target = T;
+    fn quiche_deref(&self) -> T {
+        (*self).clone()
     }
 }
 
