@@ -76,4 +76,4 @@ quiche new myproject
 
 ## License
 
-MIT
+BSD-3
