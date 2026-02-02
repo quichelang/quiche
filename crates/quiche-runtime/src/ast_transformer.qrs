@@ -31,12 +31,14 @@ def create_Transformer() -> Transformer: pass
 class Transformer:
     signatures: HashMap[String, Vec[bool]] # FuncName -> List of "needs_borrow" (true if complex)
     current_complex_args: Vec[String]
+    verbose: bool
 
     def new() -> Transformer:
         return create_Transformer()
 
     def transform_module(self, module: QuicheModule) -> QuicheModule:
-        print("Transformer: Analyzing signatures...")
+        if self.verbose:
+            print("Transformer: Analyzing signatures...")
         self.signatures = HashMap[String, Vec[bool]].new()
         
         # Pass 1: Collect Signatures & Transform Definitions
@@ -44,7 +46,8 @@ class Transformer:
         for stmt in module.body:
             pass1_body.push(self.visit_def(stmt))
 
-        print("Transformer: Transforming calls...")
+        if self.verbose:
+            print("Transformer: Transforming calls...")
         # Pass 2: Transform Calls
         final_body: Vec[Stmt] = []
         for stmt in pass1_body:
@@ -94,7 +97,8 @@ class Transformer:
                     new_args.push(new_arg)
                     
                 self.signatures.insert(func_name.clone(), signature.clone()) 
-                print("Registered signature for: " + func_name + " -> " + signature.len().to_string())
+                if self.verbose:
+                    print("Registered signature for: " + func_name + " -> " + signature.len().to_string())
 
                 
                 # Update function args locally (struct update not easy, we modify 'f.args'?)
@@ -415,6 +419,7 @@ def ast_create_attribute(value: Box[Expr], attr: String) -> Expr: pass
 def ast_create_tuple(elts: Vec[Expr]) -> Expr: pass
 
 
-def transform_module(module: QuicheModule) -> QuicheModule:
+def transform_module(module: QuicheModule, verbose: bool) -> QuicheModule:
     t = create_Transformer()
+    t.verbose = verbose
     return t.transform_module(module)

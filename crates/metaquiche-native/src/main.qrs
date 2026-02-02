@@ -103,6 +103,9 @@ def create_dir_all(path: String) -> Result[Unit, IoError]: pass
 @extern(path="crate::quiche::write_string")
 def write_string(path: String, contents: String) -> Result[Unit, IoError]: pass
 
+@extern(path="crate::quiche::copy_file")
+def copy_file(src: String, dst: String) -> Result[Unit, IoError]: pass
+
 @extern(path="crate::quiche::set_env_var")
 def set_env_var(key: String, value: String): pass
 
@@ -141,7 +144,7 @@ def version_get_date() -> String: pass
 def version_get_build_kind() -> String: pass
 
 @extern(path="quiche_runtime::ast_transformer::transform_module")
-def transform_module(module: QuicheModule) -> QuicheModule: pass
+def transform_module(module: QuicheModule, verbose: bool) -> QuicheModule: pass
 
 def get_flag_bool(flags: HashMap[String, bool], key: String) -> bool:
     match flags.get(ref(key)):
@@ -292,12 +295,12 @@ def normalize_module_path(module_path: String) -> String:
 
 # --- Main ---
 
-def compile_source_to_string(source: String, filename: String, warn_quiche: bool, strict: bool) -> String:
+def compile_source_to_string(source: String, filename: String, warn_quiche: bool, strict: bool, verbose: bool) -> String:
     # Parse source with explicit error handling
     module = unwrap_or_exit_parse(parse_module(source.as_str()), "Failed to parse source")
     
     if filename.ends_with(ref(".q")):
-        module = transform_module(module)
+        module = transform_module(module, verbose)
 
     stmts = module.body
 
@@ -317,7 +320,7 @@ def compile_source_to_string(source: String, filename: String, warn_quiche: bool
     return ""
 
 def compile_source(source: String, filename: String, warn_quiche: bool, strict: bool):
-    code = compile_source_to_string(source, filename, warn_quiche, strict)
+    code = compile_source_to_string(source, filename, warn_quiche, strict, False)
     print_stdout(code)
 
 def print_usage():
@@ -341,6 +344,8 @@ def build_flag_parser(include_lib: bool) -> Parsley:
     parser.add_flag("warn-quiche", [], False)
     parser.add_flag("strict", [], False)
     parser.add_flag("emit-rust", ["-m"], False)
+    parser.add_flag("verbose", ["-v"], False)
+    parser.add_option("output", ["-o", "--out"], "", False)
     if include_lib:
         parser.add_flag("lib", [], False)
     return parser
@@ -407,14 +412,21 @@ def create_new_project(name: String, is_lib: bool):
 
     print(tr1("cli.success.project_created", "name", name))
 
-def run_transpiled_file(filename: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool):
+def run_transpiled_file(filename: String, script_args: Vec[String], quiet: bool, suppress_output: bool, raw_output: bool, warn: bool, strict: bool, warn_quiche: bool, output: String, verbose: bool):
     source = unwrap_or_exit_io(read_to_string(filename.clone()), "Failed to read source file")
-    rust_code = compile_source_to_string(source, filename.clone(), warn_quiche, strict)
+    rust_code = compile_source_to_string(source, filename.clone(), warn_quiche, strict, verbose)
     # The original instruction had a syntax error and undefined 'success'.
     # Assuming the intent was to ensure exit_code is an i32, and run_rust_code returns an i32.
     # If `run_rust_code` returns a boolean or similar, this would need adjustment.
     # For now, we keep the original call and add a type hint.
     exit_code: i32 = run_rust_code(rust_code, script_args, quiet, suppress_output, raw_output, warn, strict)
+    
+    if output != "":
+        # Save binary
+        unwrap_or_exit_unit(copy_file("target/tmp_bin".to_string(), output.clone()), "Failed to save binary")
+        if verbose:
+            print("Binary saved to: " + output.clone())
+
     if exit_code != 0:
         exit(exit_code)
 
@@ -516,7 +528,11 @@ def main():
                     set_env_var("QUICHE_WARN_ALL", "1")
                 if flags.warn_quiche:
                     set_env_var("QUICHE_WARN_QUICHE", "1")
-                run_transpiled_file("tests/runner.qrs", result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche)
+                
+                verbose = False
+                verbose = get_flag_bool(result.flags.clone(), "verbose")
+
+                run_transpiled_file("tests/runner.qrs", result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche, "", verbose)
             elif path_exists("Cargo.toml"):
                 success_test: bool = run_cargo_command("test", result.positionals)
                 if not success_test:
@@ -562,15 +578,25 @@ def main():
         k_er = "emit-rust"
         emit_rust = get_flag_bool(result.flags.clone(), k_er)
 
+        verbose = False
+        k_v = "verbose"
+        verbose = get_flag_bool(result.flags.clone(), k_v)
+
+        output = ""
+        k_o = "output"
+        match result.options.get(ref(k_o)):
+            case Some(v): output = v.clone()
+            case None: pass
+
         if emit_rust:
              source = unwrap_or_exit_io(read_to_string(cmd.clone()), "Failed to read source file")
-             code = compile_source_to_string(source, cmd.clone(), flags.warn_quiche, flags.strict)
+             code = compile_source_to_string(source, cmd.clone(), flags.warn_quiche, flags.strict, verbose)
              print_stdout(code)
              return
 
         if flags.warn_all:
             flags.warn_quiche = True
-        run_transpiled_file(cmd.clone(), result.positionals, False, False, True, flags.warn, flags.strict, flags.warn_quiche)
+        run_transpiled_file(cmd.clone(), result.positionals, False, False, True, flags.warn, flags.strict, flags.warn_quiche, output, verbose)
         return
 
     print(tr1("cli.error.unrecognized_command", "cmd", cmd))

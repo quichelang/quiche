@@ -23,6 +23,7 @@ pub use crate::create_Transformer as create_Transformer;
 pub struct Transformer  {
 pub signatures: std::collections::HashMap<String, Vec<bool>>,
 pub current_complex_args: Vec<String>,
+pub verbose: bool,
 }
 
 impl Transformer {
@@ -31,14 +32,18 @@ return create_Transformer();
 }
 
 pub fn transform_module(&mut self, module: QuicheModule) -> QuicheModule {
+if self.verbose {
 println!("{}", String::from("Transformer: Analyzing signatures..."));
+}
 self.signatures = std::collections::HashMap::new();
 let mut pass1_body: Vec<Stmt> = vec![];
 for __q in (module.body) {
 let stmt = __q;
 pass1_body.push(self.visit_def(stmt));
 }
+if self.verbose {
 println!("{}", String::from("Transformer: Transforming calls..."));
+}
 let mut final_body: Vec<Stmt> = vec![];
 for __q in (pass1_body) {
 let stmt = __q;
@@ -73,7 +78,9 @@ signature.push(is_complex);
 new_args.push(new_arg);
 }
 self.signatures.insert(func_name.clone(), signature.clone());
+if self.verbose {
 println!("{}", crate::quiche::strcat!(String::from("Registered signature for: "), func_name, String::from(" -> "), signature.len().to_string()));
+}
 let mut updated_f = self.update_args(f, new_args);
 return Stmt::FunctionDef(updated_f);
 }
@@ -379,8 +386,9 @@ pub use crate::ast_create_call as ast_create_call;
 pub use crate::ast_create_subscript as ast_create_subscript;
 pub use crate::ast_create_attribute as ast_create_attribute;
 pub use crate::ast_create_tuple as ast_create_tuple;
-pub fn transform_module(module: QuicheModule) -> QuicheModule {
+pub fn transform_module(module: QuicheModule, verbose: bool) -> QuicheModule {
 let mut t = create_Transformer();
+t.verbose = verbose;
 return t.transform_module(module);
 }
 

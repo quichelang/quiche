@@ -140,6 +140,11 @@ pub mod quiche {
         Ok(())
     }
 
+    pub fn copy_file(src: impl AsRef<str>, dst: impl AsRef<str>) -> std::io::Result<()> {
+        std::fs::copy(src.as_ref(), dst.as_ref())?;
+        Ok(())
+    }
+
     pub fn set_env_var(k: impl AsRef<str>, v: impl AsRef<str>) {
         unsafe {
             std::env::set_var(k.as_ref(), v.as_ref());

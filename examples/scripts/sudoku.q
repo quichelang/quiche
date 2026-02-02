@@ -69,9 +69,8 @@ def solve_sudoku(board: Vec[Vec[i32]]) -> bool:
 
     return False
 
-def run():
-    # 0 represents empty cells
-    board: Vec[Vec[i32]] = [
+def get_board() -> Vec[Vec[i32]]:
+    return [
         [5, 3, 0, 0, 7, 0, 0, 0, 0],
         [6, 0, 0, 1, 9, 5, 0, 0, 0],
         [0, 9, 8, 0, 0, 0, 0, 6, 0],
@@ -82,6 +81,10 @@ def run():
         [0, 0, 0, 4, 1, 9, 0, 0, 5],
         [0, 0, 0, 0, 8, 0, 0, 7, 9]
     ]
+
+def run():
+    # 0 represents empty cells
+    board: Vec[Vec[i32]] = get_board()
 
     if solve_sudoku(board):
         print("Solved:")
