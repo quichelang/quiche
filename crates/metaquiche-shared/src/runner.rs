@@ -54,7 +54,7 @@ pub fn run_rust_code(
         .with_error("Failed to write temp Rust file");
 
     if !quiet {
-        println!("--- Compiling and Running ---");
+        // Removed verbose "Compiling and Running" message for cleaner output
     }
     let mut rustc = Command::new("rustc");
     rustc

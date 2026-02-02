@@ -181,6 +181,14 @@ pub mod quiche {
             .to_string()
     }
 
+    /// Read all input from stdin as a string
+    pub fn read_stdin() -> String {
+        use std::io::Read;
+        let mut buffer = String::new();
+        std::io::stdin().read_to_string(&mut buffer).unwrap_or(0);
+        buffer
+    }
+
     pub fn run_cargo_command(cmd: impl AsRef<str>, args: Vec<String>) -> bool {
         true
     }

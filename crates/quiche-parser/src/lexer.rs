@@ -254,7 +254,8 @@ impl LexerPatterns {
             int_dec: Regex::new(r"^[0-9][0-9_]*").map_err(|e| e.to_string())?,
             float_exp: Regex::new(r"^[0-9][0-9_]*\.?[0-9_]*[eE][+-]?[0-9_]+")
                 .map_err(|e| e.to_string())?,
-            float_simple: Regex::new(r"^[0-9][0-9_]*\.[0-9_]*").map_err(|e| e.to_string())?,
+            // Require at least one digit after decimal to avoid matching "2." when "2..5" is meant
+            float_simple: Regex::new(r"^[0-9][0-9_]*\.[0-9][0-9_]*").map_err(|e| e.to_string())?,
         })
     }
 }

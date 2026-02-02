@@ -124,6 +124,9 @@ def compiler_path_for_new() -> String: pass
 @extern(path="crate::quiche::print_stdout")
 def print_stdout(s: String): pass
 
+@extern(path="crate::quiche::read_stdin")
+def read_stdin() -> String: pass
+
 # --- i18n Bridge Functions ---
 @extern(path="crate::quiche::tr")
 def tr(key: String) -> String: pass
@@ -337,6 +340,7 @@ def print_usage():
     print("  --warn-all           Show all warnings (Quiche + Rust)")
     print("  --warn-quiche        Show only Quiche warnings")
     print("  -m, --emit-rust      Emit generated Rust code instead of running")
+    print("  -c <code>            Run inline code (use - for stdin)")
     print("  -v, --verbose        Show verbose output")
     print("  -r, --release        Build in release mode (optimized)")
     print("  -o, --out <file>     Write output to file")
@@ -350,6 +354,7 @@ def build_flag_parser(include_lib: bool) -> Parsley:
     parser.add_flag("verbose", ["-v"], False)
     parser.add_flag("release", ["-r", "--release"], False)
     parser.add_option("output", ["-o", "--out"], "", False)
+    parser.add_option("code", ["-c"], "", False)
     if include_lib:
         parser.add_flag("lib", [], False)
     return parser
@@ -447,6 +452,39 @@ def main():
         print(tr("cli.error.no_command"))
         print_usage()
         exit(1)
+
+    # Check for -c inline code option early
+    parser = build_flag_parser(False)
+    result = parser.parse(args.clone())
+    inline_code = ""
+    k_code = "code"
+    match result.options.get(ref(k_code)):
+        case Some(v): inline_code = v.clone()
+        case None: pass
+    
+    if inline_code != "":
+        # Handle inline code: -c "code" or -c - (stdin)
+        source = ""
+        if inline_code == "-":
+            source = read_stdin()
+        else:
+            source = inline_code.clone()
+        
+        flags = parse_warn_flags(result.flags.clone())
+        emit_rust = False
+        emit_rust = get_flag_bool(result.flags.clone(), "emit-rust")
+        verbose = False
+        verbose = get_flag_bool(result.flags.clone(), "verbose")
+        
+        if emit_rust:
+            code = compile_source_to_string(source, "<inline>".to_string(), flags.warn_quiche, flags.strict, verbose)
+            print_stdout(code)
+        else:
+            release = False
+            release = get_flag_bool(result.flags.clone(), "release")
+            code = compile_source_to_string(source, "<inline>".to_string(), flags.warn_quiche, flags.strict, verbose)
+            run_rust_code(code, result.positionals, True, False, True, flags.warn, flags.strict, release)
+        return
 
     commands = ["new", "build", "run", "test", "version"]
     cmd = args[0]
