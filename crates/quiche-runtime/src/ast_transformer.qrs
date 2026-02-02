@@ -1,6 +1,11 @@
 from rust.quiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, Arg, Operator, BoolOperator, UnaryOperator, IfStmt, WhileStmt, ForStmt, Keyword
 from std.collections import HashMap
 
+# Import memory analysis types and functions
+from rust.crate import MemoryAnalyzer, MemConfig, AllocationStrategy
+from rust.crate.memory_analysis import init_inline_types, collect_mem_decorators, get_strategy_for_type, get_func_config
+
+
 @extern(path="crate::create_QuicheModule")
 def create_QuicheModule(body: Vec[Stmt]) -> QuicheModule: pass
 
@@ -31,6 +36,8 @@ def create_Transformer() -> Transformer: pass
 class Transformer:
     signatures: HashMap[String, Vec[bool]] # FuncName -> List of "needs_borrow" (true if complex)
     current_complex_args: Vec[String]
+    memory_analyzer: MemoryAnalyzer  # Memory analysis state
+    extern_funcs: Vec[String]  # Functions decorated with @extern
     verbose: bool
 
     def new() -> Transformer:
@@ -38,7 +45,17 @@ class Transformer:
 
     def transform_module(self, module: QuicheModule) -> QuicheModule:
         if self.verbose:
-            print("Transformer: Analyzing signatures...")
+            print("Transformer: Starting memory analysis (Pass 0)...")
+        
+        # Pass 0: Memory Analysis - collect @mem decorators and analyze escape
+        init_inline_types(mutref(self.memory_analyzer))
+        for stmt in module.body.clone():
+            collect_mem_decorators(mutref(self.memory_analyzer), stmt.clone())
+            # Also collect @extern functions
+            self.collect_extern(stmt)
+        
+        if self.verbose:
+            print("Transformer: Analyzing signatures (Pass 1)...")
         self.signatures = HashMap[String, Vec[bool]].new()
         
         # Pass 1: Collect Signatures & Transform Definitions
@@ -47,7 +64,7 @@ class Transformer:
             pass1_body.push(self.visit_def(stmt))
 
         if self.verbose:
-            print("Transformer: Transforming calls...")
+            print("Transformer: Transforming calls (Pass 2)...")
         # Pass 2: Transform Calls
         final_body: Vec[Stmt] = []
         for stmt in pass1_body:
@@ -142,6 +159,44 @@ class Transformer:
         # Need helper? or s.chars().next()...
         # use an extern for 'is_first_upper'?
         return check_first_upper(s)
+
+    def collect_extern(self, stmt: Stmt):
+        """Collect @extern decorated functions for boundary handling"""
+        match stmt:
+            case Stmt.FunctionDef(f):
+                if self.has_extern_decorator(f.decorator_list.clone()):
+                    func_name = ast_get_func_name(ref(f))
+                    self.extern_funcs.push(func_name.clone())
+                    if self.verbose:
+                        print("  Found @extern function: " + func_name)
+            case _:
+                pass
+    
+    def has_extern_decorator(self, decorators: Vec[Expr]) -> bool:
+        """Check if decorator list contains @extern"""
+        for dec in decorators:
+            match dec:
+                case Expr.Name(n):
+                    if n == "extern":
+                        return True
+                case Expr.Call(func=fc, args=_, keywords=_):
+                    inner = deref(fc).clone()
+                    match inner:
+                        case Expr.Name(n):
+                            if n == "extern":
+                                return True
+                        case _:
+                            pass
+                case _:
+                    pass
+        return False
+    
+    def is_extern_call(self, func_name: String) -> bool:
+        """Check if function is @extern decorated"""
+        for ef in self.extern_funcs.clone():
+            if ef == func_name:
+                return True
+        return False
 
     def transform_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:

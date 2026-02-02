@@ -1,6 +1,15 @@
 pub mod ast_transformer {
     include!(concat!(env!("OUT_DIR"), "/ast_transformer.rs"));
 }
+pub mod memory_analysis {
+    include!(concat!(env!("OUT_DIR"), "/memory_analysis.rs"));
+}
+pub mod introspect {
+    include!(concat!(env!("OUT_DIR"), "/introspect.rs"));
+}
+pub mod qtest {
+    include!(concat!(env!("OUT_DIR"), "/qtest.rs"));
+}
 pub mod re;
 
 // Re-export perceus-mem types for use in generated code
@@ -48,6 +57,7 @@ pub fn create_EscapeInfo() -> EscapeInfo {
 pub struct MemoryAnalyzer {
     pub type_strategies: std::collections::HashMap<String, AllocationStrategy>,
     pub func_configs: std::collections::HashMap<String, MemConfig>,
+
     pub current_escape: EscapeInfo,
     pub inline_types: Vec<String>,
     pub verbose: bool,
@@ -57,18 +67,102 @@ pub fn create_MemoryAnalyzer() -> MemoryAnalyzer {
     MemoryAnalyzer::default()
 }
 
-// Strategy constant accessors (for Quiche @extern)
-pub fn strategy_inline() -> i32 {
-    0
+// ============================================================================
+// Introspection Support
+// ============================================================================
+
+/// Metadata for a registered function
+#[derive(Debug, Clone, Default)]
+pub struct FunctionMeta {
+    pub name: String,
+    pub arity: usize,
+    pub signature: String,
+    pub docstring: Option<String>,
+    pub is_test: bool,
 }
-pub fn strategy_region() -> i32 {
-    1
+
+/// Metadata for a registered module
+#[derive(Debug, Clone, Default)]
+pub struct ModuleInfo {
+    pub name: String,
+    pub functions: std::collections::HashMap<String, FunctionMeta>,
+    pub constants: std::collections::HashMap<String, String>,
 }
-pub fn strategy_managed() -> i32 {
-    2
+
+/// Central runtime state object holding module registry
+#[derive(Debug, Clone, Default)]
+pub struct QuicheRuntime {
+    pub modules: std::collections::HashMap<String, ModuleInfo>,
+    pub current_module: String,
 }
-pub fn strategy_store() -> i32 {
-    3
+
+pub fn introspect_create_FunctionMeta(
+    name: String,
+    arity: usize,
+    signature: String,
+    docstring: Option<String>,
+    is_test: bool,
+) -> FunctionMeta {
+    FunctionMeta {
+        name,
+        arity,
+        signature,
+        docstring,
+        is_test,
+    }
+}
+
+pub fn introspect_create_ModuleInfo(name: String) -> ModuleInfo {
+    ModuleInfo {
+        name,
+        functions: std::collections::HashMap::new(),
+        constants: std::collections::HashMap::new(),
+    }
+}
+
+pub fn introspect_create_QuicheRuntime() -> QuicheRuntime {
+    QuicheRuntime::default()
+}
+
+// ============================================================================
+// qtest Support
+// ============================================================================
+
+/// Exception raised when an assertion fails
+#[derive(Debug, Clone, Default)]
+pub struct AssertionError {
+    pub message: String,
+}
+
+/// Test result enum
+#[derive(Debug, Clone)]
+pub enum TestResult {
+    Passed,
+    Failed(String),
+    Skipped(String),
+}
+
+/// Summary of test run results
+#[derive(Debug, Clone, Default)]
+pub struct TestSummary {
+    pub total: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub failures: Vec<String>,
+}
+
+/// Panic with a message - wrapper for panic! macro
+pub fn qtest_panic(message: String) {
+    panic!("{}", message);
+}
+
+pub fn qtest_create_AssertionError(message: String) -> AssertionError {
+    AssertionError { message }
+}
+
+pub fn qtest_create_TestSummary() -> TestSummary {
+    TestSummary::default()
 }
 
 // ============================================================================

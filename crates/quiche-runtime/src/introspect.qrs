@@ -1,0 +1,137 @@
+# Quiche Introspection Module
+# Provides runtime state for module/function metadata
+
+from std.collections import HashMap
+
+# ============================================================================
+# Core Data Structures
+# ============================================================================
+
+class FunctionMeta(Struct):
+    """Metadata for a registered function."""
+    name: String
+    arity: usize
+    signature: String
+    is_test: bool
+
+class ModuleInfo(Struct):
+    """Metadata for a registered module."""
+    name: String
+    functions: HashMap[String, FunctionMeta]
+
+class QuicheRuntime(Struct):
+    """Central runtime state object holding module registry."""
+    modules: HashMap[String, ModuleInfo]
+    current_module: String
+
+# ============================================================================
+# Constructor Functions
+# ============================================================================
+
+def create_function_meta(
+    name: String,
+    arity: usize,
+    signature: String,
+    is_test: bool
+) -> FunctionMeta:
+    """Create a new FunctionMeta instance."""
+    return FunctionMeta(
+        name=name,
+        arity=arity,
+        signature=signature,
+        is_test=is_test
+    )
+
+def create_module_info(name: String) -> ModuleInfo:
+    """Create a new ModuleInfo instance."""
+    return ModuleInfo(
+        name=name,
+        functions=HashMap.new()
+    )
+
+def create_quiche_runtime() -> QuicheRuntime:
+    """Create a new QuicheRuntime instance."""
+    return QuicheRuntime(
+        modules=HashMap.new(),
+        current_module=String.new()
+    )
+
+# ============================================================================
+# Public API Functions
+# ============================================================================
+
+def register_module(runtime: mutref[QuicheRuntime], name: String):
+    """Register a new module in the runtime."""
+    info = create_module_info(name.clone())
+    rt = deref(runtime)
+    rt.modules.insert(name.clone(), info)
+    rt.current_module = name
+
+def register_function(
+    runtime: mutref[QuicheRuntime],
+    module_name: String,
+    func_name: String,
+    arity: usize,
+    signature: String
+):
+    """Register a function in the specified module."""
+    is_test = func_name.starts_with(ref("test_"))
+    meta = create_function_meta(func_name.clone(), arity, signature, is_test)
+    rt = deref(runtime)
+    if rt.modules.contains_key(ref(module_name)):
+        mod_info = rt.modules.get_mut(ref(module_name)).unwrap()
+        mi = deref(mod_info)
+        mi.functions.insert(func_name, meta)
+
+def get_module_functions(runtime: ref[QuicheRuntime], module_name: ref[String]) -> Vec[String]:
+    """Get list of function names in a module."""
+    result: Vec[String] = Vec.new()
+    rt = deref(runtime)
+    if rt.modules.contains_key(module_name):
+        mod_info = rt.modules.get(module_name).unwrap()
+        mi = deref(mod_info)
+        for name in mi.functions.keys():
+            result.push(deref(name).clone())
+    return result
+
+def get_tests(runtime: ref[QuicheRuntime], module_name: ref[String]) -> Vec[String]:
+    """Get list of test function names (matching test_* prefix) in a module."""
+    result: Vec[String] = Vec.new()
+    rt = deref(runtime)
+    if rt.modules.contains_key(module_name):
+        mod_info = rt.modules.get(module_name).unwrap()
+        mi = deref(mod_info)
+        for (name, meta) in mi.functions.iter():
+            m = deref(meta)
+            if m.is_test:
+                result.push(deref(name).clone())
+    return result
+
+def has_function(runtime: ref[QuicheRuntime], module_name: ref[String], func_name: ref[String]) -> bool:
+    """Check if a function exists in the specified module."""
+    rt = deref(runtime)
+    if rt.modules.contains_key(module_name):
+        mod_info = rt.modules.get(module_name).unwrap()
+        mi = deref(mod_info)
+        return mi.functions.contains_key(func_name)
+    return False
+
+def get_function_arity(runtime: ref[QuicheRuntime], module_name: ref[String], func_name: ref[String]) -> usize:
+    """Get the arity (number of arguments) for a function."""
+    rt = deref(runtime)
+    if rt.modules.contains_key(module_name):
+        mod_info = rt.modules.get(module_name).unwrap()
+        mi = deref(mod_info)
+        if mi.functions.contains_key(func_name):
+            meta = mi.functions.get(func_name).unwrap()
+            m = deref(meta)
+            return m.arity
+    return 0
+
+def is_callable(runtime: ref[QuicheRuntime], module_name: ref[String], name: ref[String]) -> bool:
+    """Check if a name refers to a callable function."""
+    return has_function(runtime, module_name, name)
+
+def dir_module(runtime: ref[QuicheRuntime], module_name: ref[String]) -> Vec[String]:
+    """List all names (functions) in a module - like Python's dir()."""
+    return get_module_functions(runtime, module_name)

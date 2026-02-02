@@ -10,23 +10,17 @@ This document tracks known code generation limitations that may block self-hosti
 
 **Solution**: Added `ConstDef` AST node. Parser detects ALL_UPPER_CASE identifiers or `Const[T]` annotations and emits `pub const` instead.
 
-### Generic Type Syntax (No Fix Needed)
+### Generic Type Syntax in Struct Fields (Resolved 2026-02-02)
 
-**Issue**: Initially reported that generic types used `[T]` instead of `<T>` in struct fields.
+**Issue**: `Vec[String]` in struct field definitions was emitted literally instead of `Vec<String>`.
 
-**Status**: Investigation confirmed `type_to_string` correctly uses angle brackets. This was a false report.
+**Solution**: Fixed `expr_to_type_string` in parser to use `<>` instead of `[]` for generic types.
 
 ## Open Issues
 
-### Crate Imports
+### Nested Enum Types Not In Scope
 
-**Issue**: `from rust import X` generates `use rust::X;` instead of `use crate::X;`.
-
-**Status**: Pending implementation. Workaround: Use explicit crate path imports.
-
-### Enum Variant Access
-
-**Issue**: Potential issue where `EnumType.Variant` doesn't correctly translate to `EnumType::Variant`.
+**Issue**: Enum variants like `Constant::Bool` aren't automatically imported when used in patterns.
 
 **Status**: Needs verification.
 

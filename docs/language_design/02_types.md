@@ -36,6 +36,27 @@ class Button(Struct):
     label: String
 ```
 
+### Enums
+Enums are defined as classes inheriting from `Enum`. Variants use assignment syntax with tuples.
+
+```python
+class Status(Enum):
+    Pending = ()          # Unit variant → Status::Pending
+    Active = ()           # Unit variant → Status::Active
+    WithData = (String,)  # Tuple variant → Status::WithData(String)
+```
+
+Compiles to:
+```rust
+pub enum Status {
+    Pending,
+    Active,
+    WithData(String),
+}
+```
+
+> **Important:** Bare identifiers like `Pending` without `= ()` are NOT valid enum syntax.
+
 ### Traits
 Traits are defined as classes inheriting from `Trait`.
 

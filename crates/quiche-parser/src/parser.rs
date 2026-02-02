@@ -414,7 +414,7 @@ impl<'a> Parser<'a> {
             QuicheExpr::Name(n) => n.clone(),
             QuicheExpr::Subscript { value, slice } => {
                 format!(
-                    "{}[{}]",
+                    "{}<{}>",
                     self.expr_to_type_string(value),
                     self.expr_to_type_string(slice)
                 )

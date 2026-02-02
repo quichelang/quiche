@@ -1,0 +1,102 @@
+# Quiche Test Framework (qtest) - MetaQuiche Edition
+# Simple result-based testing for .qrs files
+
+# ============================================================================
+# Test Result Types
+# ============================================================================
+
+class TestResult(Enum):
+    Passed = ()
+    Failed = (String,)
+    Skipped = (String,)
+
+class TestSummary(Struct):
+    """Summary of test run results."""
+    total: usize
+    passed: usize
+    failed: usize
+    skipped: usize
+    failures: Vec[String]
+
+# ============================================================================
+# Result Helpers
+# ============================================================================
+
+def passed() -> TestResult:
+    """Return a passing result."""
+    return TestResult.Passed
+
+def failed(reason: String) -> TestResult:
+    """Return a failing result with reason."""
+    return TestResult.Failed(reason)
+
+def skipped(reason: String) -> TestResult:
+    """Return a skipped result with reason."""
+    return TestResult.Skipped(reason)
+
+# ============================================================================
+# Assertion Helpers (return TestResult instead of panicking)
+# ============================================================================
+
+def check_true(cond: bool, msg: String) -> TestResult:
+    """Check condition is true, return result."""
+    if cond:
+        return TestResult.Passed
+    return TestResult.Failed(msg)
+
+def check_false(cond: bool, msg: String) -> TestResult:
+    """Check condition is false, return result."""
+    if not cond:
+        return TestResult.Passed
+    return TestResult.Failed(msg)
+
+def check_eq_i32(a: i32, b: i32, msg: String) -> TestResult:
+    """Check two i32 values are equal."""
+    if a == b:
+        return TestResult.Passed
+    return TestResult.Failed(msg)
+
+def check_eq_usize(a: usize, b: usize, msg: String) -> TestResult:
+    """Check two usize values are equal."""
+    if a == b:
+        return TestResult.Passed
+    return TestResult.Failed(msg)
+
+# ============================================================================
+# Test Summary
+# ============================================================================
+
+def create_test_summary() -> TestSummary:
+    """Create empty test summary."""
+    return TestSummary(
+        total=0,
+        passed=0,
+        failed=0,
+        skipped=0,
+        failures=Vec.new()
+    )
+
+def record_result(summary: mutref[TestSummary], name: String, result: TestResult):
+    """Record a test result in the summary."""
+    s = deref(summary)
+    s.total = s.total + 1
+    match result:
+        case TestResult.Passed:
+            s.passed = s.passed + 1
+        case TestResult.Failed(reason):
+            s.failed = s.failed + 1
+            s.failures.push(strcat(name, ": ", reason))
+        case TestResult.Skipped(_):
+            s.skipped = s.skipped + 1
+
+def print_summary(summary: ref[TestSummary]):
+    """Print test summary."""
+    s = deref(summary)
+    print("")
+    print("========================================")
+    print(strcat("Tests: ", s.passed, " passed, ", s.failed, " failed, ", s.skipped, " skipped"))
+    print("========================================")
+    if s.failed > 0:
+        print("Failures:")
+        for f in s.failures.iter():
+            print(strcat("  - ", deref(f)))

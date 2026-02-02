@@ -1,133 +1,157 @@
 # MetaQuiche Codegen Issues
 
-Issues encountered during perceus-mem AST transformer integration. These blocked implementing memory analysis in Quiche (`.qrs`) and required falling back to pure Rust.
+Issues encountered during perceus-mem AST transformer integration.
 
 ---
 
-## 1. Module-Level Constants Generate Invalid Rust
+## ✅ FIXED: Enum Variant Syntax Clarification
 
-**Problem:** Top-level `let` bindings generate `let mut` which is invalid at module scope.
+**Status:** User error — bare identifiers are not valid Python enum syntax
 
-**Quiche Input:**
-```python
-STRATEGY_INLINE: i32 = 0
-STRATEGY_REGION: i32 = 1
-```
-
-**Generated Rust (Invalid):**
-```rust
-let mut STRATEGY_INLINE: i32 = 0;  // ERROR: expected item, found `let`
-let mut STRATEGY_REGION: i32 = 1;
-```
-
-**Expected Rust:**
-```rust
-pub const STRATEGY_INLINE: i32 = 0;
-pub const STRATEGY_REGION: i32 = 1;
-```
-
-**Workaround:** Define constants as `@extern` functions in Rust:
-```python
-@extern(path="crate::strategy_inline")
-def STRATEGY_INLINE() -> i32: pass
-```
-
----
-
-## 2. Generic Types Use `[T]` Instead of `<T>` in Struct Fields
-
-**Problem:** Struct field type annotations use square brackets, not angle brackets.
-
-**Quiche Input:**
-```python
-class EscapeInfo(Struct):
-    escaping: Vec[String]
-    local_only: Vec[String]
-```
-
-**Generated Rust (Invalid):**
-```rust
-pub struct EscapeInfo {
-    pub escaping: Vec[String],    // ERROR: expected `,` or `}`, found `[`
-    pub local_only: Vec[String],
-}
-```
-
-**Expected Rust:**
-```rust
-pub struct EscapeInfo {
-    pub escaping: Vec<String>,
-    pub local_only: Vec<String>,
-}
-```
-
-**Workaround:** Define structs in Rust lib.rs, import via `@extern` for construction.
-
----
-
-## 3. Imports From Parent Crate Fail
-
-**Problem:** Attempting to import types from the parent Rust crate generates invalid `use` statements.
-
-**Quiche Input:**
-```python
-from rust import MemConfig, EscapeInfo, MemoryAnalyzer
-```
-
-**Generated Rust (Invalid):**
-```rust
-use rust::MemConfig;  // ERROR: unresolved import `rust`
-use rust::EscapeInfo;
-use rust::MemoryAnalyzer;
-```
-
-**Expected Rust:**
-```rust
-use crate::MemConfig;
-use crate::EscapeInfo;
-use crate::MemoryAnalyzer;
-```
-
-**Workaround:** Don't use Quiche `class` definitions; define structs in Rust and use `@extern` functions for all type construction.
-
----
-
-## 4. Enum Variant Access Not Fully Supported
-
-**Problem:** Enum variant syntax `AllocationStrategy.INLINE` may not translate correctly.
-
-**Quiche Input:**
+**Incorrect Syntax (doesn't work):**
 ```python
 class AllocationStrategy(Enum):
-    INLINE
-    REGION
-    MANAGED
-
-def get_strategy() -> AllocationStrategy:
-    return AllocationStrategy.INLINE
+    Inline        # ❌ Bare identifier = expression statement
+    Region
 ```
 
-**Potential Issues:**
-- Enum definitions in Quiche may generate invalid Rust
-- Variant access may need special handling
+**Correct Syntax:**
+```python
+class AllocationStrategy(Enum):
+    Inline = ()           # ✅ Unit variant
+    Region = ()
+    Managed = ()
+    Green = (i32,)        # ✅ Tuple variant with payload
+```
 
-**Workaround:** Define enums in Rust, use i32 constants with `@extern` accessors.
+> **Note:** Python enums require assignment syntax. Bare identifiers are parsed as expression statements, not enum variants.
+
+---
+
+## ✅ FIXED: Module-Level Constants
+
+**Status:** Fixed via SCREAMING_SNAKE_CASE detection
+
+SCREAMING_SNAKE_CASE variables now correctly generate `pub const`:
+
+```python
+STRATEGY_INLINE: i32 = 0   # → pub const STRATEGY_INLINE: i32 = 0;
+```
+
+Also supported: `Const[T]` explicit annotation for non-SCREAMING names.
+
+---
+
+## ✅ FIXED: Generic Types in Struct Fields
+
+**Status:** Fixed via `expr_to_type_string` correction
+
+**Bug:** The `expr_to_type_string` function in parser.rs was outputting `Vec[T]` instead of `Vec<T>`.
+
+**Fix:** Changed format string from `"{}[{}]"` to `"{}<{}>"` in `expr_to_type_string`.
+
+```python
+class EscapeInfo(Struct):
+    escaping: Vec[String]     # → Vec<String> (now works!)
+```
+
+> **Note:** Function parameters/return types already worked; only struct fields were affected.
+
+---
+
+## 🔶 PARTIAL: Nested Enum Types Not In Scope
+
+**Status:** Nested types like `Constant::Bool` aren't automatically imported
+
+**Quiche Input:**
+```python
+match c:
+    case Constant.Bool(b):
+        # ...
+```
+
+**Generated Rust (Invalid):**
+```rust
+Constant::Bool(b) => {  // ERROR: use of undeclared type `Constant`
+```
+
+**Expected:** Either auto-import `use quiche_parser::ast::Constant;` or fully qualify as `quiche_parser::ast::Constant::Bool`.
+
+**Workaround:** Avoid matching on nested enum types, or restructure to avoid the pattern.
+
+---
+
+## ❌ OPEN: Type Inference Through Extern Boundaries
+
+**Status:** Return types from `@extern` functions don't unify with Quiche-defined structs
+
+**Problem:** When both Rust and Quiche define the same struct, they're treated as different types:
+
+```python
+# Quiche defines
+class MemConfig(Struct):
+    is_inline: bool
+
+# Extern returns Rust's crate::MemConfig
+@extern(path="crate::create_MemConfig")
+def create_MemConfig() -> MemConfig: pass
+
+def new_mem_config() -> MemConfig:
+    return create_MemConfig()  # ERROR: mismatched types
+```
+
+**Root cause:** Quiche generates its own `MemConfig` struct, but `@extern` returns `crate::MemConfig`. These are different types to Rust.
+
+**Workaround:** Don't define structs in Quiche if you need to construct them via `@extern`. Use the Rust-defined types exclusively.
+
+---
+
+## ❌ OPEN: HashMap Type Inference
+
+**Status:** `HashMap.get()` return type needs explicit annotation
+
+**Quiche Input:**
+```python
+match self.type_strategies.get(ref(type_name)):
+    case Some(strategy):
+        return deref(strategy)
+```
+
+**Error:**
+```
+error[E0282]: type annotations needed
+   --> return crate::quiche::deref!(strategy);
+```
+
+**Workaround:** Add explicit type annotation:
+```python
+strategy_opt: Option[ref[i32]] = self.type_strategies.get(ref(type_name))
+```
 
 ---
 
 ## Summary
 
-| Issue | Impact | Workaround |
-|-------|--------|------------|
-| Module-level constants | Cannot define global constants | Use `@extern` functions |
-| Generic struct fields | Cannot define structs with Vec/HashMap | Define in Rust, use `@extern` |
-| Crate imports | Cannot import from parent crate | Define types in Rust |
-| Enum variants | Enum access may fail | Use i32 + `@extern` functions |
+| Issue | Status | Impact |
+|-------|--------|--------|
+| Module-level constants | ✅ Fixed | SCREAMING_SNAKE_CASE works |
+| Generic struct fields | 🔶 Partial | `Vec[T]` in fields broken |
+| Nested enum imports | 🔶 Partial | `Constant::Bool` not in scope |
+| Extern type unification | ❌ Open | Can't mix Quiche + Rust structs |
+| HashMap type inference | ❌ Open | Needs explicit annotations |
 
-## Recommendation
+## Current Workaround Pattern
 
-For complex type definitions (structs with generics, enums), define them in Rust and expose via `@extern` functions. Quiche works well for:
-- Business logic with function calls
-- Control flow (if/match/for/while)
-- Method calls on existing types
-- Simple type annotations
+For complex types, use this pattern:
+
+```python
+# 1. Define structs in Rust (lib.rs)
+# 2. Create constructors in Rust
+# 3. Use @extern to access from Quiche
+
+@extern(path="crate::create_MemConfig")
+def create_MemConfig() -> MemConfig: pass
+
+# 4. DON'T redefine the struct in Quiche
+# 5. Use explicit type annotations for HashMap returns
+```

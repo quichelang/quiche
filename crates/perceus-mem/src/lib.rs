@@ -36,7 +36,7 @@ mod weak;
 
 pub use generation::{GenIndex, Generation};
 pub use handle::Handle;
-pub use inline::Inline;
+pub use inline::{Color, Inline, Vec2, Vec3, Vec4};
 pub use managed::Managed;
 pub use policy::{AtomicPolicy, SingleThreaded, ThreadSafe};
 pub use region::{Region, RegionHandle};

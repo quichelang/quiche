@@ -465,6 +465,17 @@ impl Codegen {
                     self.generate_expr(*u);
                 }
             }
+            ast::QuicheExpr::Tuple(elts) => {
+                // Tuple expression - used in for loop destructuring patterns
+                self.output.push_str("(");
+                for (i, e) in elts.into_iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.generate_expr(e);
+                }
+                self.output.push_str(")");
+            }
             _ => {
                 self.output
                     .push_str(&format!("/* unhandled expr: {:?} */", expr));

@@ -1,5 +1,9 @@
 # Agent Guidelines for Quiche
 
+We play by the scout's rules. Always leave the place cleaner than you found it.
+
+If you discover a core feature is missing/broken in the compiler, build it. We will FORGE the change we want to see!
+
 ## Quick Start
 
 ```bash
@@ -91,8 +95,8 @@ class Point(Struct):
     y: i32
 
 class Color(Enum):
-    Red
-    Green(i32)
+    Red = ()           # Unit variant
+    Green = (i32,)     # Tuple variant with payload
 
 class Display(Trait):
     def show(self) -> String: pass

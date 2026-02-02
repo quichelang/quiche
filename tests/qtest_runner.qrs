@@ -1,0 +1,74 @@
+# qtest Runner - Discovers and runs qtest-based tests
+# Usage: quiche qtest_runner.qrs [pattern]
+
+from qtest import TestResult, TestSummary, create_test_summary, record_result, print_summary, passed, failed
+
+@extern(path="std::process::exit")
+def exit(code: i32): pass
+
+@extern(path="crate::quiche::env_args_helper")
+def env_args() -> Vec[String]: pass
+
+@extern(path="crate::quiche::find_test_files")
+def find_test_files(pattern: String) -> Vec[String]: pass
+
+@extern(path="crate::quiche::read_file_string")
+def read_file_string(path: String) -> Result[String, String]: pass
+
+# Example test functions that return TestResult
+def test_qtest_passed_works() -> TestResult:
+    """Test that passed() returns Passed variant."""
+    result = passed()
+    match result:
+        case TestResult.Passed:
+            return passed()
+        case _:
+            return failed("passed() did not return Passed")
+
+def test_qtest_failed_works() -> TestResult:
+    """Test that failed() returns Failed variant."""
+    result = failed("test reason")
+    match result:
+        case TestResult.Failed(msg):
+            if msg == "test reason":
+                return passed()
+            return failed("wrong message in Failed")
+        case _:
+            return failed("failed() did not return Failed")
+
+def test_qtest_summary_counts() -> TestResult:
+    """Test that TestSummary counts correctly."""
+    summary = create_test_summary()
+    record_result(mutref(summary), "t1", passed())
+    record_result(mutref(summary), "t2", passed())
+    record_result(mutref(summary), "t3", failed("x"))
+    
+    if summary.total != 3:
+        return failed("total should be 3")
+    if summary.passed != 2:
+        return failed("passed should be 2")
+    if summary.failed != 1:
+        return failed("failed should be 1")
+    return passed()
+
+def main():
+    args = env_args()
+    pattern = ""
+    if args.len() > 1:
+        pattern = args[1]
+    
+    print("qtest runner")
+    print("============")
+    print("")
+    
+    summary = create_test_summary()
+    
+    # Run built-in self-tests
+    record_result(mutref(summary), "test_qtest_passed_works", test_qtest_passed_works())
+    record_result(mutref(summary), "test_qtest_failed_works", test_qtest_failed_works())
+    record_result(mutref(summary), "test_qtest_summary_counts", test_qtest_summary_counts())
+    
+    print_summary(ref(summary))
+    
+    if summary.failed > 0:
+        exit(1)

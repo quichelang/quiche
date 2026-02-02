@@ -25,6 +25,9 @@ fn compile_qrs(source_name: &str, out_dir: &str, compiler: &str) {
 
 fn main() {
     println!("cargo:rerun-if-changed=src/ast_transformer.qrs");
+    println!("cargo:rerun-if-changed=src/memory_analysis.qrs");
+    println!("cargo:rerun-if-changed=src/introspect.qrs");
+    println!("cargo:rerun-if-changed=src/qtest.qrs");
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
 
@@ -34,4 +37,7 @@ fn main() {
 
     // Compile Quiche modules
     compile_qrs("ast_transformer", &out_dir, &compiler);
+    compile_qrs("memory_analysis", &out_dir, &compiler);
+    compile_qrs("introspect", &out_dir, &compiler);
+    compile_qrs("qtest", &out_dir, &compiler);
 }

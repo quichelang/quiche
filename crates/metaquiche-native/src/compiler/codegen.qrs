@@ -600,6 +600,20 @@ class Codegen:
         match ref(deref(f.target)):
             case q_ast.Expr.Name(n):
                 self.emit(n.to_string())
+            case q_ast.Expr.Tuple(elts):
+                # Handle tuple unpacking: for (a, b) in x.iter()
+                self.emit("(")
+                idx: usize = 0
+                for e in elts.clone():
+                    if idx > 0:
+                        self.T("comma_sep")
+                    match ref(e):
+                        case q_ast.Expr.Name(n):
+                            self.emit(n.to_string())
+                        case _:
+                            self.generate_expr(e)
+                    idx = idx + 1
+                self.emit(")")
             case _:
                 self.T("wildcard")
         self.emit(" = __q;\n")

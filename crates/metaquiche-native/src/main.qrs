@@ -332,6 +332,7 @@ def print_usage():
     print(tr("cli.usage.build"))
     print(tr("cli.usage.run"))
     print(tr("cli.usage.test"))
+    print("  qtest [pattern]    Run qtest-based unit tests")
     print(tr("cli.usage.script"))
     print("")
     print("Flags:")
@@ -486,7 +487,7 @@ def main():
             run_rust_code(code, result.positionals, True, False, True, flags.warn, flags.strict, release)
         return
 
-    commands = ["new", "build", "run", "test", "version"]
+    commands = ["new", "build", "run", "test", "qtest", "version"]
     cmd = args[0]
     has_command = False
     for c in commands:
@@ -606,6 +607,32 @@ def main():
                 exit(1)
             return
         
+        if cmd == "qtest":
+            # Run qtest-based unit tests
+            parser = build_flag_parser(False)
+            result = parser.parse(subargs)
+            if result.errors.len() > 0:
+                for e in result.errors:
+                    print(e)
+                print_usage()
+                exit(1)
+            flags = parse_warn_flags(result.flags.clone())
+            if flags.warn_all:
+                flags.warn_quiche = True
+            
+            verbose = False
+            verbose = get_flag_bool(result.flags.clone(), "verbose")
+            release = False
+            release = get_flag_bool(result.flags.clone(), "release")
+            
+            if path_exists("tests/qtest_runner.qrs"):
+                run_transpiled_file("tests/qtest_runner.qrs", result.positionals, True, False, True, flags.warn, flags.strict, flags.warn_quiche, "", verbose, release)
+            else:
+                print("No tests/qtest_runner.qrs found")
+                print("Create one with test functions that return TestResult")
+                exit(1)
+            return
+
         if cmd == "version":
             stage = version_get_stage()
             commit = version_get_commit()
