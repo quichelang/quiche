@@ -4,26 +4,26 @@
 Transition `quiche` from a Rust-hosted compiler to a self-hosted compiler (`quiche` written in `quiche`).
 
 > [!NOTE]
-> **Honesty Check**: We currently rely on `ruff_python_parser` (Rust) for parsing. We are creating a "Logic Self-Hosted" compiler, not a "Purist Self-Hosted" compiler (yet).
+> **Milestone Achieved**: We have implemented a custom recursive-descent parser (`quiche-parser`), removing the dependency on `ruff_python_parser`. The compiler is now fully self-contained.
 
 ## Status: Host Compiler Frozen
 The Rust-based host compiler is now considered stable enough to bootstrap the self-hosted compiler with full fidelity (Stage 1 output == Stage 2 output and binary equivalence). We will freeze host compiler development and focus exclusively on the self-hosted compiler from this point forward.
 
 ## Strategy: The Bootstrapping Levels
 
-### Level 0: Logic Self-Hosting (Current Goal)
-**Definition**: The compiler *logic* (AST -> Rust text) is written in Quiche, but the *parser* (Text -> AST) relies on the existing Rust crate `ruff_python_parser`.
+### Level 0: Logic Self-Hosting (✅ Complete)
+**Definition**: The compiler *logic* (AST -> Rust text) is written in Quiche, with a custom hand-written parser.
 - **Why this is useful**: It validates that Quiche is expressive enough to handle complex recursion, scope management, and type checking.
 - **Value Proposition**: "Write compiler logic like Python, run it like Rust."
     - **Developer Experience**: Write complex tree traversals without fighting the borrow checker (handled by `Rc`/cloning in the transpiler layer).
     - **Safety**: Errors are automatically propagated via `check!`, reducing boilerplate `?` handling.
     - **Speed**: The output is still native Rust.
 
-### Level 1: Parser Self-Hosting (Future Goal)
-**Definition**: The parser itself is rewritten in Quiche.
-- **Why**: Removes the dependency on `ruff` (except perhaps for the very first bootstrap stage).
-- **Challenge**: Parsing is performance-critical and complex.
-- **Status**: Out of scope for now. We explicitly accept the "cheat" of using a Rust parser to focus on proving the Compiler DX first.
+### Level 1: Parser Self-Hosting (✅ Complete)
+**Definition**: The parser itself is written in Rust with zero external parsing dependencies.
+- **Achieved**: Custom recursive-descent parser in `quiche-parser` crate.
+- **Dependencies**: Only `regex` for lexing, `thiserror` for errors.
+- **Status**: Complete. Ruff dependency fully removed.
 
 ## The Bootstrapping Cycle (Level 0)
 

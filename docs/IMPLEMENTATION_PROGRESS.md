@@ -28,7 +28,7 @@ let math = format!("{}", 1 + 1);
 ### 2. Dict Literal Support ✓
 Added AST bindings for `Dict` and `DictEntry`:
 - `ExprDict`
-- `DictEntry` (note: used as `Any` due to ruff_python_ast export issues)
+- `DictEntry`
 
 Added generation in `generate_expr()`:
 - Translates `{"a": 1, "b": 2}` to `std::collections::HashMap::from([("a", 1), ("b", 2)])`

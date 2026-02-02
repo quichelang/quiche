@@ -8,8 +8,6 @@ workspace = true
 
 [dependencies]
 metaquiche-shared = { path = "../metaquiche-shared" }
-ruff_python_parser = { git = "https://github.com/astral-sh/ruff" }
-ruff_python_ast = { git = "https://github.com/astral-sh/ruff" }
 thiserror = "2.0"
 regex = "1"
 

@@ -2,7 +2,7 @@
 //!
 //! Produces a stream of tokens with position information for the parser.
 //! Handles Python's significant whitespace (INDENT/DEDENT tokens).
-
+#![allow(clippy::unwrap_used)]
 use regex::Regex;
 
 // ─────────────────────────────────────────────────────────────────────────────

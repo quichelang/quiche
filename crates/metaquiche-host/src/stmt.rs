@@ -296,7 +296,6 @@ impl Codegen {
                     let mod_path_original = &alias.name;
                     let mod_path = mod_path_original.replace(".", "::");
                     let is_external = mod_path.starts_with("std") // usually std is top level
-                        || mod_path.starts_with("ruff_python_parser")
                         || mod_path.starts_with("parsley_qrs")
                         || mod_path.starts_with("quiche_parser")
                         || mod_path == "glob"
@@ -332,7 +331,6 @@ impl Codegen {
                         || mod_path == "std"
                         || mod_path.starts_with("core::")
                         || mod_path == "core"
-                        || mod_path.starts_with("ruff_python_parser")
                         || mod_path.starts_with("parsley_qrs")
                         || mod_path.starts_with("quiche_parser"); // Add other external crates here
 

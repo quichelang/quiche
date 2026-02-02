@@ -68,7 +68,6 @@ The self-hosted compiler's `generate_expr` function in `compiler.qrs` has no cas
 **Missing AST binding:**
 ```python
 # Not present in quiche/crates/quiche-self/src/ast.qrs
-@extern(path="ruff_python_ast::ExprFString", no_generic=True)
 class ExprFString:
     value: List[FStringPart]
     # ...
@@ -202,7 +201,6 @@ No case for `ast.Stmt.Try` in `generate_stmt`.
 **Missing AST binding:**
 ```python
 # Not present in quiche/crates/quiche-self/src/ast.qrs
-@extern(path="ruff_python_ast::StmtTry", no_generic=True)
 class StmtTry:
     body: List[Stmt]
     handlers: List[ExceptHandler]
@@ -385,8 +383,6 @@ pub(crate) fn is_type_or_mod(&self, base_str: &str) -> bool {
         || base_str == "compiler"
         || base_str == "types"
         || base_str == "rustpython_parser"
-        || base_str == "ruff_python_parser"
-        || base_str == "ruff_python_ast"
         || base_str.starts_with("std::")
         || base_str.starts_with("crate::")
         || base_str.contains("::")

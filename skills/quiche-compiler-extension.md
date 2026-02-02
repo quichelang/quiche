@@ -11,50 +11,55 @@ This skill explains how to extend the Quiche compiler with new AST transformatio
 ```
 ┌──────────────────┐     ┌────────────────────┐     ┌──────────────────┐
 │  .qrs Source     │ ──► │  quiche_parser     │ ──► │  Codegen         │
-│                  │     │  (Lowered AST)     │     │  (host/native)   │
+│                  │     │  (lexer + parser)  │     │  (host/native)   │
 └──────────────────┘     └────────────────────┘     └──────────────────┘
         ↓                        ↓                         ↓
-   ruff_python_ast         Vec<QuicheStmt>            Rust .rs output
-   (raw Python AST)        (simplified)
+   Token stream           Vec<QuicheStmt>            Rust .rs output
+   (custom lexer)         (QuicheModule)
 ```
 
-### Two AST Layers
+### Parser Architecture
 
-| Layer | Location | Purpose |
+| Component | Location | Purpose |
 |-------|----------|---------|
-| **ruff_python_ast** | External crate | Raw Python 3.12 syntax |
-| **quiche_parser::ast** | `crates/quiche-parser/src/ast.rs` | Simplified AST for codegen |
+| **lexer** | `crates/quiche-parser/src/lexer.rs` | Tokenizes source code |
+| **parser** | `crates/quiche-parser/src/parser.rs` | Recursive descent parser |
+| **ast** | `crates/quiche-parser/src/ast.rs` | Quiche AST for codegen |
 
-The parser **lowers** ruff AST → quiche AST. Codegen only sees the simplified form.
+The parser directly produces the Quiche AST. No external dependencies.
 
 ## Adding New Syntax Features
 
-### Step 1: Check if Parsing Already Works
+### Step 1: Check Parser Support
 
-Python syntax is parsed by ruff. Check `ruff_python_ast` docs for supported nodes.
-
-### Step 2: Update the Lowering (parser.rs)
+The parser is in `crates/quiche-parser/src/parser.rs`. Check if it handles the syntax.
 
 Location: `crates/quiche-parser/src/parser.rs`
 
 ```rust
-// Example: Extracting type params with bounds
-fn extract_type_params_def(params: &Option<Box<ast::TypeParams>>) -> Vec<String> {
-    if let Some(p) = params {
-        p.type_params.iter().map(|tp| match tp {
-            ast::TypeParam::TypeVar(t) => {
-                let name = t.name.to_string();
-                if let Some(bound) = &t.bound {
-                    format!("{}: {}", name, expr_to_string_compat(bound))
-                } else { name }
-            }
-            _ => "?".to_string(),
-        }).collect()
-    } else { vec![] }
+// Example: Parsing type params with bounds
+fn parse_type_params(&mut self) -> Result<Vec<String>, ParseError> {
+    if !self.eat(&TokenKind::LBracket)? {
+        return Ok(Vec::new());
+    }
+    let mut params = Vec::new();
+    loop {
+        let name = self.expect_ident()?;
+        // Handle bounds: T: Display
+        if self.eat(&TokenKind::Colon)? {
+            let bound = self.expect_ident()?;
+            params.push(format!("{}: {}", name, bound));
+        } else {
+            params.push(name);
+        }
+        if !self.eat(&TokenKind::Comma)? { break; }
+    }
+    self.expect(&TokenKind::RBracket)?;
+    Ok(params)
 }
 ```
 
-Key pattern: **Lower complex types to simple strings or primitives**
+Key pattern: **Parse into simple strings or AST nodes**
 
 ### Step 3: Update Quiche AST (ast.rs)
 
@@ -144,15 +149,16 @@ def generate_stmt(self, stmt: q_ast.Stmt):
             self.emit_type_params(f.type_params)
 ```
 
-**Important**: `q_ast` is `quiche_parser::ast` (lowered), NOT `ruff_python_ast`.
+**Important**: `q_ast` is `quiche_parser::ast` - the custom Quiche AST.
 
 ## Checklist for New Syntax
 
-- [ ] Ruff parses the syntax (check `ruff_python_ast`)
-- [ ] Add lowering in `parser.rs`
+- [ ] Parser handles the syntax (check `parser.rs`)
+- [ ] Add parsing logic in `parser.rs` if needed
 - [ ] Add fields to `ast.rs` if needed
 - [ ] Update host codegen in `stmt.rs` or `expr.rs`
 - [ ] Update native codegen in `codegen.qrs`
 - [ ] Add integration test
 - [ ] Verify Stage 1 + Stage 2 build
+- [ ] Update documentation in `docs/language_design/`
 - [ ] Update documentation in `docs/language_design/`

@@ -66,11 +66,6 @@ fn extract_byte_offset(message: &str) -> Option<usize> {
     start_str.parse().ok()
 }
 
-/// Format a ruff parse error with source context
-pub fn format_ruff_error(error: &ruff_python_parser::ParseError, source: &str) -> String {
-    format_error_with_context(&error.to_string(), source)
-}
-
 /// Format a complete compiler error with filename header (Rust-style)
 ///
 /// # Arguments

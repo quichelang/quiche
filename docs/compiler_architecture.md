@@ -51,7 +51,7 @@ flowchart TD
 
 ### Parser
 
-Uses [quiche-parser](file:///Volumes/Dev/code/jagtesh/quiche/crates/quiche-parser/src/lib.rs) which wraps `ruff_python_parser` and converts to Quiche AST.
+Uses [quiche-parser](file:///Volumes/Dev/code/jagtesh/quiche/crates/quiche-parser/src/lib.rs) - a custom hand-written recursive-descent parser that produces the Quiche AST.
 
 ### Code Generation
 
@@ -133,36 +133,35 @@ The compiler uses **two distinct AST layers**:
 
 | Layer | Crate | Purpose |
 |-------|-------|---------|
-| **ruff_python_ast** | External | Raw Python 3.12 syntax from parser |
-| **quiche_parser::ast** | Internal | Simplified/lowered AST for codegen |
+| **quiche_parser::lexer** | Internal | Tokenizes source into token stream |
+| **quiche_parser::ast** | Internal | Quiche AST for codegen |
 
 ```mermaid
 flowchart LR
-    Source[".qrs Source"] --> Ruff["ruff_python_ast\n(raw Python AST)"]
-    Ruff --> Lower["Lowering\n(parser.rs)"]
-    Lower --> Quiche["quiche_parser::ast\n(simplified)"]
+    Source[".qrs Source"] --> Lexer["Lexer\n(tokens)"]
+    Lexer --> Parser["Parser\n(recursive descent)"]
+    Parser --> Quiche["quiche_parser::ast\n(QuicheModule)"]
     Quiche --> Codegen["Code Generation"]
 ```
 
-### The Lowering Process
+### Parser Implementation
 
-Complex Python AST nodes are **lowered** to simpler types in `parser.rs`:
+The parser directly produces the Quiche AST - no lowering step needed:
 
 ```rust
-// Example: Type parameters lowering
-ruff_python_ast::TypeParam::TypeVar { name: "T", bound: Some(Display) }
-                              ↓ extract_type_params_def()
-                      "T: Display"  // Vec<String>
+// Example: Parser creates AST node directly
+fn parse_function_def() -> Result<FunctionDef>
+    // Returns FunctionDef with type_params: Vec<String> already extracted
 ```
 
-Key lowering functions in [parser.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/quiche-parser/src/parser.rs):
+Key parser methods in [parser.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/quiche-parser/src/parser.rs):
 
-| Function | Converts |
+| Function | Purpose |
 |----------|----------|
-| `lower_function_def()` | `StmtFunctionDef` → `FunctionDef` |
-| `lower_class_def()` | `StmtClassDef` → `ClassDef` / `StructDef` / `EnumDef` |
-| `lower_expr()` | `ruff::Expr` → `QuicheExpr` |
-| `extract_type_params_def()` | `TypeParams` → `Vec<String>` |
+| `parse()` | Entry point, parses source to `QuicheModule` |
+| `parse_function_def()` | Parses function definitions |
+| `parse_class_def()` | Parses class → `ClassDef` / `StructDef` / `EnumDef` |
+| `parse_expression()` | Expression parsing with precedence |
 
 ### Native Compiler AST Access
 
@@ -179,7 +178,7 @@ def generate_stmt(self, stmt: q_ast.Stmt):
 ```
 
 > [!IMPORTANT]
-> `q_ast` is `quiche_parser::ast` (lowered), NOT `ruff_python_ast`.
+> `q_ast` is `quiche_parser::ast` - the custom Quiche AST.
 
 ---
 
