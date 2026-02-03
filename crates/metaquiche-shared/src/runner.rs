@@ -64,6 +64,48 @@ pub fn run_rust_code(
         .arg("-o")
         .arg("target/tmp_bin");
 
+    // Attempt to locate deps
+    let deps_paths = [
+        "target/debug/deps",
+        "target/release/deps",
+        "target/stage1/debug/deps",
+        "target/stage1/release/deps",
+    ];
+
+    let mut found_runtime = false;
+    for path in deps_paths {
+        if std::path::Path::new(path).exists() {
+            if let Ok(abs_path) = std::env::current_dir().unwrap().join(path).canonicalize() {
+                rustc
+                    .arg("-L")
+                    .arg(format!("dependency={}", abs_path.display()));
+
+                // Look for quiche_runtime rlib in this directory
+                if !found_runtime {
+                    if let Ok(entries) = std::fs::read_dir(&abs_path) {
+                        for entry in entries.flatten() {
+                            let fname = entry.file_name().to_string_lossy().to_string();
+                            if fname.starts_with("libquiche_runtime") && fname.ends_with(".rlib") {
+                                if let Ok(lib_path) = entry.path().canonicalize() {
+                                    rustc
+                                        .arg("--extern")
+                                        .arg(format!("quiche_runtime={}", lib_path.display()));
+                                    found_runtime = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // We try to link quiche_runtime if available (fallback)
+    if !found_runtime {
+        rustc.arg("--extern").arg("quiche_runtime");
+    }
+
     if release {
         rustc.arg("-Copt-level=3");
     }

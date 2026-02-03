@@ -140,6 +140,33 @@ impl<T: PartialEq> PartialEq for Managed<T> {
 
 impl<T: Eq> Eq for Managed<T> {}
 
+impl<T: Default> Default for Managed<T> {
+    fn default() -> Self {
+        Managed::new(T::default())
+    }
+}
+
+impl<T: std::hash::Hash> std::hash::Hash for Managed<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.get().hash(state);
+    }
+}
+
+impl<T: std::fmt::Display> std::fmt::Display for Managed<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.get(), f)
+    }
+}
+
+impl<T: Clone + IntoIterator> IntoIterator for Managed<T> {
+    type Item = T::Item;
+    type IntoIter = T::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_inner().into_iter()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

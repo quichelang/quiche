@@ -43,6 +43,14 @@ pub enum AllocationStrategy {
     Store,  // Long-lived, shared
 }
 
+/// Action to take regarding ownership of a value
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnershipAction {
+    Move,
+    Clone,
+    Borrow,
+}
+
 /// Configuration from @mem decorator
 #[derive(Debug, Clone, Default)]
 pub struct MemConfig {
@@ -265,6 +273,66 @@ pub fn ast_update_arg_annotation(
 ) -> quiche_parser::ast::Arg {
     arg.annotation = ann;
     arg
+}
+
+pub fn ast_update_func_returns(
+    mut f: quiche_parser::ast::FunctionDef,
+    returns: Option<Box<quiche_parser::ast::QuicheExpr>>,
+) -> quiche_parser::ast::FunctionDef {
+    f.returns = returns;
+    f
+}
+
+pub fn ast_create_fstring_replacement(
+    value: Box<quiche_parser::ast::QuicheExpr>,
+    debug: bool,
+    conversion: Option<char>,
+    format_spec: Option<String>,
+) -> quiche_parser::ast::FStringPart {
+    quiche_parser::ast::FStringPart::Replacement {
+        value,
+        debug,
+        conversion,
+        format_spec,
+    }
+}
+
+pub fn ast_create_comprehension(
+    target: Box<quiche_parser::ast::QuicheExpr>,
+    iter: Box<quiche_parser::ast::QuicheExpr>,
+    ifs: Vec<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::Comprehension {
+    quiche_parser::ast::Comprehension { target, iter, ifs }
+}
+
+pub fn ast_create_list_comp(
+    element: Box<quiche_parser::ast::QuicheExpr>,
+    generators: Vec<quiche_parser::ast::Comprehension>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::ListComp {
+        element,
+        generators,
+    }
+}
+
+pub fn ast_create_dict_comp(
+    key: Box<quiche_parser::ast::QuicheExpr>,
+    value: Box<quiche_parser::ast::QuicheExpr>,
+    generators: Vec<quiche_parser::ast::Comprehension>,
+) -> quiche_parser::ast::QuicheExpr {
+    quiche_parser::ast::QuicheExpr::DictComp {
+        key,
+        value,
+        generators,
+    }
+}
+
+pub fn ast_update_ann_assign_annotation(
+    mut a: quiche_parser::ast::AnnAssign,
+    ann: Box<quiche_parser::ast::QuicheExpr>,
+) -> quiche_parser::ast::AnnAssign {
+    a.annotation = ann;
+    a
 }
 
 pub fn ast_wrap_mutref_type(

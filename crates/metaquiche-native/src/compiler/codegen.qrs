@@ -431,6 +431,82 @@ class Codegen:
             case None: pass
         self.T("paren_semicolon_newline")
 
+    # Helper for mutability analysis
+    def is_self_mutated(self, stmts: Vec[q_ast.Stmt]) -> bool:
+        for s in stmts:
+            match s:
+                case q_ast.Stmt.Assign(a):
+                    for t in a.targets.clone():
+                        match t:
+                            case q_ast.Expr.Attribute(value=v, attr=attr):
+                                # Check for self.field = ...
+                                if self.is_self_expr(deref(v)): return True
+                            case q_ast.Expr.Subscript(value=v, slice=slice):
+                                # Check for self.field[i] = ...
+                                if self.is_nested_self(deref(v)): return True
+                            case _: pass
+
+                case q_ast.Stmt.Expr(e):
+                    if self.is_mutating_call(deref(e)): return True
+
+                case q_ast.Stmt.If(i):
+                     if self.is_self_mutated(i.body.clone()): return True
+                     if self.is_self_mutated(i.orelse.clone()): return True
+                
+                case q_ast.Stmt.While(w):
+                     if self.is_self_mutated(w.body.clone()): return True
+                     if self.is_self_mutated(w.orelse.clone()): return True
+
+                case q_ast.Stmt.For(f):
+                     if self.is_self_mutated(f.body.clone()): return True
+                     if self.is_self_mutated(f.orelse.clone()): return True
+                
+                case q_ast.Stmt.Match(m):
+                     for case_ in m.cases.clone():
+                         if self.is_self_mutated(case_.body.clone()): return True
+
+                case q_ast.Stmt.Return(r):
+                     match r:
+                         case Some(v):
+                             if self.is_mutating_call(deref(v)): return True
+                         case None: pass
+
+                case q_ast.Stmt.AnnAssign(a):
+                     match ref(deref(a.target)):
+                         case q_ast.Expr.Attribute(value=v, attr=attr):
+                             if self.is_self_expr(deref(v)): return True
+                         case _: pass
+
+
+
+                case _: pass
+        return False
+
+    def is_self_expr(self, expr: q_ast.Expr) -> bool:
+        match expr:
+            case q_ast.Expr.Name(n): return n == "self"
+            case _: return False
+
+    def is_nested_self(self, expr: q_ast.Expr) -> bool:
+        match expr:
+            case q_ast.Expr.Name(n): return n == "self"
+            case q_ast.Expr.Attribute(value=v, attr=a): return self.is_nested_self(deref(v))
+            case q_ast.Expr.Subscript(value=v, slice=s): return self.is_nested_self(deref(v))
+            case _: return False
+
+    def is_mutating_call(self, expr: q_ast.Expr) -> bool:
+        match expr:
+            case q_ast.Expr.Call(func=f, args=a, keywords=k):
+                match deref(f):
+                    case q_ast.Expr.Attribute(value=v, attr=method):
+                         if self.is_nested_self(deref(v)):
+                             # Check for known mutating methods
+                             if method == "push" or method == "pop" or method == "insert" or method == "remove" or method == "clear" or method == "update" or method == "append" or method == "extend" or method.as_str().starts_with(ref("transform_")) or method == "visit_def" or method == "collect_extern" or method == "emit" or method == "T" or method.as_str().starts_with(ref("generate_")) or method == "enter_var_scope" or method == "exit_var_scope" or method.as_str().starts_with(ref("define_")) or method.as_str().starts_with(ref("mark_")) or method == "push_str":
+                                 return True
+                    case _: pass
+            case _: pass
+        return False
+
     def emit_function_def(self, f: q_ast.FunctionDef):
         # Check for @extern
         is_extern = False
@@ -461,13 +537,7 @@ class Codegen:
                                         case _: pass
                         case _: pass
                 case _: pass
-        
-        # if f.decorator_list.len() > 0:
-        #    self.emit_function_def_decorator(f)
-        #    return
 
-        if is_extern:
-             pass
         func_name = f.name.to_string()
         if is_extern:
             if extern_path != "":
@@ -501,7 +571,11 @@ class Codegen:
             first_arg = False
 
             if param.arg.to_string() == "self":
-                self.emit("&mut self")
+                # Auto-detect mutability
+                if self.is_self_mutated(f.body.clone()):
+                    self.emit("&mut self")
+                else:
+                    self.emit("&self")
             else:
                 self.emit(param.arg.to_string())
                 self.T("colon_sep")
@@ -542,7 +616,6 @@ class Codegen:
                 self.generate_stmt(s)
             self.exit_var_scope()
             self.T("function_def_end".to_string())
-
     def emit_stmt_expr(self, e: q_ast.QuicheExpr):
         is_doc = False
         match ref(e):

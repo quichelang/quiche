@@ -4,11 +4,12 @@
 class Box:
     value: String
     
-    def get(self) -> String:
-        return self.value
+    @immut
+    def get_val(self) -> String:
+        return self.value.clone()
 
 def take_ownership(b: Box):
-    println("Took ownership of: " + b.get())
+    println("Took ownership of: " + b.get_val())
 
 def main():
     b = Box(value="Secret")

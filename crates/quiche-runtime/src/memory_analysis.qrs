@@ -10,7 +10,7 @@ from rust.quiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, ClassD
 from std.collections import HashMap
 
 # Import crate-level types (including AllocationStrategy enum)
-from rust.crate import MemConfig, EscapeInfo, MemoryAnalyzer, AllocationStrategy
+from rust.crate import MemConfig, EscapeInfo, MemoryAnalyzer, AllocationStrategy, OwnershipAction
 
 # Import telemetry for diagnostics
 @extern(path="crate::emit_warning")
@@ -210,6 +210,11 @@ def mark_escaping(analyzer: mutref[MemoryAnalyzer], expr: Expr):
 
 def get_strategy_for_type(analyzer: ref[MemoryAnalyzer], type_name: String) -> AllocationStrategy:
     """Get allocation strategy for a type"""
+    # Explicitly check for primitives to ensure they are Inline (Stack)
+    if type_name == "u8" or type_name == "u16" or type_name == "u32" or type_name == "u64" or type_name == "usize": return AllocationStrategy.Inline
+    if type_name == "i8" or type_name == "i16" or type_name == "i32" or type_name == "i64" or type_name == "isize": return AllocationStrategy.Inline
+    if type_name == "bool" or type_name == "char" or type_name == "f32" or type_name == "f64": return AllocationStrategy.Inline
+
     for t in deref(analyzer).inline_types.clone():
         if t == type_name:
             return AllocationStrategy.Inline
@@ -371,3 +376,11 @@ def is_name_in_expr(name: String, expr: Expr) -> bool:
         # That's hard to analyze without full traversal.
         
         case _: return False
+
+
+def decide_ownership_action(analyzer: ref[MemoryAnalyzer], name: String, current_idx: usize, body: Vec[Stmt]) -> OwnershipAction:
+    """Decide ownership action for a variable at a call site"""
+    if is_variable_used_after(analyzer, name.clone(), current_idx, body):
+        return OwnershipAction.Clone
+    else:
+        return OwnershipAction.Move

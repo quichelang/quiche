@@ -609,7 +609,12 @@ impl Codegen {
                     self.output.push_str(", ");
                 }
                 if arg.arg.as_str() == "self" {
-                    self.output.push_str("&mut self");
+                    // Check if method mutates self
+                    if self.is_self_mutated(&f.body) {
+                        self.output.push_str("&mut self");
+                    } else {
+                        self.output.push_str("&self");
+                    }
                 } else {
                     let type_ann = if let Some(annotation) = &arg.annotation {
                         self.map_type(annotation) // assuming map_type handles simple types
