@@ -15,8 +15,8 @@ use std::collections::HashSet;
 pub fn compile(source: &str, filename: &str) -> Option<String> {
     let ctx = CompileContext::new(filename, source);
 
-    // Parse the source using quiche_parser
-    let parsed = match quiche_parser::parse(source) {
+    // Parse the source using metaquiche_parser
+    let parsed = match metaquiche_parser::parse(source) {
         Ok(module) => module,
         Err(e) => {
             Emitter::print_failed_header(filename);

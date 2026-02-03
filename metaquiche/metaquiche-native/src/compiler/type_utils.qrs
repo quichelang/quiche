@@ -3,7 +3,7 @@
 # These are standalone functions that take Codegen reference as first parameter
 
 from std.cell import Ref
-import rust.quiche_parser.ast as q_ast
+import rust.metaquiche_parser.ast as q_ast
 
 from compiler.extern_defs import RustString, q_push
 

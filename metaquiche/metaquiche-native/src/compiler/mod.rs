@@ -4,7 +4,7 @@ pub mod codegen {
     use crate::compiler::extern_defs;
     use crate::compiler::extern_defs::RustString;
     use crate::quiche::*;
-    use quiche_parser::ast;
+    use metaquiche_parser::ast;
     // codegen.rs generated from codegen.qrs
     include!(concat!(env!("OUT_DIR"), "/compiler/codegen.rs"));
 }
@@ -103,7 +103,7 @@ pub mod type_utils {
     #![allow(unused_imports, dead_code)]
 
     use crate::quiche::*;
-    use quiche_parser::ast;
+    use metaquiche_parser::ast;
     include!(concat!(env!("OUT_DIR"), "/compiler/type_utils.rs"));
 }
 

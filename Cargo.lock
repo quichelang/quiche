@@ -73,8 +73,8 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 name = "metaquiche-host"
 version = "0.1.0"
 dependencies = [
+ "metaquiche-parser",
  "metaquiche-shared",
- "quiche-parser",
  "regex",
  "tempfile",
 ]
@@ -84,11 +84,20 @@ name = "metaquiche-native"
 version = "0.1.0"
 dependencies = [
  "metaquiche-host",
+ "metaquiche-parser",
  "metaquiche-shared",
  "parsley-qrs",
- "quiche-parser",
  "quiche-runtime",
  "tempfile",
+]
+
+[[package]]
+name = "metaquiche-parser"
+version = "0.1.0"
+dependencies = [
+ "metaquiche-shared",
+ "regex",
+ "thiserror",
 ]
 
 [[package]]
@@ -122,21 +131,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "quiche-parser"
-version = "0.1.0"
-dependencies = [
- "metaquiche-shared",
- "regex",
- "thiserror",
-]
-
-[[package]]
 name = "quiche-runtime"
 version = "0.1.0"
 dependencies = [
+ "metaquiche-parser",
  "metaquiche-shared",
  "perceus-mem",
- "quiche-parser",
  "regex",
 ]
 

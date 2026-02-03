@@ -1,4 +1,4 @@
-from rust.quiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, ClassDef, Arg, Operator, BoolOperator, UnaryOperator, IfStmt, WhileStmt, ForStmt, Keyword, Constant, AnnAssign, FStringPart, Comprehension
+from rust.metaquiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, ClassDef, Arg, Operator, BoolOperator, UnaryOperator, IfStmt, WhileStmt, ForStmt, Keyword, Constant, AnnAssign, FStringPart, Comprehension
 from std.collections import HashMap
 
 # Import memory analysis types and functions

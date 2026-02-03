@@ -6,7 +6,7 @@
 # NOTE: MemConfig, EscapeInfo, MemoryAnalyzer structs are defined in lib.rs
 # to avoid type conflicts with @extern returns.
 
-from rust.quiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, ClassDef, Keyword, Constant
+from rust.metaquiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, ClassDef, Keyword, Constant
 from std.collections import HashMap
 
 # Import crate-level types (including AllocationStrategy enum)

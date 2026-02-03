@@ -1,4 +1,4 @@
-import rust.quiche_parser.ast as q_ast
+import rust.metaquiche_parser.ast as q_ast
 from rust.quiche_runtime import deref, qref
 
 

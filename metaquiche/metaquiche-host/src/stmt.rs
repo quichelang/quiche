@@ -1,6 +1,6 @@
 use crate::codegen_template;
 use crate::Codegen;
-use quiche_parser::ast;
+use metaquiche_parser::ast;
 
 impl Codegen {
     pub(crate) fn generate_stmt(&mut self, stmt: ast::QuicheStmt) {
@@ -323,7 +323,7 @@ impl Codegen {
                     let mod_path = mod_path_original.replace(".", "::");
                     let is_external = mod_path.starts_with("std") // usually std is top level
                         || mod_path.starts_with("parsley_qrs")
-                        || mod_path.starts_with("quiche_parser")
+                        || mod_path.starts_with("metaquiche_parser")
                         || mod_path == "glob"
                         || mod_path == "anyhow";
 
@@ -358,7 +358,7 @@ impl Codegen {
                         || mod_path.starts_with("core::")
                         || mod_path == "core"
                         || mod_path.starts_with("parsley_qrs")
-                        || mod_path.starts_with("quiche_parser"); // Add other external crates here
+                        || mod_path.starts_with("metaquiche_parser"); // Add other external crates here
 
                     if mod_path == "extern_defs"
                         || mod_path == "compiler"

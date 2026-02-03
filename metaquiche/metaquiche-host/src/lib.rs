@@ -2,8 +2,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use metaquiche_shared::telemetry::{CompileContext, Diagnostic, Emitter};
-use quiche_parser::ast;
-use quiche_parser::parse;
+use metaquiche_parser::ast;
+use metaquiche_parser::parse;
 use std::collections::{HashMap, HashSet};
 
 pub mod expr;

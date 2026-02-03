@@ -1,5 +1,5 @@
 
-from rust.quiche_parser.ast import Stmt, QuicheModule
+from rust.metaquiche_parser.ast import Stmt, QuicheModule
 
 from compiler.codegen import Codegen
 from rust.parsley_qrs import Parsley
@@ -18,11 +18,11 @@ class RustString:
     def push_str(self, s: StrRef): pass
     def clone(self) -> RustString: pass
 
-@extern(path="quiche_parser::parser::ParseError", no_generic=True)
+@extern(path="metaquiche_parser::parser::ParseError", no_generic=True)
 class ParseError:
     pass
 
-@extern(path="quiche_parser::parse")
+@extern(path="metaquiche_parser::parse")
 def parse_module(source: StrRef) -> Result[QuicheModule, ParseError]:
     pass
 

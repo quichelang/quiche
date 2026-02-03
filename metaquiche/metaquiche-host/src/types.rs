@@ -1,5 +1,5 @@
 use crate::Codegen;
-use quiche_parser::ast;
+use metaquiche_parser::ast;
 
 impl Codegen {
     pub(crate) fn map_type(&self, expr: &ast::QuicheExpr) -> String {

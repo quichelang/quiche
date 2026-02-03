@@ -823,8 +823,8 @@ pub mod generated_main {
     use crate::compiler;
     use quiche_runtime::qref;
 
-    // Re-export ast from quiche_parser so generated code can reference ast::
-    pub use quiche_parser::ast;
+    // Re-export ast from metaquiche_parser so generated code can reference ast::
+    pub use metaquiche_parser::ast;
 
     include!(concat!(env!("OUT_DIR"), "/main.rs"));
 
@@ -843,7 +843,7 @@ pub mod generated_main {
     }
 }
 
-// ast is now accessed via quiche_parser::ast directly
+// ast is now accessed via metaquiche_parser::ast directly
 
 #[cfg(not(feature = "bootstrap"))]
 fn main() {

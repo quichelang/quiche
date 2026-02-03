@@ -1,6 +1,6 @@
 use crate::codegen_template;
 use crate::Codegen;
-use quiche_parser::ast;
+use metaquiche_parser::ast;
 
 impl Codegen {
     pub(crate) fn generate_expr(&mut self, expr: ast::QuicheExpr) {
