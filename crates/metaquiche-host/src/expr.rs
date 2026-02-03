@@ -288,10 +288,19 @@ impl Codegen {
                 }
 
                 // Struct constructor: PascalCase name with keyword arguments
+                // Also handle private classes that start with _ followed by PascalCase
                 // Parser(name="foo", value=1) -> Parser { name: "foo", value: 1 }
-                let is_pascal_case =
-                    !func_name.is_empty() && func_name.chars().next().unwrap().is_uppercase();
-                if is_pascal_case && !keywords.is_empty() && args.is_empty() {
+                let is_struct_constructor = if func_name.is_empty() {
+                    false
+                } else if func_name.chars().next().unwrap().is_uppercase() {
+                    true
+                } else if func_name.starts_with('_') && func_name.len() > 1 {
+                    // Private class like _PrivateHelper
+                    func_name.chars().nth(1).map_or(false, |c| c.is_uppercase())
+                } else {
+                    false
+                };
+                if is_struct_constructor && !keywords.is_empty() && args.is_empty() {
                     self.output.push_str(&func_name);
                     self.output.push_str(" { ");
                     for (i, kw) in keywords.into_iter().enumerate() {

@@ -170,7 +170,10 @@ impl Codegen {
             ast::QuicheStmt::StructDef(s) => {
                 self.output.push_str("#[derive(Clone, Debug, Default)]\n");
                 self.push_indent();
-                self.output.push_str(&format!("pub struct {} ", s.name));
+                // Private structs start with underscore
+                let visibility = if s.name.starts_with('_') { "" } else { "pub " };
+                self.output
+                    .push_str(&format!("{}struct {} ", visibility, s.name));
                 if !s.type_params.is_empty() {
                     self.output.push_str("<");
                     self.output.push_str(&s.type_params.join(", "));
@@ -181,8 +184,16 @@ impl Codegen {
 
                 for field in &s.fields {
                     self.push_indent();
-                    self.output
-                        .push_str(&format!("pub {}: {},\n", field.name, field.ty));
+                    // Private fields start with underscore
+                    let field_visibility = if field.name.starts_with('_') {
+                        ""
+                    } else {
+                        "pub "
+                    };
+                    self.output.push_str(&format!(
+                        "{}{}: {},\n",
+                        field_visibility, field.name, field.ty
+                    ));
                 }
 
                 self.indent_level -= 1;
@@ -430,7 +441,10 @@ impl Codegen {
                 // Emit Struct
                 self.output.push_str("#[derive(Clone, Debug, Default)]\n"); // Auto-derive for convenience
                 self.push_indent();
-                self.output.push_str(&format!("pub struct {} ", c.name));
+                // Private classes start with underscore
+                let class_visibility = if c.name.starts_with('_') { "" } else { "pub " };
+                self.output
+                    .push_str(&format!("{}struct {} ", class_visibility, c.name));
                 let params = if !c.type_params.is_empty() {
                     Some(c.type_params.join(", "))
                 } else {
@@ -446,7 +460,10 @@ impl Codegen {
                 self.indent_level += 1;
                 for (name, ty) in &fields {
                     self.push_indent();
-                    self.output.push_str(&format!("pub {}: {},\n", name, ty));
+                    // Private fields start with underscore
+                    let field_visibility = if name.starts_with('_') { "" } else { "pub " };
+                    self.output
+                        .push_str(&format!("{}{}: {},\n", field_visibility, name, ty));
                 }
                 self.indent_level -= 1;
                 self.push_indent();
@@ -588,8 +605,9 @@ impl Codegen {
                 self.output.push_str("#[test]\n");
                 self.push_indent();
             }
-            // Use 'fn' instead of 'pub fn' when inside trait/impl
-            if self.in_trait_or_impl {
+            // Use 'fn' instead of 'pub fn' when inside trait/impl or when private (underscore prefix)
+            let is_private = f.name.starts_with('_');
+            if self.in_trait_or_impl || is_private {
                 self.output.push_str(&format!("fn {}", f.name));
             } else {
                 self.output.push_str(&format!("pub fn {}", f.name));
@@ -609,11 +627,18 @@ impl Codegen {
                     self.output.push_str(", ");
                 }
                 if arg.arg.as_str() == "self" {
-                    // Check if method mutates self
-                    if self.is_self_mutated(&f.body) {
-                        self.output.push_str("&mut self");
-                    } else {
-                        self.output.push_str("&self");
+                    // Use self_kind from AST (determined at parse time)
+                    match f.self_kind {
+                        ast::SelfKind::Ref(ast::Mutability::Mut) => {
+                            self.output.push_str("&mut self")
+                        }
+                        ast::SelfKind::Ref(ast::Mutability::Not) => self.output.push_str("&self"),
+                        ast::SelfKind::Value(ast::Mutability::Mut) => {
+                            self.output.push_str("mut self")
+                        }
+                        ast::SelfKind::Value(ast::Mutability::Not) | ast::SelfKind::NoSelf => {
+                            self.output.push_str("self")
+                        }
                     }
                 } else {
                     let type_ann = if let Some(annotation) = &arg.annotation {

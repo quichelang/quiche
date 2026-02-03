@@ -23,18 +23,22 @@ class Class(Struct):
         return Class(code=code, description=description, teacher_name=teacher_name, students={kv.name: kv for kv in students})
 
     def summary(self) -> String:
-        return f"Class {self.code} has {self.students.len()} students and is taught by {self.teacher_name}"
+        return f"""
+    Summary:
+        Class {self.code} has {self.students.len()} students and is taught by {self.teacher_name}.
+        The average age of the students is {self.avg_age()}.
+        """
 
-    def avg_age(self) -> u8:
+    def avg_age(self) -> f32:
         if self.students.len() > 0:
-            total = self.students.values().fold(0, |acc, s| acc + s.age)
-            return total / self.students.len() as u8
-        return 0
+            total = self.students.values().fold(0, |acc, s| acc + s.age) as f32
+            return total / self.students.len() as f32
+        return 0.0
 
 # List comprehensions and lambdas
 def main():
     nums = [1, 2, 3, 4, 5]
-    doubled = [x * 2 for x in nums.clone()]
+    doubled = [x * 2 for x in nums]
     
     # Rust-style lambda syntax
     add = |x: i32, y: i32| x + y
@@ -51,4 +55,4 @@ def main():
     ]
     klass = Class.new("AP45", "Advanced placement computer science", "Harman Kodak", students)
     print(students[0].bio())
-    print(f"Summary: {klass.summary()}")
+    print(klass.summary())

@@ -145,49 +145,11 @@ fn main() {
     let bootstrap_bin = match env::var("QUICHE_COMPILER_BIN") {
         Ok(bin) => bin,
         Err(_) => {
-            // When running cargo test directly without make, skip Quiche compilation
-            // Create stub files with minimal type definitions so main.rs compiles
-            let main_stub = r#"// Stub: QUICHE_COMPILER_BIN not set
-#[derive(Clone, Debug, Default)]
-pub struct WarnFlags {
-    pub warn: bool,
-    pub strict: bool,
-    pub warn_all: bool,
-    pub warn_quiche: bool,
-}
-
-pub fn main() {
-    eprintln!("Stub binary: run 'make stage1' to build the real compiler");
-    std::process::exit(1);
-}
-"#;
-            let codegen_stub = r#"// Stub: QUICHE_COMPILER_BIN not set
-#[derive(Clone, Debug, Default)]
-pub struct Codegen {
-    pub output: String,
-    pub tuple_vars: std::collections::HashMap<String, bool>,
-    pub defined_vars: Vec<std::collections::HashMap<String, bool>>,
-    pub import_paths: std::collections::HashMap<String, String>,
-    pub import_kinds: std::collections::HashMap<String, String>,
-    pub clone_names: bool,
-    pub current_module_path: String,
-    pub class_fields: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
-    pub current_class: String,
-}
-"#;
-            let mod_stub = "// Stub\npub mod codegen;\npub mod type_utils;\npub mod extern_defs;\n";
-            let extern_stub = "// Stub\n";
-            let type_utils_stub = "// Stub\n";
-
-            let _ = fs::write(out_path.join("main.rs"), main_stub);
-            let _ = fs::create_dir_all(out_path.join("compiler"));
-            let _ = fs::write(out_path.join("compiler/mod.rs"), mod_stub);
-            let _ = fs::write(out_path.join("compiler/codegen.rs"), codegen_stub);
-            let _ = fs::write(out_path.join("compiler/type_utils.rs"), type_utils_stub);
-            let _ = fs::write(out_path.join("compiler/extern_defs.rs"), extern_stub);
-            println!("cargo:warning=QUICHE_COMPILER_BIN not set, using stub types");
-            println!("cargo:warning=Use 'make test' for full Quiche compilation");
-            return;
+            // Cannot compile without the Quiche compiler - fail with a clear message
+            eprintln!("error: QUICHE_COMPILER_BIN environment variable not set.");
+            eprintln!("       Use 'make stage1' or 'make stage2' to build the compiler.");
+            eprintln!("       Running 'cargo check' or 'cargo build' directly is not supported.");
+            std::process::exit(1);
         }
     };
 

@@ -1,0 +1,95 @@
+# Test Private Visibility via Underscore Convention
+from lib.test import assert_eq, assert_str_eq
+
+# Private class (starts with _)
+class _PrivateHelper:
+    value: i32
+    _tag: String  # private field in private class
+    
+    def new(v: i32) -> _PrivateHelper:
+        return _PrivateHelper(value=v, _tag="helper")
+    
+    def get_value(self) -> i32:
+        return self.value
+
+# Public class with private and public fields
+class Container:
+    name: String         # public field
+    _internal: i32       # private field
+    _cache: String       # private field
+    
+    def new(name: String, internal: i32) -> Container:
+        return Container(name=name, _internal=internal, _cache="")
+    
+    # Private method
+    def _compute(self) -> i32:
+        return self._internal * 2
+    
+    # Public method that uses private method
+    def get_computed(self) -> i32:
+        return self._compute()
+    
+    # Public method that accesses private field
+    def get_internal(self) -> i32:
+        return self._internal
+    
+    # Public setter for private field
+    def set_internal(self, v: i32):
+        self._internal = v
+
+# Test that private classes work
+def test_private_class():
+    print("Running test_private_class...")
+    helper = _PrivateHelper.new(42)
+    assert_eq(helper.get_value(), 42, "Private class method")
+    print("PASS: test_private_class")
+
+# Test that private fields work
+def test_private_fields():
+    print("Running test_private_fields...")
+    c = Container.new("test", 10)
+    assert_str_eq(c.name, "test", "Public field access")
+    assert_eq(c.get_internal(), 10, "Private field via method")
+    c.set_internal(20)
+    assert_eq(c.get_internal(), 20, "Private field after mutation")
+    print("PASS: test_private_fields")
+
+# Test that private methods work  
+def test_private_methods():
+    print("Running test_private_methods...")
+    c = Container.new("test", 5)
+    assert_eq(c.get_computed(), 10, "Public method calling private method")
+    print("PASS: test_private_methods")
+
+# Struct with private fields
+class Point:
+    x: i32               # public
+    y: i32               # public
+    _label: String       # private
+
+    def new(x: i32, y: i32) -> Point:
+        return Point(x=x, y=y, _label="")
+    
+    def labeled(x: i32, y: i32, label: String) -> Point:
+        return Point(x=x, y=y, _label=label)
+    
+    def get_label(self) -> String:
+        return self._label.clone()
+
+def test_struct_private_fields():
+    print("Running test_struct_private_fields...")
+    p = Point.new(1, 2)
+    assert_eq(p.x, 1, "Public field x")
+    assert_eq(p.y, 2, "Public field y")
+    
+    p2 = Point.labeled(3, 4, "origin")
+    assert_str_eq(p2.get_label(), "origin", "Private field via method")
+    print("PASS: test_struct_private_fields")
+
+def main():
+    print("=== Private Visibility Tests ===")
+    test_private_class()
+    test_private_fields()
+    test_private_methods()
+    test_struct_private_fields()
+    print("=== All Private Visibility Tests Passed ===")

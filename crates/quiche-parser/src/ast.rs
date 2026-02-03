@@ -123,11 +123,40 @@ pub enum FStringPart {
     },
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Mutability and Self Parameter Types (Rust-style)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Mutability marker (mirrors Rust's Mutability enum)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum Mutability {
+    #[default]
+    Not, // immutable
+    Mut, // mutable
+}
+
+/// How the `self` parameter is passed (mirrors Rust's SelfKind)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum SelfKind {
+    /// No self parameter (free function)
+    /// Named NoSelf instead of None to avoid collision with Python's None keyword
+    #[default]
+    NoSelf,
+    /// &self or &mut self (reference)
+    Ref(Mutability),
+    /// self or mut self (by value)
+    Value(Mutability),
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Support Types
+// ─────────────────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone)]
 pub struct FunctionDef {
     pub name: String,
     pub args: Vec<Arg>,
+    pub self_kind: SelfKind,
     pub body: Vec<QuicheStmt>,
     pub decorator_list: Vec<QuicheExpr>,
     pub returns: Option<Box<QuicheExpr>>,

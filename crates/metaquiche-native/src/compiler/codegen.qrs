@@ -431,81 +431,8 @@ class Codegen:
             case None: pass
         self.T("paren_semicolon_newline")
 
-    # Helper for mutability analysis
-    def is_self_mutated(self, stmts: Vec[q_ast.Stmt]) -> bool:
-        for s in stmts:
-            match s:
-                case q_ast.Stmt.Assign(a):
-                    for t in a.targets.clone():
-                        match t:
-                            case q_ast.Expr.Attribute(value=v, attr=attr):
-                                # Check for self.field = ...
-                                if self.is_self_expr(deref(v)): return True
-                            case q_ast.Expr.Subscript(value=v, slice=slice):
-                                # Check for self.field[i] = ...
-                                if self.is_nested_self(deref(v)): return True
-                            case _: pass
-
-                case q_ast.Stmt.Expr(e):
-                    if self.is_mutating_call(deref(e)): return True
-
-                case q_ast.Stmt.If(i):
-                     if self.is_self_mutated(i.body.clone()): return True
-                     if self.is_self_mutated(i.orelse.clone()): return True
-                
-                case q_ast.Stmt.While(w):
-                     if self.is_self_mutated(w.body.clone()): return True
-                     if self.is_self_mutated(w.orelse.clone()): return True
-
-                case q_ast.Stmt.For(f):
-                     if self.is_self_mutated(f.body.clone()): return True
-                     if self.is_self_mutated(f.orelse.clone()): return True
-                
-                case q_ast.Stmt.Match(m):
-                     for case_ in m.cases.clone():
-                         if self.is_self_mutated(case_.body.clone()): return True
-
-                case q_ast.Stmt.Return(r):
-                     match r:
-                         case Some(v):
-                             if self.is_mutating_call(deref(v)): return True
-                         case None: pass
-
-                case q_ast.Stmt.AnnAssign(a):
-                     match ref(deref(a.target)):
-                         case q_ast.Expr.Attribute(value=v, attr=attr):
-                             if self.is_self_expr(deref(v)): return True
-                         case _: pass
-
-
-
-                case _: pass
-        return False
-
-    def is_self_expr(self, expr: q_ast.Expr) -> bool:
-        match expr:
-            case q_ast.Expr.Name(n): return n == "self"
-            case _: return False
-
-    def is_nested_self(self, expr: q_ast.Expr) -> bool:
-        match expr:
-            case q_ast.Expr.Name(n): return n == "self"
-            case q_ast.Expr.Attribute(value=v, attr=a): return self.is_nested_self(deref(v))
-            case q_ast.Expr.Subscript(value=v, slice=s): return self.is_nested_self(deref(v))
-            case _: return False
-
-    def is_mutating_call(self, expr: q_ast.Expr) -> bool:
-        match expr:
-            case q_ast.Expr.Call(func=f, args=a, keywords=k):
-                match deref(f):
-                    case q_ast.Expr.Attribute(value=v, attr=method):
-                         if self.is_nested_self(deref(v)):
-                             # Check for known mutating methods
-                             if method == "push" or method == "pop" or method == "insert" or method == "remove" or method == "clear" or method == "update" or method == "append" or method == "extend" or method.as_str().starts_with(ref("transform_")) or method == "visit_def" or method == "collect_extern" or method == "emit" or method == "T" or method.as_str().starts_with(ref("generate_")) or method == "enter_var_scope" or method == "exit_var_scope" or method.as_str().starts_with(ref("define_")) or method.as_str().starts_with(ref("mark_")) or method == "push_str":
-                                 return True
-                    case _: pass
-            case _: pass
-        return False
+    # Note: is_self_mutated and helper functions removed.
+    # Self parameter mutability is now determined at parse time via SelfKind.
 
     def emit_function_def(self, f: q_ast.FunctionDef):
         # Check for @extern
@@ -552,7 +479,9 @@ class Codegen:
                 self.T("newline")
             return
 
-        if self.in_trait_or_impl:
+        # Check for private functions (underscore prefix)
+        is_private = func_name.starts_with(ref("_"))
+        if self.in_trait_or_impl or is_private:
             self.emit("fn ")
         else:
             self.T("kw_pub_fn")
@@ -571,11 +500,22 @@ class Codegen:
             first_arg = False
 
             if param.arg.to_string() == "self":
-                # Auto-detect mutability
-                if self.is_self_mutated(f.body.clone()):
-                    self.emit("&mut self")
-                else:
-                    self.emit("&self")
+                # Use self_kind from AST (determined at parse time)
+                match f.self_kind:
+                    case q_ast.SelfKind.Ref(mut_):
+                        match mut_:
+                            case q_ast.Mutability.Mut:
+                                self.emit("&mut self")
+                            case q_ast.Mutability.Not:
+                                self.emit("&self")
+                    case q_ast.SelfKind.Value(mut_):
+                        match mut_:
+                            case q_ast.Mutability.Mut:
+                                self.emit("mut self")
+                            case q_ast.Mutability.Not:
+                                self.emit("self")
+                    case q_ast.SelfKind.NoSelf:
+                        self.emit("self")
             else:
                 self.emit(param.arg.to_string())
                 self.T("colon_sep")
@@ -860,7 +800,11 @@ class Codegen:
              self.T("kw_pub_enum")
         else:
              self.T("kw_derive_clone_debug_default")
-             self.T("kw_pub_struct")
+             # Private classes start with underscore
+             if c.name.starts_with(ref("_")):
+                 self.emit("struct ")
+             else:
+                 self.T("kw_pub_struct")
         self.emit(c.name.to_string())
         self.emit("  {\n")
 
@@ -890,7 +834,11 @@ class Codegen:
                     case q_ast.Stmt.AnnAssign(a):
                         match ref(deref(a.target)):
                             case q_ast.Expr.Name(n):
-                                self.T("kw_pub")
+                                # Private fields start with underscore
+                                if n.starts_with(ref("_")):
+                                    pass  # no pub for private fields
+                                else:
+                                    self.T("kw_pub")
                                 self.emit(n.to_string())
                                 self.T("colon_sep")
                                 ann_str_f = self.type_to_string(Clone.clone(ref(deref(a.annotation.clone()))))
@@ -919,7 +867,11 @@ class Codegen:
     def emit_struct_def(self, s: q_ast.StructDef):
         # Emit derive macro
         self.emit("#[derive(Clone, Debug, Default)]\n")
-        self.emit("pub struct ")
+        # Private structs start with underscore
+        if s.name.starts_with(ref("_")):
+            self.emit("struct ")
+        else:
+            self.emit("pub struct ")
         self.emit(s.name.to_string())
         # Type params
         if s.type_params.len() > 0:
@@ -931,9 +883,12 @@ class Codegen:
                 idx = idx + 1
             self.emit(">")
         self.emit(" {\n")
-        # Fields
+        # Fields - private fields start with underscore
         for field in s.fields.clone():
-            self.emit("pub ")
+            if field.name.starts_with(ref("_")):
+                self.emit("")  # no pub for private fields
+            else:
+                self.emit("pub ")
             self.emit(field.name.to_string())
             self.T("colon_sep")
             self.emit(field.ty.to_string())
@@ -1380,13 +1335,22 @@ class Codegen:
                 self.generate_expr(Clone.clone(ref(args[1])))
         elif keywords.len() > 0:
             # Check if this is a struct constructor (PascalCase name with keywords)
+            # Also handle private classes that start with _ followed by PascalCase
             is_struct_ctor = False
             if func_name_c != "" and args.len() == 0:
+                # Check first char - could be uppercase or underscore for private classes
                 first_char = func_name_c.chars().next()
                 match first_char:
                     case Some(c):
                         if c.is_uppercase():
                             is_struct_ctor = True
+                        elif func_name_c.starts_with(ref("_")) and func_name_c.len() > 1:
+                            # Check second char for private classes like _PrivateHelper
+                            second_idx: usize = 1
+                            for c2 in func_name_c.chars().clone().skip(second_idx):
+                                if c2.is_uppercase():
+                                    is_struct_ctor = True
+                                break
                     case None: pass
             
             if is_struct_ctor:

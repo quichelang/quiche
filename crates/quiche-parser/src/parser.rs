@@ -251,14 +251,223 @@ impl<'a> Parser<'a> {
         self.expect(&TokenKind::Colon)?;
         let body = self.parse_block()?;
 
+        // Determine self_kind from first argument annotation, or scan body if no annotation
+        let self_kind = if let Some(first_arg) = args.first() {
+            if first_arg.arg == "self" {
+                Self::determine_self_kind(first_arg.annotation.as_deref(), &body)
+            } else {
+                SelfKind::NoSelf
+            }
+        } else {
+            SelfKind::NoSelf
+        };
+
         Ok(QuicheStmt::FunctionDef(FunctionDef {
             name,
             args,
+            self_kind,
             body,
             decorator_list,
             returns,
             type_params,
         }))
+    }
+
+    /// Determine SelfKind from a self parameter's type annotation.
+    /// If no explicit mutability annotation, scan the body to detect if self is mutated.
+    fn determine_self_kind(annotation: Option<&QuicheExpr>, body: &[QuicheStmt]) -> SelfKind {
+        match annotation {
+            // self: MutRef[Self] or self: Mut[Self] -> &mut self (explicit mutable)
+            Some(QuicheExpr::Subscript { value, .. }) => {
+                if let QuicheExpr::Name(name) = value.as_ref() {
+                    match name.as_str() {
+                        "MutRef" | "Mut" => SelfKind::Ref(Mutability::Mut),
+                        // Ref[Self] means explicit immutable
+                        "Ref" => SelfKind::Ref(Mutability::Not),
+                        // Other generic types like Box[Self] - scan body
+                        _ => {
+                            if Self::is_self_mutated_in_stmts(body) {
+                                SelfKind::Ref(Mutability::Mut)
+                            } else {
+                                SelfKind::Ref(Mutability::Not)
+                            }
+                        }
+                    }
+                } else {
+                    // Complex subscript - scan body
+                    if Self::is_self_mutated_in_stmts(body) {
+                        SelfKind::Ref(Mutability::Mut)
+                    } else {
+                        SelfKind::Ref(Mutability::Not)
+                    }
+                }
+            }
+            // self: Self -> self (by value, immutable)
+            Some(QuicheExpr::Name(name)) if name == "Self" => SelfKind::Value(Mutability::Not),
+            // self: SomeConcreteType (like `self: Parsley`) -> scan body to determine mutability
+            Some(QuicheExpr::Name(_)) => {
+                if Self::is_self_mutated_in_stmts(body) {
+                    SelfKind::Ref(Mutability::Mut)
+                } else {
+                    SelfKind::Ref(Mutability::Not)
+                }
+            }
+            // self (no annotation) -> auto-detect by scanning body
+            None => {
+                if Self::is_self_mutated_in_stmts(body) {
+                    SelfKind::Ref(Mutability::Mut)
+                } else {
+                    SelfKind::Ref(Mutability::Not)
+                }
+            }
+            // Other annotations -> scan body
+            _ => {
+                if Self::is_self_mutated_in_stmts(body) {
+                    SelfKind::Ref(Mutability::Mut)
+                } else {
+                    SelfKind::Ref(Mutability::Not)
+                }
+            }
+        }
+    }
+
+    /// Check if self is mutated in a list of statements (body scanning)
+    fn is_self_mutated_in_stmts(stmts: &[QuicheStmt]) -> bool {
+        for stmt in stmts {
+            match stmt {
+                QuicheStmt::Assign(a) => {
+                    for target in &a.targets {
+                        match target {
+                            QuicheExpr::Attribute { value, .. } => {
+                                if Self::is_self_expr(value) {
+                                    return true;
+                                }
+                            }
+                            QuicheExpr::Subscript { value, .. } => {
+                                if Self::is_nested_self(value) {
+                                    return true;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                QuicheStmt::Expr(e) => {
+                    if Self::is_mutating_call(e) {
+                        return true;
+                    }
+                }
+                QuicheStmt::If(i) => {
+                    if Self::is_self_mutated_in_stmts(&i.body)
+                        || Self::is_self_mutated_in_stmts(&i.orelse)
+                    {
+                        return true;
+                    }
+                }
+                QuicheStmt::While(w) => {
+                    if Self::is_self_mutated_in_stmts(&w.body)
+                        || Self::is_self_mutated_in_stmts(&w.orelse)
+                    {
+                        return true;
+                    }
+                }
+                QuicheStmt::For(f) => {
+                    if Self::is_self_mutated_in_stmts(&f.body)
+                        || Self::is_self_mutated_in_stmts(&f.orelse)
+                    {
+                        return true;
+                    }
+                }
+                QuicheStmt::Match(m) => {
+                    for case in &m.cases {
+                        if Self::is_self_mutated_in_stmts(&case.body) {
+                            return true;
+                        }
+                    }
+                }
+                QuicheStmt::Return(r) => {
+                    if let Some(v) = r {
+                        if Self::is_mutating_call(v) {
+                            return true;
+                        }
+                    }
+                }
+                QuicheStmt::AnnAssign(a) => {
+                    if let QuicheExpr::Attribute { value, .. } = &*a.target {
+                        if Self::is_self_expr(value) {
+                            return true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// Check if an expression is just `self`
+    fn is_self_expr(expr: &QuicheExpr) -> bool {
+        matches!(expr, QuicheExpr::Name(n) if n == "self")
+    }
+
+    /// Check if an expression is `self` or `self.field` or `self.field[i]` etc.
+    fn is_nested_self(expr: &QuicheExpr) -> bool {
+        match expr {
+            QuicheExpr::Name(n) => n == "self",
+            QuicheExpr::Attribute { value, .. } => Self::is_nested_self(value),
+            QuicheExpr::Subscript { value, .. } => Self::is_nested_self(value),
+            _ => false,
+        }
+    }
+
+    /// Check if an expression is a mutating method call on self or contains one
+    fn is_mutating_call(expr: &QuicheExpr) -> bool {
+        match expr {
+            QuicheExpr::Call { func, args, .. } => {
+                // Check if it's a mutating method call on self
+                if let QuicheExpr::Attribute { value, attr } = &**func {
+                    if Self::is_nested_self(value) {
+                        // Check for known mutating methods
+                        if attr == "push"
+                            || attr == "pop"
+                            || attr == "insert"
+                            || attr == "remove"
+                            || attr == "clear"
+                            || attr == "update"
+                            || attr == "append"
+                            || attr == "extend"
+                            || attr.starts_with("transform_")
+                            || attr == "visit_def"
+                            || attr == "collect_extern"
+                            || attr == "emit"
+                            || attr == "T"
+                            || attr.starts_with("generate_")
+                            || attr == "enter_var_scope"
+                            || attr == "exit_var_scope"
+                            || attr.starts_with("define_")
+                            || attr.starts_with("mark_")
+                            || attr == "push_str"
+                            || attr == "add_flag"
+                            || attr == "add_option"
+                            || attr == "add_command"
+                            || attr == "register_aliases"
+                            || attr.starts_with("set_")
+                            || attr.starts_with("add_")
+                        {
+                            return true;
+                        }
+                    }
+                }
+                // Recursively check call arguments
+                for arg in args {
+                    if Self::is_mutating_call(arg) {
+                        return true;
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     /// Parse class definition (also handles Struct, Enum, Trait, Impl)
