@@ -38,7 +38,7 @@ def create_type_info_simple() -> TypeInfo: pass
 # CODEGEN CORE - Main class, fields, constructors, and core utilities
 # ============================================================================
 
-class Codegen:
+class Codegen(Struct):
     output: RustString
     tuple_vars: HashMap[String, bool]
     defined_vars: Vec[HashMap[String, TypeInfo]]
@@ -242,13 +242,35 @@ class Codegen:
         self.current_class = ""
 
     def new() -> Codegen:
-        return extern_defs.create_codegen(output=RustString.new(), tuple_vars=HashMap[String, bool].new(), defined_vars=[HashMap[String, TypeInfo].new()], import_paths=HashMap[String, String].new(), import_kinds=HashMap[String, String].new(), clone_names=True, current_module_path="", class_fields=HashMap.new(), current_class="")
+        return Codegen(
+            output=RustString.new(),
+            tuple_vars=HashMap[String, bool].new(),
+            defined_vars=[HashMap[String, TypeInfo].new()],
+            import_paths=HashMap[String, String].new(),
+            import_kinds=HashMap[String, String].new(),
+            clone_names=True,
+            current_module_path="",
+            class_fields=HashMap[String, HashMap[String, String]].new(),
+            current_class="",
+            in_trait_or_impl=False
+        )
 
     def new_with_imports(import_paths: HashMap[String, String], import_kinds: HashMap[String, String]) -> Codegen:
-        return extern_defs.create_codegen(output=RustString.new(), tuple_vars=HashMap[String, bool].new(), defined_vars=[HashMap[String, TypeInfo].new()], import_paths=import_paths, import_kinds=import_kinds, clone_names=True, current_module_path="", class_fields=HashMap.new(), current_class="")
+        return Codegen(
+            output=RustString.new(),
+            tuple_vars=HashMap[String, bool].new(),
+            defined_vars=[HashMap[String, TypeInfo].new()],
+            import_paths=import_paths,
+            import_kinds=import_kinds,
+            clone_names=True,
+            current_module_path="",
+            class_fields=HashMap[String, HashMap[String, String]].new(),
+            current_class="",
+            in_trait_or_impl=False
+        )
 
     def new_with_imports_and_module(import_paths: HashMap[String, String], import_kinds: HashMap[String, String], current_module_path: String) -> Codegen:
-        return extern_defs.create_codegen(
+        return Codegen(
             output=RustString.new(),
             tuple_vars=HashMap[String, bool].new(),
             defined_vars=[HashMap[String, TypeInfo].new()],
@@ -256,8 +278,9 @@ class Codegen:
             import_kinds=import_kinds,
             clone_names=True,
             current_module_path=current_module_path,
-            class_fields=HashMap.new(),
-            current_class=""
+            class_fields=HashMap[String, HashMap[String, String]].new(),
+            current_class="",
+            in_trait_or_impl=False
         )
 
     def generate_expr_no_clone(self, expr: q_ast.Expr):

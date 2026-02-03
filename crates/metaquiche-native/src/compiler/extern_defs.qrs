@@ -15,18 +15,3 @@ def escape_rust_string(s: String) -> String: pass
 
 @extern(path="crate::quiche::vec_to_list")
 def vec_to_list(v: Vec[ast.Stmt]) -> Vec[ast.Stmt]: pass
-
-@extern(path="crate::compiler::extern_defs::create_codegen")
-def create_codegen(
-    output: RustString,
-    tuple_vars: HashMap[String, bool],
-    defined_vars: Vec[HashMap[String, bool]],
-    import_paths: HashMap[String, String],
-    import_kinds: HashMap[String, String],
-    clone_names: bool,
-    current_module_path: String,
-    class_fields: HashMap[String, HashMap[String, String]],
-    current_class: String
-) -> Codegen: pass
-
-

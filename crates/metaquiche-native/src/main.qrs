@@ -156,26 +156,22 @@ def get_flag_bool(flags: HashMap[String, bool], key: String) -> bool:
     return False
 
 
-class WarnFlags:
+class WarnFlags(Struct):
     warn: bool
     strict: bool
     warn_all: bool
     warn_quiche: bool
 
     def new(warn: bool, strict: bool, warn_all: bool, warn_quiche: bool) -> WarnFlags:
-        return create_WarnFlags(warn, strict, warn_all, warn_quiche)
+        return WarnFlags(warn=warn, strict=strict, warn_all=warn_all, warn_quiche=warn_quiche)
 
 
-@extern(path="crate::quiche::ImportMaps", no_generic=True)
-class ImportMaps:
+class ImportMaps(Struct):
     paths: HashMap[String, String]
     kinds: HashMap[String, String]
 
     def new(paths: HashMap[String, String], kinds: HashMap[String, String]) -> ImportMaps:
-        return create_ImportMaps(paths, kinds)
-
-@extern(path="crate::quiche::create_ImportMaps")
-def create_ImportMaps(paths: HashMap[String, String], kinds: HashMap[String, String]) -> ImportMaps: pass
+        return ImportMaps(paths=paths, kinds=kinds)
 
 
 def module_to_rust_path(module_path: String) -> String:
