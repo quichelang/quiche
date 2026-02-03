@@ -19,10 +19,10 @@ def main():
     
     # Rust-style lambda syntax
     add = |x: i32, y: i32| x + y
-    print("Sum: " + add(2, 3).to_string())
+    print("Sum: " + add(2, 3))
     
     # Pythonic len()
-    print("Length: " + len(doubled).to_string())
+    print("Length: " + len(doubled))
 ```
 
 ### MetaQuiche (`.qrs` files) — Explicit memory control
