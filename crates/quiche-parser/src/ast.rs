@@ -102,6 +102,25 @@ pub enum QuicheExpr {
         upper: Option<Box<QuicheExpr>>,
         step: Option<Box<QuicheExpr>>,
     },
+    /// F-string: f"Hello {name}"
+    FString(Vec<FStringPart>),
+}
+
+/// Part of an f-string - either literal text or a replacement field
+#[derive(Debug, Clone)]
+pub enum FStringPart {
+    /// Literal text portion
+    Literal(String),
+    /// Replacement field: {expr!conversion:format}
+    Replacement {
+        value: Box<QuicheExpr>,
+        /// Debug specifier (=): includes "expr=" in output
+        debug: bool,
+        /// Conversion: !s (str), !r (repr), !a (ascii)
+        conversion: Option<char>,
+        /// Format specifier after colon
+        format_spec: Option<String>,
+    },
 }
 
 // Support Types

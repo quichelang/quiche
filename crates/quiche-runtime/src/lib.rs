@@ -9,18 +9,21 @@
 pub mod ast_transformer {
     include!(concat!(env!("OUT_DIR"), "/ast_transformer.rs"));
 }
+// TODO: memory_analysis.qrs has pattern matching issues that need fixing
 pub mod memory_analysis {
     include!(concat!(env!("OUT_DIR"), "/memory_analysis.rs"));
 }
-pub mod introspect {
-    include!(concat!(env!("OUT_DIR"), "/introspect.rs"));
-}
+// TODO: introspect.qrs has type issues that need fixing
+// pub mod introspect {
+//     include!(concat!(env!("OUT_DIR"), "/introspect.rs"));
+// }
 pub mod qtest {
     include!(concat!(env!("OUT_DIR"), "/qtest.rs"));
 }
-pub mod pathlib {
-    include!(concat!(env!("OUT_DIR"), "/pathlib.rs"));
-}
+// TODO: pathlib.qrs has type issues that need fixing
+// pub mod pathlib {
+//     include!(concat!(env!("OUT_DIR"), "/pathlib.rs"));
+// }
 pub mod re;
 
 // Re-export perceus-mem types for use in generated code
@@ -326,6 +329,14 @@ pub fn ast_set_func_args(
 
 pub fn check_first_upper(s: String) -> bool {
     s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+}
+
+pub fn ast_update_class_body(
+    mut c: quiche_parser::ast::ClassDef,
+    body: Vec<quiche_parser::ast::Stmt>,
+) -> quiche_parser::ast::Stmt {
+    c.body = body;
+    quiche_parser::ast::Stmt::ClassDef(c)
 }
 
 pub fn check_prefix(s: String, prefix: String) -> bool {

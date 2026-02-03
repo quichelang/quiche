@@ -120,6 +120,12 @@ pub enum TokenKind {
     Int(i64),
     Float(f64),
     String(String),
+    /// F-string literal (content between quotes, includes {} placeholders)
+    FString {
+        content: String,
+        quote_char: char,
+        is_triple: bool,
+    },
 
     // Operators - Arithmetic
     Plus,        // +
@@ -864,17 +870,29 @@ impl<'a> Lexer<'a> {
             self.at_line_start = false;
         }
 
-        // TODO: Handle f-strings properly (parse interpolations)
-        // For now, just return the raw content
-        let _ = (is_fstring, is_bytes); // Suppress unused warnings
-
-        Ok(Token::new(
-            TokenKind::String(content),
-            start,
-            self.pos,
-            line,
-            column,
-        ))
+        // Return appropriate token type
+        if is_fstring {
+            Ok(Token::new(
+                TokenKind::FString {
+                    content,
+                    quote_char,
+                    is_triple,
+                },
+                start,
+                self.pos,
+                line,
+                column,
+            ))
+        } else {
+            let _ = is_bytes; // Suppress unused warning
+            Ok(Token::new(
+                TokenKind::String(content),
+                start,
+                self.pos,
+                line,
+                column,
+            ))
+        }
     }
 
     /// Lex a number literal

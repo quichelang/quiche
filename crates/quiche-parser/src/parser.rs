@@ -298,14 +298,8 @@ impl<'a> Parser<'a> {
             })
             .collect();
 
-        // Check if this is a Struct definition
-        if base_names.contains(&"Struct") {
-            return Ok(QuicheStmt::StructDef(self.lower_to_struct(
-                name,
-                type_params,
-                body,
-            )?));
-        }
+        // Note: class Foo(Struct): is kept as ClassDef so methods are preserved.
+        // The codegen handles the Struct base by emitting a struct + impl block.
 
         // Check if this is an Enum definition
         if base_names.contains(&"Enum") {
@@ -1492,6 +1486,11 @@ impl<'a> Parser<'a> {
             TokenKind::String(s) => {
                 self.advance()?;
                 Ok(QuicheExpr::Constant(Constant::Str(s)))
+            }
+            TokenKind::FString { content, .. } => {
+                self.advance()?;
+                let parts = crate::fstring::parse_fstring_content(&content, self)?;
+                Ok(QuicheExpr::FString(parts))
             }
             TokenKind::Keyword(Keyword::True) => {
                 self.advance()?;

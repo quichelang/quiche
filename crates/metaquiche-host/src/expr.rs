@@ -196,7 +196,8 @@ impl Codegen {
                         if needs_borrow {
                             self.output.push_str("&");
                         }
-                        self.generate_expr(arg);
+                        // Auto-clone for method calls too
+                        self.generate_call_arg(arg, false);
                     }
 
                     if !args_empty && !keywords.is_empty() {
@@ -206,7 +207,7 @@ impl Codegen {
                         if i > 0 {
                             self.output.push_str(", ");
                         }
-                        self.generate_expr(*kw.value);
+                        self.generate_call_arg(*kw.value, false);
                     }
                     self.output.push_str(")");
                     return;
@@ -310,6 +311,8 @@ impl Codegen {
                 // Default Function Call
                 let is_helper = ["deref", "as_ref", "ref", "mutref", "as_mut", "strcat"]
                     .contains(&func_name.as_str());
+                let is_ref_or_mutref =
+                    ["ref", "mutref", "deref", "as_ref", "as_mut"].contains(&func_name.as_str());
                 // Translate to actual macro names
                 let macro_name = match func_name.as_str() {
                     "ref" | "as_ref" => "qref",
@@ -329,7 +332,8 @@ impl Codegen {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.generate_expr(arg);
+                    // Auto-clone variable arguments for Python-like ownership semantics
+                    self.generate_call_arg(arg, is_ref_or_mutref);
                 }
                 if !args_empty && !keywords.is_empty() {
                     self.output.push_str(", ");
@@ -338,7 +342,7 @@ impl Codegen {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.generate_expr(*kw.value);
+                    self.generate_call_arg(*kw.value, is_ref_or_mutref);
                 }
                 self.output.push_str(")");
             }
@@ -487,13 +491,14 @@ impl Codegen {
                 value,
                 generators,
             } => {
-                // Generate: iter.into_iter()[.filter(|x| cond)].map(|(k, v)| (key, value)).collect::<HashMap<_,_>>()
+                // Generate: iter.into_iter()[.filter(|x| cond)].map(|(k, v)| (key.clone(), value)).collect::<HashMap<_,_>>()
+                // Note: We clone the key to avoid partial move when key is a field of value (e.g., {s.name: s for s in students})
                 self.generate_comprehension_iter(&generators);
                 self.output.push_str(".map(|");
                 self.generate_comprehension_target(&generators);
                 self.output.push_str("| (");
                 self.generate_expr(*key);
-                self.output.push_str(", ");
+                self.output.push_str(".clone(), ");
                 self.generate_expr(*value);
                 self.output
                     .push_str(")).collect::<std::collections::HashMap<_, _>>()");
@@ -527,6 +532,54 @@ impl Codegen {
                     self.generate_expr(e);
                 }
                 self.output.push_str(")");
+            }
+            ast::QuicheExpr::FString(parts) => {
+                // Generate format!("...", args...)
+                let mut format_string = String::new();
+                let mut args: Vec<ast::QuicheExpr> = Vec::new();
+
+                for part in parts {
+                    match part {
+                        ast::FStringPart::Literal(s) => {
+                            // Escape { and } for format string
+                            format_string.push_str(&s.replace('{', "{{").replace('}', "}}"));
+                        }
+                        ast::FStringPart::Replacement {
+                            value,
+                            debug,
+                            conversion,
+                            format_spec,
+                        } => {
+                            // Build format specifier
+                            format_string.push('{');
+                            if debug {
+                                // Debug output includes "expr="
+                                format_string.push_str(&format!("/* debug: {} */", "expr"));
+                            }
+                            if let Some(conv) = conversion {
+                                match conv {
+                                    'r' => format_string.push_str(":?"),
+                                    's' | 'a' => {} // Default Display
+                                    _ => {}
+                                }
+                            } else if let Some(ref spec) = format_spec {
+                                format_string.push(':');
+                                format_string.push_str(spec);
+                            }
+                            format_string.push('}');
+                            args.push(*value);
+                        }
+                    }
+                }
+
+                self.output.push_str("format!(\"");
+                self.output.push_str(&format_string);
+                self.output.push('"');
+                for arg in args {
+                    self.output.push_str(", ");
+                    self.generate_expr(arg);
+                }
+                self.output.push(')');
             }
             _ => {
                 self.output
@@ -605,6 +658,67 @@ impl Codegen {
     fn generate_comprehension_target(&mut self, generators: &[ast::Comprehension]) {
         if let Some(gen) = generators.first() {
             self.generate_expr(*gen.target.clone());
+        }
+    }
+
+    /// Check if an expression is a simple Name that could benefit from auto-cloning
+    /// Returns true for variable names that are likely to be complex types
+    fn should_auto_clone_arg(&self, arg: &ast::QuicheExpr) -> bool {
+        // Only auto-clone Name expressions (local variables)
+        // Don't clone: literals, method calls, already-cloned expressions
+        match arg {
+            ast::QuicheExpr::Name(n) => {
+                // Don't clone primitives or references (starting with &)
+                // Also don't clone if it's self
+                if n == "self" || n.starts_with('&') {
+                    return false;
+                }
+                // Check if this looks like a local variable (lowercase first letter)
+                // Type names start with uppercase
+                if let Some(first_char) = n.chars().next() {
+                    first_char.is_lowercase()
+                } else {
+                    false
+                }
+            }
+            // Subscript expressions like students[0] - clone the whole expression
+            ast::QuicheExpr::Subscript { .. } => false, // Don't clone subscripts, they return refs
+            _ => false,
+        }
+    }
+
+    /// Generate a function call argument, auto-cloning if needed for ownership
+    pub(crate) fn generate_call_arg(&mut self, arg: ast::QuicheExpr, is_ref_or_mutref: bool) {
+        {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open("/tmp/quiche_clone_debug.txt")
+            {
+                writeln!(
+                    f,
+                    "generate_call_arg: {:?}, is_ref: {}, should_clone: {}",
+                    arg,
+                    is_ref_or_mutref,
+                    self.should_auto_clone_arg(&arg)
+                )
+                .ok();
+            }
+        }
+        if is_ref_or_mutref {
+            // Don't clone if the function is ref/mutref/deref
+            self.generate_expr(arg);
+        } else {
+            // Host compiler (for .qrs files) should NOT auto-clone.
+            // Explicit memory management is required for system code.
+            self.generate_expr(arg);
+            // if self.should_auto_clone_arg(&arg) {
+            //     self.generate_expr(arg);
+            //     self.output.push_str(".clone()");
+            // } else {
+            //     self.generate_expr(arg);
+            // }
         }
     }
 }

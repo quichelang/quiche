@@ -73,44 +73,56 @@ class Path(Struct):
         """Return the current working directory."""
         match env_current_dir():
             case Ok(p):
-                return Path.new(p.to_string_lossy())
+                return Path.new(p.to_string_lossy().to_string())
             case Err(_):
-                return Path.new(".")
+                return Path.new(".".to_string())
 
     # --- Path properties ---
 
     def name(self) -> String:
         """Return the final component of the path (filename)."""
-        p = self.path
-        idx = p.rfind("/")
-        if idx == -1:
-            return p
-        return p[idx + 1..]
+        p = self.path.clone()
+        slash = "/"
+        match p.rfind(slash.as_str()):
+            case Some(idx):
+                return p[idx + 1..].to_string()
+            case None:
+                return p
 
     def stem(self) -> String:
         """Return the filename without the suffix."""
         n = self.name()
-        idx = n.rfind(".")
-        if idx == -1 or idx == 0:
-            return n
-        return n[..idx]
+        dot = "."
+        match n.rfind(dot.as_str()):
+            case Some(idx):
+                if idx == 0:
+                    return n
+                return n[..idx].to_string()
+            case None:
+                return n
 
     def suffix(self) -> String:
         """Return the file extension including the dot."""
         n = self.name()
-        idx = n.rfind(".")
-        if idx == -1 or idx == 0:
-            return ""
-        return n[idx..]
+        dot = "."
+        match n.rfind(dot.as_str()):
+            case Some(idx):
+                if idx == 0:
+                    return "".to_string()
+                return n[idx..].to_string()
+            case None:
+                return "".to_string()
 
     def parent(self) -> Path:
         """Return the parent directory."""
-        idx = self.path.rfind("/")
-        if idx == -1:
-            return Path.new(".")
-        if idx == 0:
-            return Path.new("/")
-        return Path.new(self.path[..idx])
+        slash = "/"
+        match self.path.rfind(slash.as_str()):
+            case Some(idx):
+                if idx == 0:
+                    return Path.new("/".to_string())
+                return Path.new(self.path[..idx].to_string())
+            case None:
+                return Path.new(".".to_string())
 
     # --- Path operations ---
 
@@ -222,22 +234,24 @@ class Path(Struct):
 
     def _matches_pattern(self, name: String, pattern: String) -> bool:
         """Check if a filename matches a glob pattern."""
-        if pattern.starts_with(ref("*")):
+        star = "*"
+        if pattern.starts_with(star.as_str()):
             # *.qrs - matches anything ending with .qrs
             suffix = pattern[1..]
-            return name.ends_with(ref(suffix))
-        elif pattern.ends_with(ref("*")):
+            return name.ends_with(suffix.as_str())
+        elif pattern.ends_with(star.as_str()):
             # test_* - matches anything starting with test_
             prefix = pattern[..pattern.len() - 1]
-            return name.starts_with(ref(prefix))
-        elif pattern.contains("*"):
+            return name.starts_with(prefix.as_str())
+        elif pattern.contains(star.as_str()):
             # test_*.qrs - matches prefix and suffix
-            idx = pattern.find("*")
-            if idx != -1:
-                prefix = pattern[..idx]
-                suffix = pattern[idx + 1..]
-                return name.starts_with(ref(prefix)) and name.ends_with(ref(suffix))
-            return name == pattern
+            match pattern.find(star.as_str()):
+                case Some(idx):
+                    prefix = pattern[..idx]
+                    suffix = pattern[idx + 1..]
+                    return name.starts_with(prefix.as_str()) and name.ends_with(suffix.as_str())
+                case None:
+                    return name == pattern
         else:
             return name == pattern
 

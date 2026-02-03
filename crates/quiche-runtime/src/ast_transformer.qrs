@@ -1,10 +1,12 @@
-from rust.quiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, Arg, Operator, BoolOperator, UnaryOperator, IfStmt, WhileStmt, ForStmt, Keyword
+from rust.quiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, ClassDef, Arg, Operator, BoolOperator, UnaryOperator, IfStmt, WhileStmt, ForStmt, Keyword
 from std.collections import HashMap
 
 # Import memory analysis types and functions
 from rust.crate import MemoryAnalyzer, MemConfig, AllocationStrategy
-from rust.crate.memory_analysis import init_inline_types, collect_mem_decorators, get_strategy_for_type, get_func_config
+from rust.crate.memory_analysis import init_inline_types, collect_mem_decorators, get_strategy_for_type, get_func_config, is_variable_used_after
 
+@extern(path="crate::create_MemConfig")
+def create_MemConfig() -> MemConfig: pass
 
 @extern(path="crate::create_QuicheModule")
 def create_QuicheModule(body: Vec[Stmt]) -> QuicheModule: pass
@@ -39,6 +41,8 @@ class Transformer:
     memory_analyzer: MemoryAnalyzer  # Memory analysis state
     extern_returns: HashMap[String, String]  # FuncName -> Return Type String
     verbose: bool
+    current_body: Vec[Stmt]
+    current_stmt_idx: usize
 
     def new() -> Transformer:
         return create_Transformer()
@@ -69,8 +73,15 @@ class Transformer:
             print("Transformer: Transforming calls (Pass 2)...")
         # Pass 2: Transform Calls
         final_body: Vec[Stmt] = []
+        
+        # Initialize context for liveness analysis
+        self.current_body = pass1_body.clone()
+        idx = 0
+        
         for stmt in pass1_body:
+            self.current_stmt_idx = idx
             final_body.push(self.transform_stmt(stmt))
+            idx = idx + 1
         
         return create_QuicheModule(final_body)
 
@@ -133,8 +144,12 @@ class Transformer:
                                 # Create new wrapped annotation
                                 # We need to clone inner again or use it?
                                 # inner was cloned above.
-                                wrapped = ast_wrap_mutref_type(box_expr(inner))
-                                new_arg = ast_update_arg_annotation(new_arg, Some(wrapped))
+                                # DISABLED: We don't want to enforce references in signatures.
+                                # We want to support passing by ownership (e.g. constructors).
+                                # Auto-cloning at call site is the correct approach.
+                                # wrapped = ast_wrap_mutref_type(box_expr(inner))
+                                # new_arg = ast_update_arg_annotation(new_arg, Some(wrapped))
+                                pass
                             
                             pass # end if
                         case None: pass
@@ -165,6 +180,12 @@ class Transformer:
                 # updated_f = self.update_args(f, new_args)
                 updated_f = self.update_args(f, new_args)
                 return Stmt.FunctionDef(updated_f)
+            case Stmt.ClassDef(c):
+                # Process methods inside the class to register their signatures
+                new_body: Vec[Stmt] = []
+                for method in c.body.clone():
+                    new_body.push(self.visit_def(method))
+                return ast_update_class_body(c, new_body)
             case _:
                 return stmt
 
@@ -230,6 +251,26 @@ class Transformer:
                     pass
         return False
 
+    def transform_block(self, body: Vec[Stmt]) -> Vec[Stmt]:
+        """Transform a block of statements with context saving"""
+        # Save context
+        old_body = self.current_body.clone()
+        old_idx = self.current_stmt_idx
+        
+        # Set new context
+        self.current_body = body.clone()
+        new_body: Vec[Stmt] = []
+        idx = 0
+        for s in body:
+            self.current_stmt_idx = idx
+            new_body.push(self.transform_stmt(s))
+            idx = idx + 1
+            
+        # Restore context
+        self.current_body = old_body
+        self.current_stmt_idx = old_idx
+        return new_body
+
     def transform_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:
             case Stmt.Expr(e):
@@ -239,27 +280,21 @@ class Transformer:
             
             case Stmt.If(i):
                 test = self.transform_expr(deref(i.test).clone())
-                body: Vec[Stmt] = []
-                for s in i.body: body.push(self.transform_stmt(s))
-                orelse: Vec[Stmt] = []
-                for s in i.orelse: orelse.push(self.transform_stmt(s))
+                body = self.transform_block(i.body)
+                orelse = self.transform_block(i.orelse)
                 return make_if_stmt(box_expr(test), body, orelse)
 
             case Stmt.While(w):
                  test = self.transform_expr(deref(w.test).clone())
-                 body: Vec[Stmt] = []
-                 for s in w.body: body.push(self.transform_stmt(s))
-                 orelse: Vec[Stmt] = []
-                 for s in w.orelse: orelse.push(self.transform_stmt(s))
+                 body = self.transform_block(w.body)
+                 orelse = self.transform_block(w.orelse)
                  return make_while_stmt(box_expr(test), body, orelse)
 
             case Stmt.For(f):
                  target = f.target.clone() 
                  iter = self.transform_expr(deref(f.iter).clone())
-                 body: Vec[Stmt] = []
-                 for s in f.body: body.push(self.transform_stmt(s))
-                 orelse: Vec[Stmt] = []
-                 for s in f.orelse: orelse.push(self.transform_stmt(s))
+                 body = self.transform_block(f.body)
+                 orelse = self.transform_block(f.orelse)
                  return make_for_stmt(target, box_expr(iter), body, orelse)
 
             case Stmt.FunctionDef(f):
@@ -283,14 +318,20 @@ class Transformer:
                          case None: pass
 
                  # Recurse into body
-                 new_body: Vec[Stmt] = []
-                 for s in f.body.clone():
-                     new_body.push(self.transform_stmt(s))
+                 new_body = self.transform_block(f.body.clone())
                  
                  # Restore scope
                  self.current_complex_args = old_complex
 
                  return Stmt.FunctionDef(ast_update_func_body(f, new_body))
+            
+            case Stmt.ClassDef(c):
+                # Recurse into methods
+                new_body: Vec[Stmt] = []
+                for s in c.body.clone():
+                    new_body.push(self.transform_stmt(s))
+                return ast_update_class_body(c, new_body)
+
             case Stmt.Return(r):
                  match r:
                      case Some(e):
@@ -316,23 +357,7 @@ class Transformer:
                  # I need 'ast_create_assign(targets, val)' helper.
                  return Stmt.Assign(ast_create_assign(new_targets, box_expr(new_val)))
                  
-            case Stmt.If(i):
-                test = self.transform_expr(deref(i.test).clone())
-                body: Vec[Stmt] = []
-                for s in i.body: body.push(self.transform_stmt(s))
-                orelse: Vec[Stmt] = []
-                for s in i.orelse: orelse.push(self.transform_stmt(s))
-                return Stmt.If(ast_create_if(box_expr(test), body, orelse))
 
-            case Stmt.For(f):
-                 # target, iter, body, orelse
-                 target = self.transform_expr(deref(f.target).clone())
-                 iter = self.transform_expr(deref(f.iter).clone())
-                 body: Vec[Stmt] = []
-                 for s in f.body: body.push(self.transform_stmt(s))
-                 orelse: Vec[Stmt] = []
-                 for s in f.orelse: orelse.push(self.transform_stmt(s))
-                 return Stmt.For(ast_create_for(box_expr(target), box_expr(iter), body, orelse))
                  
             case _:
                 return stmt
@@ -345,14 +370,17 @@ class Transformer:
                 
                 # We need to peek function name without consuming func_expr
                 # But to transform/rebuild, we consume it?
-                # We can check name if it is Name(n).
+                # We can check name if it is Name(n) or Attribute(value, attr).
                 func_name = ""
                 has_name = False
-                match func_expr:
+                match func_expr.clone():
                     case Expr.Name(n):
                         func_name = n.clone()
                         has_name = True
-                        func_expr = Expr.Name(n) # Put it back
+                    case Expr.Attribute(value=v, attr=method_name):
+                        # Method call like Class.new(...) or obj.method(...)
+                        func_name = method_name.clone()
+                        has_name = True
                     case _:
                         has_name = False
                         
@@ -375,28 +403,22 @@ class Transformer:
                     new_arg = self.transform_expr(arg)
                     
                     if idx < sig.len():
-                        needs_borrow = sig[idx]
-                        if needs_borrow:
-                            is_already_ref = False
-                            match arg_check:
-                                case Expr.Name(ncn):
-                                    for ca in self.current_complex_args.clone():
-                                        if ca == ncn: is_already_ref = True
-                                case _: pass
-
-                            if is_already_ref:
-                                # Reborrow: mutref(deref(arg))
-                                # Construct deref(arg)
-                                d_func = box_expr(Expr.Name("deref".to_string()))
-                                d_args: Vec[Expr] = []
-                                d_args.push(new_arg)
-                                deref_call = ast_create_call(d_func, d_args)
-                                
-                                # Wrap in mutref(...)
-                                new_arg = deref(ast_wrap_mutref_call(box_expr(deref_call)))
-                            else:
-                                # Wrap (auto-borrow): mutref(arg)
-                                new_arg = deref(ast_wrap_mutref_call(box_expr(new_arg)))
+                        # Old signature-based logic (disabled)
+                        pass
+                    
+                    # Liveness Analysis: Auto-clone if variable is used later
+                    # This implements "Auto-Cloning" / "Ownership Blindness"
+                    should_clone = False
+                    match arg_check:
+                        case Expr.Name(n):
+                             if is_variable_used_after(ref(self.memory_analyzer), n.clone(), self.current_stmt_idx, self.current_body.clone()):
+                                 should_clone = True
+                        case _: pass
+                    
+                    if should_clone:
+                        # arg.clone()
+                        clone_func = box_expr(ast_create_attribute(box_expr(new_arg), "clone".to_string()))
+                        new_arg = ast_create_call(clone_func, [])
                     
                     new_args.push(new_arg)
                     idx = idx + 1
@@ -412,24 +434,22 @@ class Transformer:
                 new_keywords: Vec[Keyword] = []
                 for kw in ckw:
                     kw_value = self.transform_expr(deref(kw.value).clone())
-                    # For struct constructors, wrap Name expressions in deref() to clone
-                    # but ONLY if the Name is in current_complex_args (auto-borrowed params)
-                    if is_struct_ctor:
-                        match ref(kw_value):
-                            case Expr.Name(n):
-                                # Check if this name is an auto-borrowed param
-                                is_complex_arg = False
-                                for ca in self.current_complex_args.clone():
-                                    if ca == deref(n):
-                                        is_complex_arg = True
-                                if is_complex_arg:
-                                    # Wrap with deref(...) to get owned value from &mut ref
-                                    d_func = box_expr(Expr.Name("deref".to_string()))
-                                    d_args: Vec[Expr] = []
-                                    d_args.push(kw_value.clone())
-                                    kw_value = ast_create_call(d_func, d_args)
-                            case _:
-                                pass
+                    
+                    # Auto-Cloning for Keywords
+                    should_clone = False
+                    match deref(kw.value):
+                        case Expr.Name(n):
+                             if is_variable_used_after(ref(self.memory_analyzer), n.clone(), self.current_stmt_idx, self.current_body.clone()):
+                                 should_clone = True
+                        case _: pass
+                    
+                    if should_clone:
+                         # kw_value.clone()
+                         clone_func = box_expr(ast_create_attribute(box_expr(kw_value), "clone".to_string()))
+                         kw_value = ast_create_call(clone_func, [])
+
+                    # Obsolete struct ctor logic using current_complex_args is removed because we don't wrap params anymore.
+                    
                     new_kw = ast_create_keyword(kw.arg.clone(), box_expr(kw_value))
                     new_keywords.push(new_kw)
                 
@@ -546,6 +566,9 @@ def make_for_stmt(target: Box[Expr], iter: Box[Expr], body: Vec[Stmt], orelse: V
 
 @extern(path="crate::ast_set_func_args")
 def ast_set_func_args(f: FunctionDef, args: Vec[Arg]) -> FunctionDef: pass
+
+@extern(path="crate::ast_update_class_body")
+def ast_update_class_body(c: ClassDef, body: Vec[Stmt]) -> Stmt: pass
 
 @extern(path="crate::check_first_upper")
 def check_first_upper(s: String) -> bool: pass

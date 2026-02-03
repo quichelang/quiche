@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod error_fmt;
+pub mod fstring;
 pub mod lexer;
 pub mod parser;
 

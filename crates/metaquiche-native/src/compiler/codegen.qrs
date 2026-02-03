@@ -752,7 +752,7 @@ class Codegen:
                                                     case q_ast.Expr.Constant(c):
                                                         match c:
                                                             case q_ast.Constant.Bool(b):
-                                                                no_generic = Clone.clone(b)
+                                                                no_generic = Clone.clone(ref(b))
                                                             case _: pass
                                                     case q_ast.Expr.Name(n):
                                                         if n.to_string() == "true":
@@ -1111,6 +1111,46 @@ class Codegen:
                     case Some(u): self.generate_expr(deref(u))
                     case None: pass
 
+            case q_ast.Expr.FString(parts):
+                # Generate format!("...", args...)
+                format_str = "".to_string()
+                args: Vec[q_ast.Expr] = []
+                
+                for part in parts:
+                    match part:
+                        case q_ast.FStringPart.Literal(s):
+                            # Escape { and } for format string
+                            lbrace = "{"
+                            rbrace = "}"
+                            lbrace_esc = "{{"
+                            rbrace_esc = "}}"
+                            escaped = s.replace(lbrace.as_str(), lbrace_esc.as_str()).replace(rbrace.as_str(), rbrace_esc.as_str())
+                            format_str = format_str + ref(escaped)
+                        case q_ast.FStringPart.Replacement(value=value, debug=debug, conversion=conversion, format_spec=format_spec):
+                            format_str = format_str + "{"
+                            match conversion:
+                                case Some(c):
+                                    # Check for !r conversion - compare as strings
+                                    c_str = c.to_string()
+                                    if c_str == "r":
+                                        format_str = format_str + ":?"
+                                case None:
+                                    match format_spec:
+                                        case Some(spec):
+                                            format_str = format_str + ":"
+                                            format_str = format_str + ref(spec)
+                                        case None: pass
+                            format_str = format_str + "}"
+                            args.push(deref(value))
+                
+                self.emit("format!(\"")
+                self.emit(format_str)
+                self.emit("\"")
+                for arg in args:
+                    self.emit(", ")
+                    self.generate_expr(arg)
+                self.emit(")")
+
             case _: self.emit("/* expr */")
 
 
@@ -1215,7 +1255,7 @@ class Codegen:
                 self.emit("/* len() expects 1 arg */")
             return
 
-        if func_name_c == "print":
+        if func_name_c == "print" or func_name_c == "println":
             # Generate format string with correct number of {} placeholders (Display fmt)
             fmt_parts: Vec[String] = []
             for _ in args.clone():
@@ -1665,13 +1705,14 @@ class Codegen:
         self.emit(").collect::<Vec<_>>()")
 
     def emit_dict_comp(self, key: Box[q_ast.Expr], value: Box[q_ast.Expr], generators: Vec[q_ast.Comprehension]):
-        # Generate: iter.into_iter()[.filter(|x| cond)].map(|(k, v)| (key, value)).collect::<HashMap<_,_>>()
+        # Generate: iter.into_iter()[.filter(|x| cond)].map(|(k, v)| (key.clone(), value)).collect::<HashMap<_,_>>()
+        # Note: We clone the key to avoid partial move when key is a field of value (e.g., {s.name: s for s in students})
         self.emit_comprehension_iter(generators.clone())
         self.emit(".map(|")
         self.emit_comprehension_target(generators.clone())
         self.emit("| (")
         self.generate_expr(deref(key))
-        self.emit(", ")
+        self.emit(".clone(), ")
         self.generate_expr(deref(value))
         self.emit(")).collect::<std::collections::HashMap<_, _>>()")
 

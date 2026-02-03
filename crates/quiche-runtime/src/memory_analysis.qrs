@@ -156,8 +156,11 @@ def analyze_escape_patterns(analyzer: mutref[MemoryAnalyzer], stmt: Stmt):
 def analyze_stmt_escape(analyzer: mutref[MemoryAnalyzer], stmt: Stmt):
     """Analyze a statement for escape patterns"""
     match stmt:
-        case Stmt.Return(Some(e)):
-            mark_escaping(analyzer, deref(e))
+        case Stmt.Return(opt_val):
+            match opt_val:
+                case Some(e):
+                    mark_escaping(analyzer, deref(e))
+                case None: pass
             
         case Stmt.Assign(a):
             for target in a.targets:
@@ -241,3 +244,130 @@ def analyze_memory(module: QuicheModule, verbose: bool) -> MemoryAnalyzer:
     analyzer.verbose = verbose
     analyze_module(mutref(analyzer), module)
     return analyzer
+
+
+def is_variable_used_after(analyzer: ref[MemoryAnalyzer], name: String, current_idx: usize, body: Vec[Stmt]) -> bool:
+    """Check if a variable is used after the current statement index in a block"""
+    idx = 0
+    for stmt in body.clone():
+        if idx > current_idx:
+            if is_variable_used(analyzer, name.clone(), stmt):
+                return True
+        idx = idx + 1
+    return False
+
+
+def is_variable_used(analyzer: ref[MemoryAnalyzer], name: String, stmt: Stmt) -> bool:
+    """Check if a variable is used in a statement"""
+    match stmt:
+        case Stmt.Return(opt_val):
+             match opt_val:
+                 case Some(e): return is_name_in_expr(name.clone(), deref(e))
+                 case None: return False
+                 
+        case Stmt.Expr(e):
+             return is_name_in_expr(name.clone(), deref(e))
+             
+        case Stmt.Assign(a):
+             # Check value (RHS)
+             if is_name_in_expr(name.clone(), deref(a.value)): return True
+             # Check targets (LHS) - e.g. x[i] = 1 uses i
+             # But assigning TO x doesn't count as using x's value, unless it's x.attr or x[i]
+             for target in a.targets:
+                 match target:
+                    case Expr.Subscript(value=val, slice=slice):
+                        if is_name_in_expr(name.clone(), deref(val)): return True
+                        if is_name_in_expr(name.clone(), deref(slice)): return True
+                    case Expr.Attribute(value=val, attr=attr):
+                        if is_name_in_expr(name.clone(), deref(val)): return True
+                    case _: pass
+             return False
+
+        case Stmt.If(i):
+            if is_name_in_expr(name.clone(), deref(i.test)): return True
+            for s in i.body:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            for s in i.orelse:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            return False
+
+        case Stmt.For(f):
+            if is_name_in_expr(name.clone(), deref(f.iter)): return True
+            for s in f.body:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            for s in f.orelse:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            return False
+
+        case Stmt.While(w):
+            if is_name_in_expr(name.clone(), deref(w.test)): return True
+            for s in w.body:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            for s in w.orelse:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            return False
+            
+        case _: return False
+
+
+def is_name_in_expr(name: String, expr: Expr) -> bool:
+    """Check if a name appears in an expression"""
+    match expr:
+        case Expr.Name(n):
+            return n == name
+            
+        case Expr.Call(func=func, args=args, keywords=kw):
+            if is_name_in_expr(name.clone(), deref(func)): return True
+            for arg in args:
+                if is_name_in_expr(name.clone(), arg): return True
+            for k in kw:
+                if is_name_in_expr(name.clone(), deref(k.value)): return True
+            return False
+            
+        case Expr.Attribute(value=val, attr=attr):
+            return is_name_in_expr(name.clone(), deref(val))
+            
+        case Expr.Subscript(value=val, slice=slice):
+            if is_name_in_expr(name.clone(), deref(val)): return True
+            return is_name_in_expr(name.clone(), deref(slice))
+            
+        case Expr.BinOp(left=left, op=op, right=right):
+            if is_name_in_expr(name.clone(), deref(left)): return True
+            return is_name_in_expr(name.clone(), deref(right))
+            
+        case Expr.UnaryOp(op=op, operand=operand):
+            return is_name_in_expr(name.clone(), deref(operand))
+            
+        case Expr.BoolOp(op=op, values=values):
+            for v in values:
+                if is_name_in_expr(name.clone(), v): return True
+            return False
+            
+        case Expr.Compare(left=left, ops=ops, comparators=comparators):
+            if is_name_in_expr(name.clone(), deref(left)): return True
+            for c in comparators:
+                if is_name_in_expr(name.clone(), c): return True
+            return False
+            
+        case Expr.List(elts):
+            for e in elts:
+                if is_name_in_expr(name.clone(), e): return True
+            return False
+            
+        case Expr.Tuple(elts):
+            for e in elts:
+                if is_name_in_expr(name.clone(), e): return True
+            return False
+            
+        # case Expr.Dict(keys, values):
+        #    for k in keys:
+        #        if is_name_in_expr(name.clone(), k): return True
+        #    for v in values:
+        #        if is_name_in_expr(name.clone(), v): return True
+        #    return False
+            
+        # TODO: Handle DictComp, ListComp (need to check scope)
+        # For now, conservative: assume used if it's in the generators?
+        # That's hard to analyze without full traversal.
+        
+        case _: return False
