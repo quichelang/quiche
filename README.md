@@ -63,8 +63,8 @@ See [examples/](examples/) and [tests/](tests/) for more code samples.
 | 1. Bootstrap | Host compiler in Rust | ✅ Done |
 | 2. Self-hosting | Compiler compiles itself | ✅ Done |
 | 3. Minimal deps | Only regex + thiserror | ✅ Done |
-| 4. Core Quiche | Pythonic dialect + comprehensions + lambdas | 🔄 WIP |
-| 5. Memory mgmt | Perceus-style automatic memory | 📋 Planned |
+| 4. Memory mgmt | Zero-overhead adaptive (Perceus-style) | ✅ Done |
+| 5. Core Quiche | Pythonic dialect + comprehensions + lambdas | 🔄 WIP |
 
 ## Documentation
 
