@@ -21,20 +21,20 @@ cli.error.compilation_failed = "Compilation failed: %{error}"
 # =============================================================================
 # CLI Usage Messages
 # =============================================================================
-cli.usage.header = "Usage: quiche <command> [options]"
-cli.usage.new = "  quiche new <name>       Create a new Quiche project"
-cli.usage.new_lib = "  quiche new --lib <name> Create a new library project"
-cli.usage.build = "  quiche build            Build the current project"
-cli.usage.run = "  quiche run              Build and run the current project"
-cli.usage.test = "  quiche test             Run tests"
-cli.usage.script = "  quiche <file.qrs>       Run a single script"
-cli.usage.version = "  quiche version          Show version information"
-cli.usage.help = "  quiche help             Show this help message"
+cli.usage.header = "Usage: mq <command> [options]"
+cli.usage.new = "  mq new <name>       Create a new Quiche project"
+cli.usage.new_lib = "  mq new --lib <name> Create a new library project"
+cli.usage.build = "  mq build            Build the current project"
+cli.usage.run = "  mq run              Build and run the current project"
+cli.usage.test = "  mq test             Run tests"
+cli.usage.script = "  mq <file.qrs>       Run a single script"
+cli.usage.version = "  mq version          Show version information"
+cli.usage.help = "  mq help             Show this help message"
 
 # =============================================================================
 # CLI Hints and Notes
 # =============================================================================
-cli.hint.single_script = "To run a single script, use: quiche <file.qrs>"
+cli.hint.single_script = "To run a single script, use: mq <file.qrs>"
 cli.hint.did_you_mean = "Did you mean '%{suggestion}'?"
 cli.note.qrs_extension = "Note: Quiche scripts must end with .qrs extension."
 

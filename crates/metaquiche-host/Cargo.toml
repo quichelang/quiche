@@ -14,7 +14,7 @@ regex = "1.5"
 path = "src/lib.rs"
 
 [[bin]]
-name = "quiche-host"
+name = "mq0"
 path = "src/main.rs"
 
 [dev-dependencies]

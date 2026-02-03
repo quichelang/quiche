@@ -21,7 +21,7 @@ name = "metaquiche_native"
 path = "src/lib.rs"
 
 [[bin]]
-name = "quiche"
+name = "mq"
 path = "src/main.rs"
 
 [dev-dependencies]
