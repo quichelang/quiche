@@ -70,5 +70,5 @@ clean:
 
 test: stage2
 	@echo "Running regression tests..."
-	./target/stage2/debug/mq tests/test_codegen_scope_regression.q
+	./target/stage2/debug/mq tests/test_private_visibility.qrs
 	@echo "Regression tests passed!"

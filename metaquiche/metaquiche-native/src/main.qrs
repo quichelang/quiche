@@ -146,8 +146,7 @@ def version_get_date() -> String: pass
 @extern(path="crate::version_info::get_build_kind")
 def version_get_build_kind() -> String: pass
 
-@extern(path="quiche_runtime::ast_transformer::transform_module")
-def transform_module(module: QuicheModule, verbose: bool) -> QuicheModule: pass
+# .q file support removed - use quiche-compiler instead
 
 def get_flag_bool(flags: HashMap[String, bool], key: String) -> bool:
     match flags.get(ref(key)):
@@ -298,8 +297,7 @@ def compile_source_to_string(source: String, filename: String, warn_quiche: bool
     # Parse source with explicit error handling
     module = unwrap_or_exit_parse(parse_module(source.as_str()), "Failed to parse source")
     
-    if filename.ends_with(ref(".q")):
-        module = transform_module(module, verbose)
+    # Only .qrs files supported (no .q transformation)
 
     stmts = module.body
 
@@ -643,7 +641,7 @@ def main():
             print(concat2("  profile: ", ref(kind)))
             return
 
-    if cmd.ends_with(ref(".qrs")) or cmd.ends_with(ref(".q")):
+    if cmd.ends_with(ref(".qrs")):
         if not path_exists(cmd.clone()):
             print(tr1("cli.error.file_not_found", "file", cmd))
             exit(1)
