@@ -34,6 +34,6 @@ The pathlib module cannot be compiled until this is resolved.
 
 ### Files Affected
 
-- `crates/quiche-runtime/src/pathlib.qrs`
-- `crates/quiche-runtime/src/lib.rs`
-- `crates/metaquiche-host/src/codegen.rs` (or similar)
+- `quiche/quiche-runtime/src/pathlib.qrs`
+- `quiche/quiche-runtime/src/lib.rs`
+- `metaquiche/metaquiche-host/src/codegen.rs` (or similar)

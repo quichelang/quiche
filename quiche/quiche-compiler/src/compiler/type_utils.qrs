@@ -1,0 +1,99 @@
+# Type utilities for the code generator
+# Extracted from codegen.qrs for modularization
+# These are standalone functions that take Codegen reference as first parameter
+
+from std.cell import Ref
+import rust.metaquiche_parser.ast as q_ast
+
+from compiler.extern_defs import RustString, q_push
+
+from std.result import Result
+
+# Forward declaration - Codegen will be imported by files that use this
+# The cg parameter is typed as &Codegen in the generated Rust
+
+def infer_type(expr: q_ast.Expr) -> String:
+    return "i32"
+
+def type_to_string(expr: q_ast.Expr) -> String:
+    match ref(expr):
+        case q_ast.Expr.Name(n):
+            name = n.to_string()
+            if name == "List" or name == "Vec": return "Vec"
+            if name == "Dict" or name == "HashMap": return "std::collections::HashMap"
+            if name == "String" or name == "str": return "String"
+            if name == "bool": return "bool"
+            if name == "int": return "i32"
+            if name == "float": return "f64"
+            return name
+        case q_ast.Expr.Attribute(value=v, attr=a):
+            base = type_to_string(v.as_ref().clone())
+            sep = "::"
+            base.push_str(sep.as_str())
+            base.push_str(a.as_str())
+            return base
+        case q_ast.Expr.Subscript(value=v, slice=s):
+            base = type_to_string(v.as_ref().clone())
+            
+            # Check if slice is a Tuple - if so, unpack elements directly
+            slice_str = ""
+            match ref(s.as_ref().clone()):
+                case q_ast.Expr.Tuple(elts):
+                    # Unpack tuple elements as comma-separated type args
+                    idx = 0
+                    comma = ", "
+                    for e in elts.clone():
+                        if idx > 0: slice_str.push_str(comma.as_str())
+                        e_str = type_to_string(e)
+                        slice_str.push_str(e_str.as_str())
+                        idx = idx + 1
+                case _:
+                    slice_str = type_to_string(s.as_ref().clone())
+            
+            # Handle special type wrappers without angle brackets
+            if base == "Ref" or base == "ref":
+                amp = "&"
+                amp.push_str(slice_str.as_str())
+                return amp
+            if base == "MutRef" or base == "mutref":
+                amp_mut = "&mut "
+                amp_mut.push_str(slice_str.as_str())
+                return amp_mut
+            if base == "Dyn" or base == "dyn":
+                dyn_prefix = "dyn "
+                dyn_prefix.push_str(slice_str.as_str())
+                return dyn_prefix
+            
+            bracket_l = "<"
+            bracket_r = ">"
+            base.push_str(bracket_l.as_str())
+            base.push_str(slice_str.as_str())
+            base.push_str(bracket_r.as_str())
+            return base
+        case q_ast.Expr.Tuple(elts):
+            output = "("
+            idx = 0
+            comma = ", "
+            for e in elts.clone():
+                if idx > 0: output.push_str(comma.as_str())
+                e_str = type_to_string(e)
+                output.push_str(e_str.as_str())
+                idx = idx + 1
+            paren_r = ")"
+            output.push_str(paren_r.as_str())
+            return output
+        case _:
+            return "/* unknown type */"
+
+def is_tuple(expr: q_ast.Expr) -> bool:
+    return False
+
+def get_root(expr: q_ast.Expr) -> Option[String]:
+    return None
+
+def is_type_or_module(name: String) -> bool:
+    if name == "self": return False
+    return False
+
+def contains_name(expr: q_ast.Expr, name: String) -> bool:
+    return False

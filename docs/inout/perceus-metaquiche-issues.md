@@ -524,9 +524,9 @@ Implemented **full type tracking in codegen** - the "Rolls Royce" solution:
 
 ### Files Modified
 
-- `crates/metaquiche-native/src/compiler/mod.rs` - Added TypeInfo struct and helper functions
-- `crates/metaquiche-native/src/compiler/codegen.qrs` - Full type tracking implementation
-- `crates/metaquiche-native/src/main.rs` - Updated create_codegen signature
+- `metaquiche/metaquiche-native/src/compiler/mod.rs` - Added TypeInfo struct and helper functions
+- `metaquiche/metaquiche-native/src/compiler/codegen.qrs` - Full type tracking implementation
+- `metaquiche/metaquiche-native/src/main.rs` - Updated create_codegen signature
 
 ### Verification
 

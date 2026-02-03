@@ -10,11 +10,11 @@ workspace = true
 # quiche_compiler removed
 
 [dependencies]
-quiche-runtime = { path = "../quiche-runtime" }
+quiche-runtime = { path = "../../quiche/quiche-runtime" }
 metaquiche-parser = { path = "../metaquiche-parser" }
 metaquiche-shared = { path = "../metaquiche-shared" }
 metaquiche-host = { path = "../metaquiche-host" }
-parsley-qrs = { path = "../parsley-qrs" }
+parsley = { path = "../../quiche/parsley" }
 
 [lib]
 name = "metaquiche_native"

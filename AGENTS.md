@@ -18,10 +18,13 @@ make clean && make stage1 && make stage2
 
 | Directory | Purpose |
 |-----------|---------|
-| `crates/metaquiche-host/` | Rust host compiler (Stage 0) |
-| `crates/metaquiche-native/` | Quiche self-hosted compiler |
-| `crates/quiche-parser/` | Parser and AST definitions |
-| `crates/quiche-runtime/` | Runtime macros and traits |
+| `metaquiche/metaquiche-host/` | Rust host compiler (Stage 0) |
+| `metaquiche/metaquiche-native/` | Quiche self-hosted compiler |
+| `metaquiche/metaquiche-parser/` | Parser and AST definitions |
+| `quiche/quiche-runtime/` | Runtime macros and traits |
+| `quiche/quiche-compiler/` | Quiche compiler (copy of native) |
+| `quiche/parsley/` | Parser library for Quiche |
+| `quiche/perceus-mem/` | Memory management library |
 | `docs/language_design/` | Language specification |
 
 ## Key Files
@@ -114,9 +117,9 @@ class Point:
 
 ## Shared Templates
 
-All codegen strings MUST be in `crates/metaquiche-shared/templates.toml`:
+All codegen strings MUST be in `metaquiche/metaquiche-shared/templates/`:
 
-1. Add template to `templates.toml` under `[codegen.your_new_template]`
+1. Add template to appropriate `.toml` file under `[codegen.your_new_template]`
 2. Update both host (Rust) and native (Quiche) compilers
 3. Verify with `make stage1 && make stage2 && make verify`
 

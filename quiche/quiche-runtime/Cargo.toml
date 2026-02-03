@@ -7,7 +7,7 @@ edition = "2024"
 workspace = true
 
 [dependencies]
-metaquiche-shared = { path = "../metaquiche-shared" }
-metaquiche-parser = { path = "../metaquiche-parser" }
+metaquiche-shared = { path = "../../metaquiche/metaquiche-shared" }
+metaquiche-parser = { path = "../../metaquiche/metaquiche-parser" }
 perceus-mem = { path = "../perceus-mem" }
 regex = "1"

@@ -29,7 +29,7 @@ flowchart LR
 
 | Stage | Compiler | Written In | Compiles |
 |-------|----------|------------|----------|
-| 0 | [metaquiche-host](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-host/src/lib.rs) | Rust | Quiche → Rust |
+| 0 | [metaquiche-host](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-host/src/lib.rs) | Rust | Quiche → Rust |
 | 1 | metaquiche-native (via Stage 0) | Quiche | Quiche → Rust |
 | 2 | metaquiche-native (via Stage 1) | Quiche | Quiche → Rust |
 
@@ -51,7 +51,7 @@ flowchart TD
 
 ### Parser
 
-Uses [quiche-parser](file:///Volumes/Dev/code/jagtesh/quiche/crates/quiche-parser/src/lib.rs) - a custom hand-written recursive-descent parser that produces the Quiche AST.
+Uses [quiche-parser](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-parser/src/lib.rs) - a custom hand-written recursive-descent parser that produces the Quiche AST.
 
 ### Code Generation
 
@@ -61,16 +61,16 @@ The core of both compilers. Traverses AST and emits Rust code.
 
 ## Host Compiler (metaquiche-host)
 
-Written in Rust. Entry point: [lib.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-host/src/lib.rs)
+Written in Rust. Entry point: [lib.rs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-host/src/lib.rs)
 
 ### Module Structure
 
 | Module | Purpose |
 |--------|---------|
-| [lib.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-host/src/lib.rs) | `Codegen` struct, symbol table, main API |
-| [stmt.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-host/src/stmt.rs) | Statement emission (if, for, class, match) |
-| [expr.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-host/src/expr.rs) | Expression emission (calls, binops, literals) |
-| [types.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-host/src/types.rs) | Type conversion (Quiche types → Rust types) |
+| [lib.rs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-host/src/lib.rs) | `Codegen` struct, symbol table, main API |
+| [stmt.rs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-host/src/stmt.rs) | Statement emission (if, for, class, match) |
+| [expr.rs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-host/src/expr.rs) | Expression emission (calls, binops, literals) |
+| [types.rs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-host/src/types.rs) | Type conversion (Quiche types → Rust types) |
 
 ### Key Methods
 
@@ -85,15 +85,15 @@ Codegen::type_to_string()  → Converts type annotations
 
 ## Native Compiler (metaquiche-native)
 
-Written in Quiche. Entry point: [main.qrs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-native/src/main.qrs)
+Written in Quiche. Entry point: [main.qrs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-native/src/main.qrs)
 
 ### Module Structure
 
 | Module | Purpose |
 |--------|---------|
-| [main.qrs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-native/src/main.qrs) | CLI, file handling, module discovery |
-| [codegen.qrs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-native/src/compiler/codegen.qrs) | All code generation logic |
-| [type_utils.qrs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-native/src/compiler/type_utils.qrs) | Type inference utilities |
+| [main.qrs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-native/src/main.qrs) | CLI, file handling, module discovery |
+| [codegen.qrs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-native/src/compiler/codegen.qrs) | All code generation logic |
+| [type_utils.qrs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-native/src/compiler/type_utils.qrs) | Type inference utilities |
 
 ### Key Methods
 
@@ -110,7 +110,7 @@ Codegen.type_to_string()     → Type conversion
 
 ## AST Structure
 
-Defined in [quiche-parser/src/ast.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/quiche-parser/src/ast.rs).
+Defined in [quiche-parser/src/ast.rs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-parser/src/ast.rs).
 
 ```mermaid
 classDiagram
@@ -154,7 +154,7 @@ fn parse_function_def() -> Result<FunctionDef>
     // Returns FunctionDef with type_params: Vec<String> already extracted
 ```
 
-Key parser methods in [parser.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/quiche-parser/src/parser.rs):
+Key parser methods in [parser.rs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-parser/src/parser.rs):
 
 | Function | Purpose |
 |----------|----------|
@@ -184,7 +184,7 @@ def generate_stmt(self, stmt: q_ast.Stmt):
 
 ## Runtime Support
 
-[quiche-runtime](file:///Volumes/Dev/code/jagtesh/quiche/crates/quiche-runtime/src/lib.rs) provides macros used by generated code:
+[quiche-runtime](file:///Volumes/Dev/code/jagtesh/quiche/quiche/quiche-runtime/src/lib.rs) provides macros used by generated code:
 
 | Macro | Purpose |
 |-------|---------|
@@ -212,11 +212,11 @@ make test     # Run test suite
 
 The compiler uses a zero-dependency template system to share code between Host and Native implementations, ensuring byte-identical output.
 
-- **Location**: `crates/metaquiche-shared/templates/*.toml`
-    - [codegen.toml](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/templates/codegen.toml): Code generation templates.
-    - [project.toml](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/templates/project.toml): Project scaffolding (Cargo.toml, main.rs, etc).
-    - [runtime.toml](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/templates/runtime.toml): Runtime wrappers and macros.
-    - [messages.toml](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/templates/messages.toml): i18n strings.
+- **Location**: `metaquiche/metaquiche-shared/templates/*.toml`
+    - [codegen.toml](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-shared/templates/codegen.toml): Code generation templates.
+    - [project.toml](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-shared/templates/project.toml): Project scaffolding (Cargo.toml, main.rs, etc).
+    - [runtime.toml](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-shared/templates/runtime.toml): Runtime wrappers and macros.
+    - [messages.toml](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-shared/templates/messages.toml): i18n strings.
 
 - **Access**: `metaquiche_shared::template::templates()` loads these at runtime (embedded).
 
@@ -224,9 +224,9 @@ The compiler uses a zero-dependency template system to share code between Host a
 
 The native compiler (`metaquiche-native`) is written in Quiche (`src/main.qrs`), but requires a Rust entry point to be compiled by Cargo during the bootstrap process.
 
-- **[metaquiche-native/src/main.rs](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-native/src/main.rs)**:
+- **[metaquiche-native/src/main.rs](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-native/src/main.rs)**:
     - This file is a **thin bootstrap wrapper**.
     - It acts as the bridge between the generated Rust code (from `main.qrs`) and the Rust standard library / Cargo.
-    - Logic for executing Rust code (`run_rust_code`) and Cargo commands (`run_cargo_command`) is delegated to **[metaquiche_shared::runner](file:///Volumes/Dev/code/jagtesh/quiche/crates/metaquiche-shared/src/runner.rs)**.
+    - Logic for executing Rust code (`run_rust_code`) and Cargo commands (`run_cargo_command`) is delegated to **[metaquiche_shared::runner](file:///Volumes/Dev/code/jagtesh/quiche/metaquiche/metaquiche-shared/src/runner.rs)**.
     - **Do not modify logic in `main.rs` directly.** Instead, modify the shared runner or `main.qrs`.
 

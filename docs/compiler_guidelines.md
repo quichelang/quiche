@@ -26,8 +26,8 @@ The runtime has the ability to modify the AST before it is parsed by `metaquiche
 ### Bug Fixes and Modifications
 
 Any bug fix, addition, or deletion **MUST be made to BOTH compilers**:
-- `crates/metaquiche-host/src/` (Rust)
-- `crates/metaquiche-native/src/` (Quiche)
+- `metaquiche/metaquiche-host/src/` (Rust)
+- `metaquiche/metaquiche-native/src/` (Quiche)
 
 Run `make stage1 && make stage2 && make verify` after any change.
 

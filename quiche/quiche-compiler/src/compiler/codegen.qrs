@@ -1,0 +1,1804 @@
+import rust.metaquiche_parser.ast as q_ast
+from rust.quiche_runtime import deref, qref
+
+
+# extern_defs is provided by the wrapper module
+@extern(path="crate::quiche::codegen_template")
+def codegen_template(key: String) -> String: pass
+# NOTE: Template accessor functions for codegen parity are defined in main.qrs
+# but @extern in non-main files currently breaks class generation. This will be
+# addressed in a future update. For now, using hardcoded strings for compatibility.
+
+from compiler.type_utils import infer_type as util_infer_type
+from compiler.type_utils import type_to_string as util_type_to_string
+from compiler.type_utils import is_tuple as util_is_tuple
+from compiler.type_utils import get_root as util_get_root
+from compiler.type_utils import is_type_or_module as util_is_type_or_module
+from compiler.type_utils import contains_name as util_contains_name
+# Using extern_defs from wrapper
+# ============================================================================
+# TYPE TRACKING - Stores type information for variables in scope
+# ============================================================================
+
+# TypeInfo is defined in extern_defs (mod.rs) and imported here
+@extern(path="super::extern_defs::TypeInfo", no_generic=True)
+class TypeInfo(Extern):
+    type_str: String
+    is_ref: bool
+    is_mut_ref: bool
+    is_iterable_ref: bool
+
+@extern(path="super::extern_defs::create_type_info")
+def create_type_info(type_str: String) -> TypeInfo: pass
+
+@extern(path="super::extern_defs::create_type_info_simple")
+def create_type_info_simple() -> TypeInfo: pass
+
+# ============================================================================
+# CODEGEN CORE - Main class, fields, constructors, and core utilities
+# ============================================================================
+
+class Codegen(Struct):
+    output: RustString
+    tuple_vars: HashMap[String, bool]
+    defined_vars: Vec[HashMap[String, TypeInfo]]
+    import_paths: HashMap[String, String]
+    in_trait_or_impl: bool
+
+    # Template shorthand: self.T("key") emits codegen_template("key")
+    def T(self, key: String):
+        self.emit(codegen_template(key))
+
+    def infer_expr_type(self, expr: q_ast.Expr) -> String:
+        return util_infer_type(expr)
+
+    def type_to_string(self, expr: q_ast.Expr) -> String:
+        return util_type_to_string(expr)
+
+    def is_tuple_expr(self, expr: q_ast.Expr) -> bool:
+        return util_is_tuple(expr)
+
+    def is_var_defined_in_scopes(self, name: String) -> bool:
+        i = self.defined_vars.len()
+        while i > 0:
+            i = i - 1
+            scope = ref(self.defined_vars[i.clone()])
+            match scope.get(ref(name.clone())):
+                case Some(_): return True
+                case None: pass
+        return False
+
+    def get_var_type_info(self, name: String) -> Option[TypeInfo]:
+        """Look up type info for a variable across all scopes."""
+        i = self.defined_vars.len()
+        while i > 0:
+            i = i - 1
+            scope = ref(self.defined_vars[i.clone()])
+            match scope.get(ref(name.clone())):
+                case Some(ti): return Some(ti.clone())
+                case None: pass
+        return None
+
+    def is_mut_ref_iterable(self, name: String) -> bool:
+        """Check if variable is a &mut reference to an iterable (Vec, String, etc)."""
+        match self.get_var_type_info(name):
+            case Some(ti): return ti.is_iterable_ref
+            case None: return False
+
+    def get_root_name(self, expr: q_ast.Expr) -> Option[String]:
+        match expr:
+            case q_ast.Expr.Name(n): return Some(n.to_string())
+            case q_ast.Expr.Attribute(value=v, attr=a):
+                return self.get_root_name(deref(v.clone()))
+            case q_ast.Expr.Subscript(value=v, slice=s):
+                return self.get_root_name(deref(v.clone()))
+            case q_ast.Expr.Call(func=f, args=a, keywords=k):
+                return self.get_root_name(deref(f.clone()))
+            case _: return None
+
+    def is_type_or_mod(self, name: String) -> bool:
+        if name == "self": return False
+        # Check for known module names
+        if name == "extern_defs": return True
+        # Check import registry
+        match self.import_kinds.get(ref(name)):
+             case Some(k):
+                  if k.as_str() == "module" or k.as_str() == "type": return True
+             case None: pass
+        # Check for uppercase first letter (type naming convention)
+        if name.len() > 0:
+            first_char = name.chars().next()
+            match first_char:
+                case Some(c):
+                    if c.is_uppercase(): return True
+                case None: pass
+        return False
+
+    def is_var_defined(self, name: String) -> bool:
+        return False
+
+    def enter_var_scope(self):
+        self.defined_vars.push(HashMap[String, TypeInfo].new())
+
+    def exit_var_scope(self):
+        sz = self.defined_vars.len()
+        if sz > 1:
+            self.defined_vars.pop()
+
+    def mark_var_defined(self, name: String):
+        """Mark variable as defined with empty type info (legacy compatibility)."""
+        self.mark_var_defined_with_type(name, create_type_info_simple())
+
+    def mark_var_defined_with_type(self, name: String, type_info: TypeInfo):
+        """Mark variable as defined with full type information."""
+        sz = self.defined_vars.len()
+        idx = sz - 1
+        current_scope: HashMap[String, TypeInfo] = self.defined_vars[idx.clone()]
+        current_scope.insert(name, type_info)
+        self.defined_vars[idx.clone()] = current_scope
+    
+    def define_var(self, name: String):
+        self.mark_var_defined(name)
+
+    def define_var_with_type(self, name: String, type_str: String):
+        """Define a variable with its type string for later lookup."""
+        self.mark_var_defined_with_type(name, create_type_info(type_str))
+
+    def expr_contains_name(self, expr: q_ast.Expr, name: String) -> bool:
+        return util_contains_name(expr, name)
+
+    def generate_pattern(self, pat: q_ast.Pattern):
+        match pat:
+            case q_ast.Pattern.MatchValue(v): self.emit_pattern_path(deref(v))
+            case q_ast.Pattern.MatchAs(pattern=pattern, name=name):
+                match name:
+                    case Some(n): self.emit(n)
+                    case None: self.T("wildcard")
+            case q_ast.Pattern.MatchClass(c):
+                self.emit_pattern_path(deref(c.cls))
+                if c.patterns.len() > 0:
+                    self.T("lparen")
+                    first_p = True
+                    for p in c.patterns.clone():
+                        if not first_p: self.T("comma_sep")
+                        self.generate_pattern(p)
+                        first_p = False
+                    self.T("rparen")
+                elif c.kwd_patterns.len() > 0:
+                    self.T("space_brace_open")
+                    idx_kw_pat = 0
+                    for pat in c.kwd_patterns.clone():
+                        if idx_kw_pat > 0: self.T("comma_sep")
+                        # We need the attr name here but kwd_patterns is Vec<Pattern>
+                        # kwd_attrs is parallel Vec<String>
+                        attr_name = c.kwd_attrs[idx_kw_pat]
+                        self.emit(attr_name)
+                        self.T("colon_sep")
+                        self.generate_pattern(pat)
+                        idx_kw_pat = idx_kw_pat + 1
+                    self.T("pattern_struct_end")
+                else: self.T("pattern_struct_empty")
+            case q_ast.Pattern.MatchSingleton(c):
+                match c:
+                    case q_ast.Constant.NoneVal: self.T("none_literal".to_string())
+                    case q_ast.Constant.Bool(b):
+                        if b: self.T("true_literal".to_string())
+                        else: self.T("false_literal".to_string())
+                    case q_ast.Constant.Str(s):
+                        self.T("quote")
+                        self.emit(s.to_string())
+                        self.T("quote")
+                    case q_ast.Constant.Int(i): self.emit(i.to_string())
+                    case _: self.T("wildcard")
+            case q_ast.Pattern.MatchSequence(pats):
+                self.T("lparen")
+                first_seq = True
+                for p_seq in pats.clone():
+                    if not first_seq: self.T("comma_sep")
+                    self.generate_pattern(p_seq)
+                    first_seq = False
+                self.T("rparen")
+            case _: self.T("wildcard")
+
+    import_kinds: HashMap[String, String]
+    clone_names: bool
+    current_module_path: String
+    class_fields: HashMap[String, HashMap[String, String]]
+    current_class: String
+
+    def is_skip_check_method(self, method_name: String) -> bool:
+        # Methods that are known to be infallible and don't need check! wrapping
+        # This list must match the host compiler exactly
+        if method_name.as_str() == "as_str": return True
+        if method_name.as_str() == "to_string": return True
+        if method_name.as_str() == "clone": return True
+        if method_name.as_str() == "into_syntax": return True
+        if method_name.as_str() == "into_iter": return True
+        if method_name.as_str() == "as_ref": return True
+        if method_name.as_str() == "ref": return True
+        if method_name.as_str() == "mutref": return True
+        if method_name.as_str() == "enter_var_scope": return True
+        if method_name.as_str() == "exit_var_scope": return True
+        if method_name.as_str() == "get_root_name": return True
+        if method_name.as_str() == "is_type_or_mod": return True
+        if method_name.as_str() == "is_var_defined": return True
+        if method_name.as_str() == "mark_var_defined": return True
+        if method_name.as_str() == "define_var": return True
+        if method_name.as_str() == "expr_contains_name": return True
+        if method_name.as_str() == "generate_pattern": return True
+        if method_name.as_str() == "emit": return True
+        if method_name.as_str() == "push": return True
+        return False
+
+    def __init__(self):
+        self.output = RustString.new()
+        self.tuple_vars = HashMap[String, bool].new()
+        self.defined_vars = [HashMap[String, TypeInfo].new()]
+        self.import_paths = HashMap[String, String].new()
+        self.import_kinds = HashMap[String, String].new()
+        self.clone_names = True
+        self.current_module_path = ""
+        self.class_fields = HashMap[String, HashMap[String, String]].new()
+        self.current_class = ""
+
+    def new() -> Codegen:
+        return Codegen(
+            output=RustString.new(),
+            tuple_vars=HashMap[String, bool].new(),
+            defined_vars=[HashMap[String, TypeInfo].new()],
+            import_paths=HashMap[String, String].new(),
+            import_kinds=HashMap[String, String].new(),
+            clone_names=True,
+            current_module_path="",
+            class_fields=HashMap[String, HashMap[String, String]].new(),
+            current_class="",
+            in_trait_or_impl=False
+        )
+
+    def new_with_imports(import_paths: HashMap[String, String], import_kinds: HashMap[String, String]) -> Codegen:
+        return Codegen(
+            output=RustString.new(),
+            tuple_vars=HashMap[String, bool].new(),
+            defined_vars=[HashMap[String, TypeInfo].new()],
+            import_paths=import_paths,
+            import_kinds=import_kinds,
+            clone_names=True,
+            current_module_path="",
+            class_fields=HashMap[String, HashMap[String, String]].new(),
+            current_class="",
+            in_trait_or_impl=False
+        )
+
+    def new_with_imports_and_module(import_paths: HashMap[String, String], import_kinds: HashMap[String, String], current_module_path: String) -> Codegen:
+        return Codegen(
+            output=RustString.new(),
+            tuple_vars=HashMap[String, bool].new(),
+            defined_vars=[HashMap[String, TypeInfo].new()],
+            import_paths=import_paths,
+            import_kinds=import_kinds,
+            clone_names=True,
+            current_module_path=current_module_path,
+            class_fields=HashMap[String, HashMap[String, String]].new(),
+            current_class="",
+            in_trait_or_impl=False
+        )
+
+    def generate_expr_no_clone(self, expr: q_ast.Expr):
+        prev = self.clone_names
+        self.clone_names = False
+        self.generate_expr(expr)
+        self.clone_names = prev
+
+    def emit_lvalue_target(self, expr: q_ast.Expr):
+        # Emit raw variable/expression for use as mutation target (no &mut/& prefix, no .clone())
+        match expr:
+            case q_ast.Expr.Name(n):
+                self.emit(n.to_string())
+            case q_ast.Expr.Subscript(value=value, slice=slice):
+                # For nested subscripts like obj["y"][1], emit recursively
+                self.emit_lvalue_target(deref(value.clone()))
+                self.T("lbracket")
+                # If the slice is a string literal, it's a HashMap key - add & prefix
+                lvalue_slice_is_string = False
+                match deref(slice.clone()):
+                    case q_ast.Expr.Constant(c):
+                        match c:
+                            case q_ast.Constant.Str(_): lvalue_slice_is_string = True
+                            case _: pass
+                    case _: pass
+                if lvalue_slice_is_string:
+                    self.T("op_bitand")
+                self.generate_expr(deref(slice.clone()))
+                self.T("rbracket")
+            case q_ast.Expr.Attribute(value=value, attr=attr):
+                self.emit_lvalue_target(deref(value.clone()))
+                self.T("field_access")
+                self.emit(attr.clone())
+            case _:
+                # Fallback to generate_expr_no_clone for other cases
+                self.generate_expr_no_clone(expr)
+
+    def emit_pattern_path(self, expr: q_ast.Expr):
+        # Emit type/enum path using :: for all segments (for match case patterns)
+        match expr:
+            case q_ast.Expr.Name(n):
+                self.emit(n.to_string())
+            case q_ast.Expr.Attribute(value=value, attr=attr):
+                self.emit_pattern_path(deref(value.clone()))
+                self.T("namespace_sep")
+                self.emit(attr.clone())
+            case _:
+                self.generate_expr(expr)
+
+    def register_class_field(self, class_name: String, field_name: String, field_type: String):
+        match self.class_fields.get(ref(class_name.clone())):
+            case Some(cf_untyped):
+                class_fields_map: HashMap[String, String] = cf_untyped.clone()
+                class_fields_map.insert(field_name.clone(), field_type.clone())
+            case None:
+                class_fields_map: HashMap[String, String] = HashMap[String, String].new()
+                class_fields_map.insert(field_name.clone(), field_type.clone())
+                self.class_fields.insert(class_name.clone(), class_fields_map)
+
+    def set_current_class(self, class_name: String):
+        self.current_class = class_name
+
+    def clear_current_class(self):
+        self.current_class = ""
+
+    def get_self_field_type(self, field_name: String) -> String:
+        if self.current_class == "": return ""
+        match self.class_fields.get(ref(self.current_class.clone())):
+            case Some(cf_untyped):
+                class_fields_map: HashMap[String, String] = cf_untyped.clone()
+                match class_fields_map.get(ref(field_name.clone())):
+                    case Some(t): return t.clone()
+                    case None: return ""
+            case None: return ""
+
+    def emit(self, s: String):
+        self.output.push_str(ref(s))
+
+    # ========================================================================
+    # TYPE UTILITIES - Corresponds to types.rs in host compiler
+    # ========================================================================
+
+    def emit_type_params(self, type_params: Vec[String]):
+        """Emit generic type parameters like <T> or <T: Display>
+        
+        type_params is Vec<String> where each string is a type param like
+        "T" or "T: Display" (already lowered by the parser).
+        """
+        if type_params.len() > 0:
+            self.T("op_lt")
+            first = True
+            for tp in type_params:
+                if not first:
+                    self.T("comma_sep")
+                first = False
+                self.emit(tp)
+            self.T("op_gt")
+
+    # ========================================================================
+    # STATEMENT EMISSION - Corresponds to stmt.rs in host compiler
+    # ========================================================================
+
+    def generate_stmt(self, stmt: q_ast.Stmt):
+        match stmt:
+            case q_ast.Stmt.FunctionDef(f):
+                self.emit_function_def(f)
+            case q_ast.Stmt.Expr(e):
+                self.emit_stmt_expr(deref(e))
+            case q_ast.Stmt.Return(r):
+                self.emit_return(r)
+            case q_ast.Stmt.Assign(a):
+                self.emit_assign(a)
+            case q_ast.Stmt.AnnAssign(a):
+                self.emit_ann_assign(a)
+            case q_ast.Stmt.For(f):
+                self.emit_for(f)
+            case q_ast.Stmt.If(i):
+                self.emit_if(i)
+            case q_ast.Stmt.While(w):
+                self.emit_while(w)
+            case q_ast.Stmt.ClassDef(c):
+                self.emit_class_def(c)
+            case q_ast.Stmt.Match(m):
+                self.emit_match(m)
+            case q_ast.Stmt.Import(i):
+                self.emit_import(i)
+            case q_ast.Stmt.ImportFrom(i):
+                self.emit_import_from(i)
+            case q_ast.Stmt.Assert(a):
+                self.emit_assert(a)
+            case q_ast.Stmt.Pass:
+                pass  # Do nothing - empty statement in Rust
+            case q_ast.Stmt.Break:
+                self.T("break_stmt".to_string())
+            case q_ast.Stmt.Continue:
+                self.T("continue_stmt".to_string())
+            case q_ast.Stmt.StructDef(s):
+                self.emit_struct_def(s)
+            case q_ast.Stmt.EnumDef(e):
+                self.emit_enum_def(e)
+            case q_ast.Stmt.TraitDef(t):
+                self.emit_trait_def(t)
+            case q_ast.Stmt.ImplDef(i):
+                self.emit_impl_def(i)
+            case q_ast.Stmt.RustBlock(code):
+                # Emit raw Rust code directly
+                for line in code.lines():
+                    self.emit(line.to_string())
+                    self.T("newline")
+            case q_ast.Stmt.ConstDef(c):
+                # Module-level constant: pub const NAME: TYPE = VALUE;
+                self.emit("pub const ")
+                self.emit(c.name.to_string())
+                self.T("colon_sep")
+                type_str = self.type_to_string(deref(c.ty))
+                self.emit(type_str)
+                self.T("assign_op")
+                self.generate_expr(deref(c.value))
+                self.emit(";\n")
+            case _:
+                self.T("unimplemented_stmt")
+
+    def emit_assert(self, a: q_ast.AssertStmt):
+        self.T("assert_start")
+        self.generate_expr(deref(a.test))
+        match a.msg:
+            case Some(m):
+                self.T("format_debug")
+                m_expr = deref(m)
+                self.generate_expr(m_expr)
+            case None: pass
+        self.T("paren_semicolon_newline")
+
+    # Note: is_self_mutated and helper functions removed.
+    # Self parameter mutability is now determined at parse time via SelfKind.
+
+    def emit_function_def(self, f: q_ast.FunctionDef):
+        # Check for @extern
+        is_extern = False
+        extern_path = ""
+        for dec in f.decorator_list.clone():
+            match dec:
+                case q_ast.Expr.Name(n):
+                    if n.to_string() == "extern":
+                        is_extern = True
+                case q_ast.Expr.Call(func=func, args=args, keywords=keywords):
+                    match ref(deref(func)):
+                        case q_ast.Expr.Name(func_name):
+                            if func_name.to_string() == "extern":
+                                is_extern = True
+                                for kw in keywords.clone():
+                                    match ref(kw.arg):
+                                        case Some(arg_name):
+                                            if arg_name.as_str() == "path":
+                                                match ref(deref(kw.value)):
+                                                    case q_ast.Expr.Constant(c):
+                                                        match c:
+                                                            case q_ast.Constant.Str(s):
+                                                                extern_path = s.to_string()
+                                                            case _: pass
+                                                    case _: pass
+                                            elif arg_name.as_str() == "no_generic":
+                                                 pass
+                                        case _: pass
+                        case _: pass
+                case _: pass
+
+        func_name = f.name.to_string()
+        if is_extern:
+            if extern_path != "":
+                self.T("kw_pub_use")
+                self.emit(extern_path)
+                self.T("kw_as")
+                self.emit(func_name)
+                self.emit(";\n")
+            else:
+                self.T("function_def_start".to_string())
+                self.emit(func_name)
+                self.T("newline")
+            return
+
+        # Check for private functions (underscore prefix)
+        is_private = func_name.starts_with(ref("_"))
+        if self.in_trait_or_impl or is_private:
+            self.emit("fn ")
+        else:
+            self.T("kw_pub_fn")
+        self.emit(func_name)
+        
+        # Emit generic type parameters if present
+        self.emit_type_params(f.type_params)
+        
+        self.T("lparen")
+        self.enter_var_scope()
+        # Register keys and emit args
+        first_arg: bool = True
+        for param in f.args.clone():
+            if not first_arg:
+                self.T("comma_sep")
+            first_arg = False
+
+            if param.arg.to_string() == "self":
+                # Use self_kind from AST (determined at parse time)
+                match f.self_kind:
+                    case q_ast.SelfKind.Ref(mut_):
+                        match mut_:
+                            case q_ast.Mutability.Mut:
+                                self.emit("&mut self")
+                            case q_ast.Mutability.Not:
+                                self.emit("&self")
+                    case q_ast.SelfKind.Value(mut_):
+                        match mut_:
+                            case q_ast.Mutability.Mut:
+                                self.emit("mut self")
+                            case q_ast.Mutability.Not:
+                                self.emit("self")
+                    case q_ast.SelfKind.NoSelf:
+                        self.emit("self")
+            else:
+                self.emit(param.arg.to_string())
+                self.T("colon_sep")
+                if param.annotation.is_some():
+                    ann = param.annotation.clone().unwrap()
+                    ann_expr = deref(ann.clone())
+                    type_name = self.type_to_string(ann_expr)
+                    self.emit(type_name.clone())
+                    # Register param with full type info for CoW iterator support
+                    self.define_var_with_type(param.arg.to_string(), type_name.clone())
+                else:
+                    self.emit("Any")
+                    self.mark_var_defined(param.arg.to_string())
+        self.T("rparen")
+        if f.returns.is_some():
+            ret = f.returns.clone().unwrap()
+            ret_type = self.type_to_string(deref(ret.clone()))
+            self.T("arrow")
+            self.emit(ret_type)
+        
+        # Check if this is a trait method signature (in_trait_or_impl and body is empty or pass-only)
+        is_signature_only = False
+        if self.in_trait_or_impl:
+            if f.body.len() == 0:
+                is_signature_only = True
+            elif f.body.len() == 1:
+                match ref(f.body[0]):
+                    case q_ast.Stmt.Pass:
+                        is_signature_only = True
+                    case _: pass
+        
+        if is_signature_only:
+            self.emit(";\n")
+            self.exit_var_scope()  # Balance enter_var_scope() even for signatures
+        else:
+            self.emit(" {\n")
+            for s in f.body:
+                self.generate_stmt(s)
+            self.exit_var_scope()
+            self.T("function_def_end".to_string())
+    def emit_stmt_expr(self, e: q_ast.QuicheExpr):
+        is_doc = False
+        match ref(e):
+            case q_ast.Expr.Constant(c):
+                match c:
+                    case q_ast.Constant.Str(s):
+                        is_doc = True
+                        self.T("docstring_start".to_string())
+                        self.emit(s.to_string().replace(ref("\""), ref("\\\"")))
+                        self.T("docstring_end".to_string())
+                    case _: pass
+            case _: pass
+
+        if not is_doc:
+            self.generate_expr(e)
+            self.emit(";\n")
+
+    def emit_return(self, r: Option[Box[q_ast.Expr]]):
+        self.T("kw_return")
+        match r:
+            case Some(v):
+                v_expr = deref(v)
+                self.generate_expr(v_expr)
+            case None: pass
+        self.emit(";\n")
+
+    def emit_assign(self, a: q_ast.Assign):
+        # Simple single target assignment
+        is_subscript = False
+        subscript_is_map = False
+        match ref(a.targets[0]):
+            case q_ast.Expr.Name(n):
+                name_assign = n.to_string()
+                is_existing = self.is_var_defined_in_scopes(name_assign.clone())
+                if not is_existing:
+                    if self.expr_contains_name(Clone.clone(ref(deref(a.value))), name_assign.clone()):
+                        is_existing = True
+                
+                if not is_existing:
+                    self.T("kw_let_mut")
+                self.emit(name_assign.clone())
+                self.T("assign_op")
+                assign_val_type = self.infer_expr_type(Clone.clone(ref(deref(a.value))))
+                if not is_existing:
+                    self.define_var(name_assign.clone())
+                    self.mark_var_defined(name_assign.clone())
+                match ref(deref(a.value)):
+                    case q_ast.Expr.Tuple(_):
+                        self.tuple_vars.insert(name_assign.clone(), True)
+                    case _: pass
+            case q_ast.Expr.Attribute(value=value, attr=attr):
+                # Reconstruct Attribute expr for emission
+                # We can't easily clone the whole struct variant from fields, so we just construct what emit_attribute_target needs
+                # Actually helper takes expr 
+                # Let's fix emit_attribute_target later, for now inline simple emission
+                self.generate_expr(deref(value))
+                self.T("field_access")
+                self.emit(attr.clone())
+                self.T("assign_op")
+            case q_ast.Expr.Subscript(value=value, slice=slice):
+                self.emit_lvalue_target(deref(value.clone()))
+                self.T("lbracket")
+                self.generate_expr(deref(slice.clone()))
+                self.emit("] = ")
+            case _: pass
+        self.generate_expr(deref(a.value))
+        self.emit(";\n")
+
+    def emit_ann_assign(self, a: q_ast.AnnAssign):
+        match ref(deref(a.target)):
+            case q_ast.Expr.Name(n):
+                ann_type_name = self.type_to_string(Clone.clone(ref(deref(a.annotation.clone()))))
+                is_tuple_ann = ann_type_name.starts_with(ref("(")) or ann_type_name.starts_with(ref("Tuple"))
+                self.T("kw_let_mut")
+                self.emit(n.to_string())
+                self.T("colon_sep")
+                self.emit(ann_type_name.clone())
+                self.T("assign_op")
+                # Register local variable with full type info for CoW support
+                self.define_var_with_type(n.to_string(), ann_type_name.clone())
+                if is_tuple_ann:
+                    self.tuple_vars.insert(n.to_string(), True)
+            case _: pass
+        match a.value:
+            case Some(v):
+                v_expr = deref(v)
+                self.generate_expr(v_expr)
+            case None:
+                self.emit("Default::default()")
+        self.emit(";\n")
+
+    def emit_for(self, f: q_ast.ForStmt):
+        prev_clone = self.clone_names
+        self.clone_names = True
+        self.emit("for __q in (")
+        # Check if iterating over a &mut Vec - if so, use .iter().cloned() for CoW semantics
+        is_mut_ref_iter = False
+        match ref(deref(f.iter)):
+            case q_ast.Expr.Name(n):
+                iter_name = n.to_string()
+                is_mut_ref_iter = self.is_mut_ref_iterable(iter_name.clone())
+                self.emit(iter_name)
+            case _:
+                self.generate_expr(deref(f.iter))
+        if is_mut_ref_iter:
+            self.emit(").iter().cloned() {\n")
+        else:
+            self.emit(") {\n")
+        self.T("kw_let")
+        match ref(deref(f.target)):
+            case q_ast.Expr.Name(n):
+                self.emit(n.to_string())
+            case q_ast.Expr.Tuple(elts):
+                # Handle tuple unpacking: for (a, b) in x.iter()
+                self.emit("(")
+                idx: usize = 0
+                for e in elts.clone():
+                    if idx > 0:
+                        self.T("comma_sep")
+                    match ref(e):
+                        case q_ast.Expr.Name(n):
+                            self.emit(n.to_string())
+                        case _:
+                            self.generate_expr(e)
+                    idx = idx + 1
+                self.emit(")")
+            case _:
+                self.T("wildcard")
+        self.emit(" = __q;\n")
+        self.enter_var_scope()
+        self.clone_names = prev_clone
+        for s in f.body:
+            self.generate_stmt(s)
+        self.exit_var_scope()
+        self.emit("}\n")
+
+    def emit_if(self, i: q_ast.IfStmt):
+        self.T("kw_if")
+        self.generate_expr(deref(i.test))
+        self.emit(" {\n")
+        self.enter_var_scope()
+        for s in i.body:
+            self.generate_stmt(s)
+        self.exit_var_scope()
+        self.emit("}\n")
+        
+        if i.orelse.len() > 0:
+            self.T("kw_else")
+            self.T("lbrace")
+            self.T("newline")
+            self.enter_var_scope()
+            for s in i.orelse:
+                self.generate_stmt(s)
+            self.exit_var_scope()
+            self.emit("}\n")
+
+    def emit_while(self, w: q_ast.WhileStmt):
+        self.T("kw_while")
+        self.generate_expr(deref(w.test))
+        self.emit(" {\n")
+        self.enter_var_scope()
+        for s in w.body:
+            self.generate_stmt(s)
+        self.exit_var_scope()
+        self.emit("}\n")
+
+    def emit_class_def(self, c: q_ast.ClassDef):
+        is_enum = False
+        class_is_extern = False
+        class_extern_path = ""
+        no_generic = False
+
+        # Support class Name(Struct) or class Name(Enum)
+        for base in c.bases.clone():
+             match ref(base):
+                 case q_ast.Expr.Name(n):
+                     if n.to_string() == "Enum": is_enum = True
+                     if n.to_string() == "Extern": class_is_extern = True
+                 case _: pass
+
+        # Support decorators (legacy)
+        for dec in c.decorator_list.clone():
+            match dec:
+                case q_ast.Expr.Name(n):
+                    if n.to_string() == "enum":
+                        is_enum = True
+                    if n.to_string() == "extern":
+                        class_is_extern = True
+                case q_ast.Expr.Call(func=func, args=args, keywords=keywords):
+                    match ref(deref(func)):
+                        case q_ast.Expr.Name(func_name):
+                            if func_name.to_string() == "extern":
+                                class_is_extern = True
+                                for kw in keywords.clone():
+                                    match ref(kw.arg):
+                                        case Some(arg_name):
+                                            if arg_name.as_str() == "path":
+                                                match ref(deref(kw.value)):
+                                                    case q_ast.Expr.Constant(c):
+                                                        match c:
+                                                            case q_ast.Constant.Str(s):
+                                                                class_extern_path = s.to_string()
+                                                            case _: pass
+                                                    case _: pass
+                                            elif arg_name.as_str() == "no_generic":
+                                                match ref(deref(kw.value)):
+                                                    case q_ast.Expr.Constant(c):
+                                                        match c:
+                                                            case q_ast.Constant.Bool(b):
+                                                                no_generic = Clone.clone(ref(b))
+                                                            case _: pass
+                                                    case q_ast.Expr.Name(n):
+                                                        if n.to_string() == "true":
+                                                            no_generic = True
+                                                    case _: pass
+                                        case _: pass
+                        case _: pass
+                case _: pass
+
+        class_name = c.name.to_string()
+
+        if class_is_extern:
+            if class_extern_path != "":
+                self.T("kw_pub_type")
+                self.emit(c.name.to_string())
+                if no_generic:
+                    self.T("assign_op")
+                    self.emit(class_extern_path)
+                    self.emit(";\n")
+                else:
+                    self.emit("<T> = ")
+                    self.emit(class_extern_path)
+                    self.emit("<T>;\n")
+            else:
+                self.emit("// Extern class ")
+                self.emit(c.name.to_string())
+                self.T("newline")
+            return
+
+        if is_enum:
+             self.T("kw_derive_clone_debug")
+             self.T("kw_pub_enum")
+        else:
+             self.T("kw_derive_clone_debug_default")
+             # Private classes start with underscore
+             if c.name.starts_with(ref("_")):
+                 self.emit("struct ")
+             else:
+                 self.T("kw_pub_struct")
+        self.emit(c.name.to_string())
+        self.emit("  {\n")
+
+        if is_enum:
+            for s in c.body.clone():
+                match s:
+                    case q_ast.Stmt.AnnAssign(a):
+                        match ref(deref(a.target)):
+                            case q_ast.Expr.Name(n):
+                                self.emit(n.to_string())
+                                self.T("lparen")
+                                match deref(a.annotation):
+                                    case q_ast.Expr.List(elts):
+                                        idx_enum: usize = 0
+                                        for t in elts.clone():
+                                            if idx_enum > 0: self.T("comma_sep")
+                                            t_str_enum = self.type_to_string(t)
+                                            self.emit(t_str_enum)
+                                            idx_enum = idx_enum + 1
+                                    case _: pass
+                                self.emit("),\n")
+                            case _: pass
+                    case _: pass
+        else:
+            for s in c.body.clone():
+                match s:
+                    case q_ast.Stmt.AnnAssign(a):
+                        match ref(deref(a.target)):
+                            case q_ast.Expr.Name(n):
+                                # Private fields start with underscore
+                                if n.starts_with(ref("_")):
+                                    pass  # no pub for private fields
+                                else:
+                                    self.T("kw_pub")
+                                self.emit(n.to_string())
+                                self.T("colon_sep")
+                                ann_str_f = self.type_to_string(Clone.clone(ref(deref(a.annotation.clone()))))
+                                self.register_class_field(class_name.clone(), n.to_string(), ann_str_f.clone())
+                                self.emit(ann_str_f)
+                                self.emit(",\n")
+                            case _: pass
+                    case _: pass
+        self.emit("}\n\n")
+
+
+
+        if not is_enum:
+            self.T("kw_impl")
+            self.emit(c.name.to_string())
+            self.emit(" {\n")
+            self.set_current_class(class_name.clone())
+            for s in c.body:
+                match s:
+                    case q_ast.Stmt.FunctionDef(_):
+                        self.generate_stmt(s)
+                    case _: pass
+            self.clear_current_class()
+            self.emit("}\n\n")
+
+    def emit_struct_def(self, s: q_ast.StructDef):
+        # Emit derive macro
+        self.emit("#[derive(Clone, Debug, Default)]\n")
+        # Private structs start with underscore
+        if s.name.starts_with(ref("_")):
+            self.emit("struct ")
+        else:
+            self.emit("pub struct ")
+        self.emit(s.name.to_string())
+        # Type params
+        if s.type_params.len() > 0:
+            self.emit("<")
+            idx: usize = 0
+            for tp in s.type_params.clone():
+                if idx > 0: self.T("comma_sep")
+                self.emit(tp)
+                idx = idx + 1
+            self.emit(">")
+        self.emit(" {\n")
+        # Fields - private fields start with underscore
+        for field in s.fields.clone():
+            if field.name.starts_with(ref("_")):
+                self.emit("")  # no pub for private fields
+            else:
+                self.emit("pub ")
+            self.emit(field.name.to_string())
+            self.T("colon_sep")
+            self.emit(field.ty.to_string())
+            self.emit(",\n")
+        self.emit("}\n\n")
+
+    def emit_enum_def(self, e: q_ast.EnumDef):
+        # Emit derive macro
+        self.emit("#[derive(Clone, Debug, PartialEq)]\n")
+        self.emit("pub enum ")
+        self.emit(e.name.to_string())
+        # Type params
+        if e.type_params.len() > 0:
+            self.emit("<")
+            idx: usize = 0
+            for tp in e.type_params.clone():
+                if idx > 0: self.T("comma_sep")
+                self.emit(tp)
+                idx = idx + 1
+            self.emit(">")
+        self.emit(" {\n")
+        # Variants
+        for variant in e.variants.clone():
+            self.emit(variant.name.to_string())
+            if variant.fields.len() > 0:
+                self.T("lparen")
+                idx: usize = 0
+                for f in variant.fields.clone():
+                    if idx > 0: self.T("comma_sep")
+                    self.emit(f)
+                    idx = idx + 1
+                self.T("rparen")
+            self.emit(",\n")
+        self.emit("}\n\n")
+
+    def emit_trait_def(self, t: q_ast.TraitDef):
+        self.emit("pub trait ")
+        self.emit(t.name.to_string())
+        self.emit(" {\n")
+        self.in_trait_or_impl = True
+        for stmt in t.body:
+            self.generate_stmt(stmt)
+        self.in_trait_or_impl = False
+        self.emit("}\n\n")
+
+    def emit_impl_def(self, i: q_ast.ImplDef):
+        self.emit("impl ")
+        match i.trait_name.clone():
+            case Some(trait_name):
+                self.emit(trait_name)
+                self.emit(" for ")
+            case None: pass
+        self.emit(i.target_type.to_string())
+        self.emit(" {\n")
+        self.in_trait_or_impl = True
+        for stmt in i.body:
+            self.generate_stmt(stmt)
+        self.in_trait_or_impl = False
+        self.emit("}\n\n")
+
+    def emit_match(self, m: q_ast.MatchStmt):
+        self.T("kw_match")
+        self.generate_expr(deref(m.subject))
+        self.emit(" {\n")
+        for case_ in m.cases:
+            self.generate_pattern(case_.pattern.clone())
+            match case_.guard:
+                case Some(g):
+                    self.emit(" if ")
+                    g_expr = deref(g.clone())
+                    self.generate_expr(g_expr)
+                case None: pass
+            self.emit(" => {\n")
+            self.enter_var_scope()
+            for s in case_.body:
+                self.generate_stmt(s)
+            self.exit_var_scope()
+            self.emit("}\n")
+        self.emit("}\n")
+
+    def emit_import(self, i: q_ast.Import):
+        dot_imp = "."
+        sep_imp = "::"
+        for alias in i.names:
+            is_root_module = self.current_module_path == "" or self.current_module_path == "main" or self.current_module_path == "lib"
+            alias_name_raw = alias.name.to_string()
+            rust_p = "rust."
+            std_p = "std."
+            alias_name = alias.name.to_string()
+            match alias.asname.clone():
+                case Some(a): alias_name = a.to_string()
+                case None: pass
+
+            rust_path_opt: Option[String] = None
+            match self.import_paths.get(ref(alias_name.clone())):
+                case Some(p): rust_path_opt = Some(p.clone())
+                case None: pass
+
+            match rust_path_opt:
+                case Some(rust_path):
+                    if is_root_module and rust_path.starts_with(ref("crate::")):
+
+                        continue
+                    self.T("kw_use")
+                    self.emit(rust_path)
+                    match alias.asname.clone():
+                        case Some(_):
+                            self.T("kw_as")
+                            self.emit(alias_name.clone())
+                        case None: pass
+                    self.emit(";\n")
+                case None:
+                    if not alias_name_raw.starts_with(rust_p.as_str()) and not alias_name_raw.starts_with(std_p.as_str()):
+                        if is_root_module and alias.asname.is_none() and not alias_name_raw.contains(ref(".")):
+
+                            continue
+                        self.emit("use crate::")
+                    else:
+                        self.T("kw_use")
+                    dot_v = "."
+                    sep_v = "::"
+                    self.emit(alias_name_raw.replace(dot_v.as_str(), sep_v.as_str()))
+                    self.emit(";\n")
+            
+
+
+    def emit_import_from(self, i: q_ast.ImportFrom):
+        mod_sep = "."
+        mod_col = "::"
+        for alias in i.names:
+            match i.module.clone():
+                case Some(m):
+                    if m.to_string() == "lib.test": return
+                case None: pass
+            alias_name = alias.name.to_string()
+            match alias.asname.clone():
+                case Some(a): alias_name = a.to_string()
+                case None: pass
+
+            rust_path_opt: Option[String] = None
+            match self.import_paths.get(ref(alias_name.clone())):
+                case Some(p): rust_path_opt = Some(p.clone())
+                case None: pass
+            
+            match rust_path_opt:
+                case Some(rust_path):
+                    self.T("kw_use")
+                    self.emit(rust_path)
+                    match alias.asname.as_ref():
+                        case Some(_):
+                            self.T("kw_as")
+                            self.emit(alias_name.clone())
+                        case None: pass
+                    self.emit(";\n")
+                case None:
+                    self.T("kw_use")
+                    match i.module.clone():
+                        case Some(m):
+                            m_str: String = m.to_string()
+                            if m_str == "lib.test": return
+                            r_p = "rust."
+                            s_p = "std."
+                            if not m_str.starts_with(r_p.as_str()) and not m_str.starts_with(s_p.as_str()):
+                                if i.level == 0: self.T("kw_crate")
+                        case None: pass
+                    l_lvl = i.level
+                    k_lvl: u32 = 0
+                    while k_lvl < l_lvl:
+                        self.T("kw_super")
+                        k_lvl = k_lvl + 1
+                    match i.module.clone():
+                        case Some(m):
+                            mod_name: String = m.to_string()
+                            if mod_name == "rust":
+                                mod_name = ""
+                            elif mod_name.starts_with(ref("rust.")):
+                                mod_name = mod_name.replace(ref("rust."), ref(""))
+                            if mod_name != "":
+                                self.emit(mod_name.replace(mod_sep.as_str(), mod_col.as_str()))
+                                self.T("namespace_sep")
+                        case None: pass
+                    self.emit(alias.name.to_string().replace(mod_sep.as_str(), mod_col.as_str()))
+                    match alias.asname.as_ref():
+                        case Some(a):
+                            self.T("kw_as")
+                            self.emit(a.to_string())
+                        case None: pass
+                    self.emit(";\n")
+
+
+    # ========================================================================
+    # EXPRESSION EMISSION - Corresponds to expr.rs in host compiler
+    # ========================================================================
+
+    def generate_expr(self, expr: q_ast.Expr):
+        match expr:
+            case q_ast.Expr.Constant(c):
+                match c:
+                    case q_ast.Constant.Str(s):
+                         self.T("string_from_start")
+                         self.emit(escape_rust_string(s.to_string()))
+                         self.T("string_from_end")
+                    case q_ast.Constant.Int(i):
+                         self.emit(i.to_string())
+                    case q_ast.Constant.Float(f):
+                         s_f = f.to_string()
+                         dot_char = "."
+                         dot_zero = ".0"
+                         if not s_f.contains(dot_char.as_str()):
+                             s_f.push_str(dot_zero.as_str())
+                         self.emit(s_f)
+                    case q_ast.Constant.Bool(b):
+                         if b: self.T("true_literal".to_string())
+                         else: self.T("false_literal".to_string())
+                    case q_ast.Constant.NoneVal: self.T("none_literal".to_string())
+                    case _: self.emit("()")
+            case q_ast.Expr.Name(n):
+                name_str = n.to_string()
+                if self.is_type_or_mod(name_str.clone()):
+                    self.emit(name_str)
+                else:
+                    self.emit(name_str)
+            case q_ast.Expr.Call(func=func, args=args, keywords=keywords):
+                self.emit_call(func, args, keywords)
+            case q_ast.Expr.List(l): self.emit_list(l)
+            case q_ast.Expr.BinOp(left=left, op=op, right=right): self.emit_bin_op(left, op, right)
+            case q_ast.Expr.BoolOp(op=op, values=values): self.emit_bool_op(op, values)
+            case q_ast.Expr.UnaryOp(op=op, operand=operand): self.emit_unary_op(op, operand)
+            case q_ast.Expr.IfExp(test=test, body=body, orelse=orelse): self.emit_expr_if(test, body, orelse)
+            case q_ast.Expr.Compare(left=left, ops=ops, comparators=comparators): self.emit_compare(left, ops, comparators)
+            case q_ast.Expr.Tuple(t): self.emit_expr_tuple(t)
+            case q_ast.Expr.Attribute(value=value, attr=attr): self.emit_attribute(value, attr)
+            case q_ast.Expr.Subscript(value=value, slice=slice): self.emit_subscript(value, slice)
+            case q_ast.Expr.Lambda(args=args, return_type=return_type, body=body): self.emit_lambda(args, return_type, body)
+            case q_ast.Expr.ListComp(element=element, generators=generators): self.emit_list_comp(element, generators)
+            case q_ast.Expr.DictComp(key=key, value=value, generators=generators): self.emit_dict_comp(key, value, generators)
+            case q_ast.Expr.Cast(expr=expr, target_type=target_type):
+                self.generate_expr(deref(expr))
+                self.emit(" as ")
+                self.generate_expr(deref(target_type))
+            case q_ast.Expr.Slice(lower=lower, upper=upper, step=step):
+                # Slice expression used standalone
+                match lower:
+                    case Some(l): self.generate_expr(deref(l))
+                    case None: pass
+                self.emit("..")
+                match upper:
+                    case Some(u): self.generate_expr(deref(u))
+                    case None: pass
+
+            case q_ast.Expr.FString(parts):
+                # Generate format!("...", args...)
+                format_str = "".to_string()
+                args: Vec[q_ast.Expr] = []
+                
+                for part in parts:
+                    match part:
+                        case q_ast.FStringPart.Literal(s):
+                            # Escape { and } for format string
+                            lbrace = "{"
+                            rbrace = "}"
+                            lbrace_esc = "{{"
+                            rbrace_esc = "}}"
+                            escaped = s.replace(lbrace.as_str(), lbrace_esc.as_str()).replace(rbrace.as_str(), rbrace_esc.as_str())
+                            format_str = format_str + ref(escaped)
+                        case q_ast.FStringPart.Replacement(value=value, debug=debug, conversion=conversion, format_spec=format_spec):
+                            format_str = format_str + "{"
+                            match conversion:
+                                case Some(c):
+                                    # Check for !r conversion - compare as strings
+                                    c_str = c.to_string()
+                                    if c_str == "r":
+                                        format_str = format_str + ":?"
+                                case None:
+                                    match format_spec:
+                                        case Some(spec):
+                                            format_str = format_str + ":"
+                                            format_str = format_str + ref(spec)
+                                        case None: pass
+                            format_str = format_str + "}"
+                            args.push(deref(value))
+                
+                self.emit("format!(\"")
+                self.emit(format_str)
+                self.emit("\"")
+                for arg in args:
+                    self.emit(", ")
+                    self.generate_expr(arg)
+                self.emit(")")
+
+            case _: self.emit("/* expr */")
+
+
+
+    def emit_call(self, func: Box[q_ast.Expr], args: Vec[q_ast.Expr], keywords: Vec[q_ast.Keyword]):
+        func_name_c: String = "".to_string()
+        match ref(deref(func)):
+            case q_ast.Expr.Lambda(args=l_args, return_type=l_ret, body=l_body):
+                self.generate_expr(deref(func))
+                self.T("lparen")
+                idx_lc = 0
+                for arg in args.clone():
+                    if idx_lc > 0: self.T("comma_sep")
+                    self.generate_expr(arg)
+                    idx_lc = idx_lc + 1
+                self.T("rparen")
+                return
+            case _: pass
+        match ref(deref(func)):
+            case q_ast.Expr.Name(n):
+                func_name_c = n.to_string()
+            case _: pass
+
+        if func_name_c == "as_ref" or func_name_c == "ref":
+            if args.len() > 0:
+                self.T("ref_macro")
+                self.T("lparen")
+                self.generate_expr_no_clone(args[0])
+                self.T("rparen")
+            return
+        if func_name_c == "as_mut" or func_name_c == "mutref":
+            if args.len() > 0:
+                self.T("mutref_macro")
+                self.T("lparen")
+                self.generate_expr_no_clone(args[0])
+                self.T("rparen")
+            return
+        if func_name_c == "deref":
+            if args.len() > 0:
+                self.T("deref_macro")
+                self.T("lparen")
+                self.generate_expr_no_clone(args[0])
+                self.T("rparen")
+            return
+        if func_name_c == "exit":
+            self.T("std_process_exit")
+            idx_exit: usize = 0
+            for arg in args.clone():
+                if idx_exit > 0: self.T("comma_sep")
+                self.generate_expr(arg)
+                idx_exit = idx_exit + 1
+            self.T("rparen")
+            return
+
+        if func_name_c == "strcat":
+            self.T("strcat_macro")
+            self.T("lparen")
+            first_sc = True
+            for arg in args.clone():
+                if not first_sc: self.T("comma_sep")
+                first_sc = False
+                self.generate_expr(arg)
+            self.T("rparen")
+            return
+
+        # Handle range() to emit Rust range syntax
+        if func_name_c == "range":
+            nargs = args.len()
+            if nargs == 1:
+                # range(n) -> 0..n
+                self.emit("(0..")
+                self.generate_expr(args[0])
+                self.emit(")")
+            elif nargs == 2:
+                # range(start, end) -> start..end
+                self.emit("(")
+                self.generate_expr(args[0])
+                self.emit("..")
+                self.generate_expr(args[1])
+                self.emit(")")
+            elif nargs == 3:
+                # range(start, end, step) -> (start..end).step_by(step as usize)
+                self.emit("((")
+                self.generate_expr(args[0])
+                self.emit("..")
+                self.generate_expr(args[1])
+                self.emit(").step_by(")
+                self.generate_expr(args[2])
+                self.emit(" as usize))")
+            else:
+                self.emit("/* range() expects 1-3 args */")
+            return
+
+
+
+        if func_name_c == "len":
+            if args.len() == 1:
+                self.emit("(")
+                self.generate_expr(args[0])
+                self.emit(").len()")
+            else:
+                self.emit("/* len() expects 1 arg */")
+            return
+
+        if func_name_c == "print" or func_name_c == "println":
+            # Generate format string with correct number of {} placeholders (Display fmt)
+            fmt_parts: Vec[String] = []
+            for _ in args.clone():
+                fmt_parts.push("{}")
+            fmt_str = fmt_parts.join(ref(" "))
+            self.T("println_start")
+            self.emit(fmt_str)
+            self.emit("\", ")
+            first_p = True
+            for arg in args.clone():
+                if not first_p: self.T("comma_sep")
+                first_p = False
+                self.generate_expr(arg)
+            self.T("rparen")
+            return
+        elif func_name_c == "print_str":
+            self.emit("println!(\"{}\", ")
+            first_ps = True
+            for arg in args.clone():
+                if not first_ps: self.T("comma_sep")
+                first_ps = False
+                self.generate_expr(arg)
+            self.T("rparen")
+        elif func_name_c == "assert_eq" or func_name_c == "assert_str_eq":
+            self.emit("assert_eq!(")
+            if args.len() >= 2:
+                self.generate_expr(args[0])
+                self.T("comma_sep")
+                self.generate_expr(args[1])
+                if args.len() > 2:
+                    self.emit(", \"{:?}\", ")
+                    self.generate_expr(args[2])
+            self.T("rparen")
+        elif func_name_c == "assert_true":
+            self.emit("assert!(")
+            if args.len() >= 1:
+                self.generate_expr(args[0])
+                if args.len() > 1:
+                    self.emit(", \"{:?}\", ")
+                    self.generate_expr(args[1])
+            self.T("rparen")
+        elif func_name_c == "range":
+            if args.len() == 1:
+                self.emit("0..")
+                self.generate_expr(Clone.clone(ref(args[0])))
+            elif args.len() >= 2:
+                self.generate_expr(Clone.clone(ref(args[0])))
+                self.emit("..")
+                self.generate_expr(Clone.clone(ref(args[1])))
+        elif keywords.len() > 0:
+            # Check if this is a struct constructor (PascalCase name with keywords)
+            # Also handle private classes that start with _ followed by PascalCase
+            is_struct_ctor = False
+            if func_name_c != "" and args.len() == 0:
+                # Check first char - could be uppercase or underscore for private classes
+                first_char = func_name_c.chars().next()
+                match first_char:
+                    case Some(c):
+                        if c.is_uppercase():
+                            is_struct_ctor = True
+                        elif func_name_c.starts_with(ref("_")) and func_name_c.len() > 1:
+                            # Check second char for private classes like _PrivateHelper
+                            second_idx: usize = 1
+                            for c2 in func_name_c.chars().clone().skip(second_idx):
+                                if c2.is_uppercase():
+                                    is_struct_ctor = True
+                                break
+                    case None: pass
+            
+            if is_struct_ctor:
+                # Emit struct literal: StructName { field: value, ... }
+                self.emit(func_name_c)
+                self.emit(" { ")
+                i_kw: usize = 0
+                for kw in keywords:
+                    if i_kw > 0: self.T("comma_sep")
+                    match kw.arg:
+                        case Some(name):
+                            self.emit(name)
+                            self.emit(": ")
+                        case None: pass
+                    self.generate_expr(deref(kw.value.clone()))
+                    i_kw = i_kw + 1
+                self.emit(" }")
+            else:
+                # Emit as function call with kwargs as positional args
+                self.generate_expr(deref(func))
+                self.T("lparen")
+                i_kw: usize = 0
+                for arg_p in args.clone():
+                    if i_kw > 0: self.T("comma_sep")
+                    self.generate_expr(arg_p)
+                    i_kw = i_kw + 1
+                for kw in keywords:
+                    if i_kw > 0: self.T("comma_sep")
+                    self.generate_expr(deref(kw.value.clone()))
+                    i_kw = i_kw + 1
+                self.T("rparen")
+        else:
+            match ref(deref(func)):
+                case q_ast.Expr.Attribute(value=value, attr=attr):
+                    if attr.as_str() == "new":
+                        match ref(deref(value)):
+                            case q_ast.Expr.Name(n):
+                                base_name = n.to_string()
+                                if base_name == "List" or base_name == "Vec":
+                                    self.T("vec_new")
+                                    return
+                                if base_name == "Dict" or base_name == "HashMap":
+                                    self.T("hashmap_new")
+                                    return
+                            case q_ast.Expr.Subscript(value=s_value, slice=s_slice):
+                                base_name_s = self.type_to_string(Clone.clone(ref(deref(s_value))))
+                                if base_name_s == "Vec":
+                                    inner_s = self.type_to_string(Clone.clone(ref(deref(s_slice))))
+                                    self.T("vec_turbofish_start")
+                                    self.emit(inner_s)
+                                    self.T("vec_turbofish_end")
+                                    return
+                                if base_name_s == "std::collections::HashMap" or base_name_s == "HashMap":
+                                    self.T("hashmap_new")
+                                    return
+                            case _: pass
+
+                    self.generate_expr(deref(func))
+                    self.T("lparen")
+                    idx_arg_call = 0
+                    for arg_c in args.clone():
+                        if idx_arg_call > 0: self.T("comma_sep")
+                        # push_str needs &str, but string literals emit String::from()
+                        # Add & prefix for string literals passed to push_str
+                        needs_borrow = False
+                        if attr.as_str() == "push_str":
+                            match ref(arg_c):
+                                case q_ast.Expr.Constant(c):
+                                    match c:
+                                        case q_ast.Constant.Str(_): needs_borrow = True
+                                        case _: pass
+                                case _: pass
+                        if needs_borrow:
+                            self.emit("&")
+                        self.generate_expr(arg_c)
+                        idx_arg_call = idx_arg_call + 1
+                    self.T("rparen")
+                case _:
+                    self.generate_expr(deref(func))
+                    self.T("lparen")
+                    idx_arg_call = 0
+                    for arg_c in args.clone():
+                        if idx_arg_call > 0: self.T("comma_sep")
+                        self.generate_expr(arg_c)
+                        idx_arg_call = idx_arg_call + 1
+                    self.T("rparen")
+
+    def emit_list(self, l: Vec[q_ast.Expr]):
+        # Note: List literal creates a Rust Vec which differs from Python's list
+        # The host compiler emits a warning for this case
+        self.emit("vec![")
+        idx_l: usize = 0
+        for e in l.clone():
+            if idx_l > 0: self.T("comma_sep")
+            self.generate_expr(e)
+            idx_l = idx_l + 1
+        self.T("rbracket")
+
+    def emit_bin_op(self, left: Box[q_ast.Expr], op: q_ast.Operator, right: Box[q_ast.Expr]):
+        # Check if this is an Add operation that might be string concatenation
+        match op:
+            case q_ast.Operator.Add:
+                # Check if any operand looks like a string (literal or involves strings)
+                if self.is_string_expr(deref(left)) or self.is_string_expr(deref(right)):
+                    # Flatten the chain and emit strcat!
+                    left_parts = self.flatten_add_chain(deref(left))
+                    right_parts = self.flatten_add_chain(deref(right))
+                    parts: Vec[q_ast.Expr] = []
+                    for p in left_parts:
+                        parts.push(p)
+                    for p in right_parts:
+                        parts.push(p)
+                    self.emit("crate::quiche::strcat!(")
+                    idx: usize = 0
+                    for part in parts.clone():
+                        if idx > 0:
+                            self.T("comma_sep")
+                        self.generate_expr(part)
+                        idx = idx + 1
+                    self.T("rparen")
+                    return
+            case _:
+                pass
+        # Non-string binary operations: emit normally
+        self.generate_expr(deref(left))
+        match op:
+            case q_ast.Operator.Add: self.emit(" + ")
+            case q_ast.Operator.Sub: self.emit(" - ")
+            case q_ast.Operator.Mult: self.emit(" * ")
+            case q_ast.Operator.Div: self.emit(" / ")
+            case q_ast.Operator.Mod: self.emit(" % ")
+            case _: self.emit(" + ")
+        self.generate_expr(deref(right))
+    
+    def is_string_expr(self, expr: q_ast.Expr) -> bool:
+        """Check if expression appears to be a string"""
+        match expr:
+            case q_ast.Expr.Constant(c):
+                match c:
+                    case q_ast.Constant.Str(_): return True
+                    case _: return False
+            # Check if it's a BinOp Add containing strings
+            case q_ast.Expr.BinOp(left=left, op=op, right=right):
+                match op:
+                    case q_ast.Operator.Add:
+                        return self.is_string_expr(deref(left)) or self.is_string_expr(deref(right))
+                    case _:
+                        return False
+            case _: return False
+        return False
+    
+    def flatten_add_chain(self, expr: q_ast.Expr) -> Vec[q_ast.Expr]:
+        """Flatten a chain of Add operations into a list of operands"""
+        match expr.clone():
+            case q_ast.Expr.BinOp(left=left, op=op, right=right):
+                match op:
+                    case q_ast.Operator.Add:
+                        # Recursively flatten left and right
+                        left_parts = self.flatten_add_chain(deref(left))
+                        right_parts = self.flatten_add_chain(deref(right))
+                        result: Vec[q_ast.Expr] = []
+                        for p in left_parts:
+                            result.push(p)
+                        for p in right_parts:
+                            result.push(p)
+                        return result
+                    case _:
+                        pass
+            case _:
+                pass
+        # Not an Add operation, return single element
+        return [expr]
+
+    def emit_bool_op(self, op: q_ast.BoolOperator, values: Vec[q_ast.Expr]):
+        op_str_b = " && "
+        match op:
+            case q_ast.BoolOperator.Or: op_str_b = " || "
+            case _: pass
+        idx_b: usize = 0
+        for v in values.clone():
+            if idx_b > 0: self.emit(op_str_b.clone())
+            self.T("lparen")
+            self.generate_expr(v)
+            self.T("rparen")
+            idx_b = idx_b + 1
+
+    def emit_unary_op(self, op: q_ast.UnaryOperator, operand: Box[q_ast.Expr]):
+        match op:
+            case q_ast.UnaryOperator.Not: self.T("op_not")
+            case q_ast.UnaryOperator.Invert: self.T("op_not")
+            case q_ast.UnaryOperator.UAdd: self.T("op_add")
+            case q_ast.UnaryOperator.USub: self.T("op_sub")
+        self.generate_expr(deref(operand))
+
+    def emit_expr_if(self, test: Box[q_ast.Expr], body: Box[q_ast.Expr], orelse: Box[q_ast.Expr]):
+        self.T("kw_if")
+        self.generate_expr(deref(test))
+        self.emit(" { ")
+        self.generate_expr(deref(body))
+        self.emit(" } else { ")
+        self.generate_expr(deref(orelse))
+        self.emit(" }")
+
+    def emit_compare(self, left: Box[q_ast.Expr], ops: Vec[q_ast.CmpOperator], comparators: Vec[q_ast.Expr]):
+        self.generate_expr(deref(left))
+        idx_c: usize = 0
+        while idx_c < ops.len():
+            op = ops[idx_c]
+            self.T("space")
+            match op:
+                case q_ast.CmpOperator.Eq: self.T("op_eq")
+                case q_ast.CmpOperator.NotEq: self.T("op_ne")
+                case q_ast.CmpOperator.Lt: self.T("op_lt")
+                case q_ast.CmpOperator.LtE: self.T("op_le")
+                case q_ast.CmpOperator.Gt: self.T("op_gt")
+                case q_ast.CmpOperator.GtE: self.T("op_ge")
+                case _: self.T("question_mark")
+            self.T("space")
+            self.generate_expr(comparators[idx_c])
+            idx_c = idx_c + 1
+
+    def emit_expr_tuple(self, elts: Vec[q_ast.Expr]):
+        self.T("lparen")
+        idx_t: usize = 0
+        for e in elts:
+            if idx_t > 0: self.T("comma_sep")
+            self.generate_expr(e)
+            idx_t = idx_t + 1
+        self.T("rparen")
+
+    def emit_attribute(self, value: Box[q_ast.Expr], attr: String):
+        target_attr = deref(value)
+        is_static_attr = False
+        match self.get_root_name(target_attr.clone()):
+            case Some(root_name):
+                if self.is_type_or_mod(root_name.clone()):
+                    is_static_attr = True
+            case None: pass
+        if attr.as_str() == "new": is_static_attr = True
+        
+        match ref(target_attr):
+            case q_ast.Expr.Subscript(value=s_val, slice=s_slice):
+                if is_static_attr:
+                    full_expr = target_attr.clone()
+                    base_type = self.type_to_string(full_expr)
+                    if base_type.contains(ref("<")):
+                        base_type = base_type.replace(ref("<"), ref("::<"))
+                    self.emit(base_type)
+                else:
+                    self.emit_lvalue_target(target_attr.clone())
+            case _:
+                if is_static_attr:
+                    self.emit_pattern_path(target_attr.clone())
+                else:
+                    self.emit_lvalue_target(target_attr.clone())
+        if is_static_attr: self.T("namespace_sep")
+        else: self.T("field_access")
+        self.emit(attr)
+
+    def emit_attribute_target(self, value: Box[q_ast.Expr], attr: String):
+        target_attr = deref(value)
+        is_static_attr = False
+        match self.get_root_name(target_attr.clone()):
+            case Some(root_name):
+                if self.is_type_or_mod(root_name.clone()):
+                    is_static_attr = True
+            case None: pass
+        if attr.as_str() == "new": is_static_attr = True
+
+        match ref(target_attr):
+            case q_ast.Expr.Attribute(value=inner_val, attr=inner_attr):
+                self.emit_attribute_target(inner_val.clone(), inner_attr.clone())
+            case q_ast.Expr.Name(n):
+                self.emit(n.to_string())
+            case _:
+                self.generate_expr_no_clone(Clone.clone(ref(target_attr)))
+        if is_static_attr: self.T("namespace_sep")
+        else: self.T("field_access")
+        self.emit(attr)
+
+    def emit_subscript(self, value: Box[q_ast.Expr], slice: Box[q_ast.Expr]):
+        # Check if slice is a Slice expression (range access like [2..] or [1..3])
+        match ref(deref(slice))  :
+            case q_ast.Expr.Slice(lower=lower, upper=upper, step=step):
+                # Emit: value[lower..upper] or value[lower..] or value[..upper]
+                self.generate_expr(deref(value))
+                self.T("lbracket")
+                match lower:
+                    case Some(l): self.generate_expr(deref(l))
+                    case None: pass
+                self.emit("..")
+                match upper:
+                    case Some(u): self.generate_expr(deref(u))
+                    case None: pass
+                self.T("rbracket")
+                return
+            case _: pass
+
+        is_neg_s = False
+        target_type_s = self.infer_expr_type(Clone.clone(ref(deref(value))))
+        is_tuple_target = self.is_tuple_expr(Clone.clone(ref(deref(value))))
+        tuple_via_registry = False
+        match ref(deref(value)):
+            case q_ast.Expr.Name(n):
+                match self.tuple_vars.get(ref(n.to_string())):
+                    case Some(_):
+                        tuple_via_registry = True
+                    case None: pass
+            case q_ast.Expr.Subscript(value=inner_value, slice=inner_slice):
+                match ref(deref(inner_value)):
+                    case q_ast.Expr.Name(n):
+                        match self.tuple_vars.get(ref(n.to_string())):
+                            case Some(_):
+                                tuple_via_registry = True
+                            case None: pass
+                    case _: pass
+            case _: pass
+
+        if tuple_via_registry or is_tuple_target or target_type_s == "Tuple" or target_type_s.starts_with(ref("Tuple")) or target_type_s.starts_with(ref("(")):
+            self.generate_expr(deref(value))
+            self.T("field_access")
+            match deref(slice):
+                case q_ast.Expr.Constant(c):
+                    match c:
+                        case q_ast.Constant.Int(i):
+                            self.emit(i.to_string())
+                        case _: self.emit("0")
+                case _: self.emit("0")
+        else:
+            sl_s = deref(slice)
+            match sl_s.clone():
+                case q_ast.Expr.UnaryOp(op=op, operand=operand):
+                     match op:
+                        case q_ast.UnaryOperator.USub: is_neg_s = True
+                        case _: pass
+                case _: pass
+
+            if is_neg_s:
+                match sl_s:
+                    case q_ast.Expr.UnaryOp(op=op, operand=operand):
+                        self.generate_expr(Clone.clone(ref(deref(value))))
+                        self.T("lbracket")
+                        self.generate_expr(Clone.clone(ref(deref(value))))
+                        self.T("len_sub")
+                        self.generate_expr(deref(operand))
+                        self.T("close_bracket_clone")
+                    case _: pass
+            else:
+                self.generate_expr(deref(value))
+                self.T("lbracket")
+                self.generate_expr(sl_s)
+                self.T("close_bracket_clone")
+
+    def emit_lambda(self, args: Vec[q_ast.LambdaArg], return_type: Option[Box[q_ast.Expr]], body: q_ast.LambdaBody):
+        self.T("op_bitor")
+        idx_lam = 0
+        for arg in args.clone():
+            if idx_lam > 0: self.T("comma_sep")
+            self.emit(arg.name)
+            match arg.ty:
+                case Some(ty):
+                    self.emit(": ")
+                    self.generate_expr(deref(ty))
+                case None: pass
+            idx_lam = idx_lam + 1
+        self.T("op_bitor")
+        match return_type:
+            case Some(ret):
+                self.emit(" -> ")
+                self.generate_expr(deref(ret))
+            case None: pass
+        self.T("space")
+        match body:
+            case q_ast.LambdaBody.Expr(e):
+                self.generate_expr_no_clone(deref(e))
+            case q_ast.LambdaBody.Block(stmts):
+                self.emit("{\n")
+                for stmt in stmts:
+                    self.generate_stmt(stmt)
+                self.emit("}")
+
+    def emit_list_comp(self, element: Box[q_ast.Expr], generators: Vec[q_ast.Comprehension]):
+        # Generate: iter.into_iter()[.filter(|x| cond)].map(|x| element).collect::<Vec<_>>()
+        self.emit_comprehension_iter(generators.clone())
+        self.emit(".map(|")
+        self.emit_comprehension_target(generators.clone())
+        self.emit("| ")
+        self.generate_expr(deref(element))
+        self.emit(").collect::<Vec<_>>()")
+
+    def emit_dict_comp(self, key: Box[q_ast.Expr], value: Box[q_ast.Expr], generators: Vec[q_ast.Comprehension]):
+        # Generate: iter.into_iter()[.filter(|x| cond)].map(|(k, v)| (key.clone(), value)).collect::<HashMap<_,_>>()
+        # Note: We clone the key to avoid partial move when key is a field of value (e.g., {s.name: s for s in students})
+        self.emit_comprehension_iter(generators.clone())
+        self.emit(".map(|")
+        self.emit_comprehension_target(generators.clone())
+        self.emit("| (")
+        self.generate_expr(deref(key))
+        self.emit(".clone(), ")
+        self.generate_expr(deref(value))
+        self.emit(")).collect::<std::collections::HashMap<_, _>>()")
+
+    def emit_comprehension_iter(self, generators: Vec[q_ast.Comprehension]):
+        # For simplicity, only single generator supported
+        if generators.len() > 0:
+            generator = generators[0]
+            self.generate_expr(deref(generator.iter))
+            self.emit(".into_iter()")
+            # Generate filter if there are conditions
+            if generator.ifs.len() > 0:
+                self.emit(".filter(|")
+                self.emit_comprehension_target(generators.clone())
+                self.emit("| ")
+                idx_cond = 0
+                for cond in generator.ifs.clone():
+                    if idx_cond > 0: self.emit(" && ")
+                    self.emit("(")
+                    self.generate_expr(cond)
+                    self.emit(")")
+                    idx_cond = idx_cond + 1
+                self.emit(")")
+
+    def emit_comprehension_target(self, generators: Vec[q_ast.Comprehension]):
+        if generators.len() > 0:
+            generator = generators[0]
+            self.generate_expr(deref(generator.target))
+
+

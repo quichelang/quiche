@@ -22,9 +22,9 @@ This skill explains how to extend the Quiche compiler with new AST transformatio
 
 | Component | Location | Purpose |
 |-------|----------|---------|
-| **lexer** | `crates/quiche-parser/src/lexer.rs` | Tokenizes source code |
-| **parser** | `crates/quiche-parser/src/parser.rs` | Recursive descent parser |
-| **ast** | `crates/quiche-parser/src/ast.rs` | Quiche AST for codegen |
+| **lexer** | `metaquiche/metaquiche-parser/src/lexer.rs` | Tokenizes source code |
+| **parser** | `metaquiche/metaquiche-parser/src/parser.rs` | Recursive descent parser |
+| **ast** | `metaquiche/metaquiche-parser/src/ast.rs` | Quiche AST for codegen |
 
 The parser directly produces the Quiche AST. No external dependencies.
 
@@ -32,9 +32,9 @@ The parser directly produces the Quiche AST. No external dependencies.
 
 ### Step 1: Check Parser Support
 
-The parser is in `crates/quiche-parser/src/parser.rs`. Check if it handles the syntax.
+The parser is in `metaquiche/metaquiche-parser/src/parser.rs`. Check if it handles the syntax.
 
-Location: `crates/quiche-parser/src/parser.rs`
+Location: `metaquiche/metaquiche-parser/src/parser.rs`
 
 ```rust
 // Example: Parsing type params with bounds
@@ -63,7 +63,7 @@ Key pattern: **Parse into simple strings or AST nodes**
 
 ### Step 3: Update Quiche AST (ast.rs)
 
-Location: `crates/quiche-parser/src/ast.rs`
+Location: `metaquiche/metaquiche-parser/src/ast.rs`
 
 Add new fields to structs:
 ```rust
@@ -79,7 +79,7 @@ pub struct FunctionDef {
 
 ### Step 4: Update Host Compiler Codegen (stmt.rs)
 
-Location: `crates/metaquiche-host/src/stmt.rs`
+Location: `metaquiche/metaquiche-host/src/stmt.rs`
 
 Emit Rust code for the new syntax:
 ```rust
@@ -93,7 +93,7 @@ if !f.type_params.is_empty() {
 
 ### Step 5: Update Native Compiler Codegen (codegen.qrs)
 
-Location: `crates/metaquiche-native/src/compiler/codegen.qrs`
+Location: `metaquiche/metaquiche-native/src/compiler/codegen.qrs`
 
 Mirror the host logic in Quiche:
 ```python
@@ -111,7 +111,7 @@ def emit_type_params(self, type_params: Vec[String]):
 
 ### Step 6: Add Tests
 
-Location: `crates/metaquiche-host/tests/integration_main.rs`
+Location: `metaquiche/metaquiche-host/tests/integration_main.rs`
 
 ```rust
 #[test]

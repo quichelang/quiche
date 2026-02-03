@@ -4,9 +4,10 @@ members = [
     "metaquiche/metaquiche-host",
     "metaquiche/metaquiche-shared",
     "metaquiche/metaquiche-native",
-    "metaquiche/quiche-runtime",
-    "metaquiche/parsley-qrs",
-    "metaquiche/perceus-mem",
+    "quiche/quiche-compiler",
+    "quiche/quiche-runtime",
+    "quiche/parsley",
+    "quiche/perceus-mem",
 ]
 resolver = "2"
 

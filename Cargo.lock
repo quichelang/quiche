@@ -86,7 +86,7 @@ dependencies = [
  "metaquiche-host",
  "metaquiche-parser",
  "metaquiche-shared",
- "parsley-qrs",
+ "parsley",
  "quiche-runtime",
  "tempfile",
 ]
@@ -111,7 +111,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
-name = "parsley-qrs"
+name = "parsley"
 version = "0.1.0"
 dependencies = [
  "quiche-runtime",
@@ -128,6 +128,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "quiche-compiler"
+version = "0.1.0"
+dependencies = [
+ "metaquiche-host",
+ "metaquiche-parser",
+ "metaquiche-shared",
+ "parsley",
+ "quiche-runtime",
+ "tempfile",
 ]
 
 [[package]]

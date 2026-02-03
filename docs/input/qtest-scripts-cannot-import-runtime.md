@@ -53,5 +53,5 @@ Scripts must inline all needed functionality or use only `@extern` declarations 
 ### Files Affected
 
 - `tests/qtest_runner.qrs`
-- `crates/quiche-runtime/src/qtest.qrs`
+- `quiche/quiche-runtime/src/qtest.qrs`
 - Codegen import resolution logic
