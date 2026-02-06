@@ -47,11 +47,11 @@ def solve(board: mutref[Vec[Vec[i32]]]) -> bool:
 ## Quick Start
 
 ```bash
-# Build
+# Build bootstrap compiler + Quiche compiler
 make
 
-# Run a script
-./bin/quiche examples/scripts/sudoku.qrs
+# Run Quiche (.q) code with shipped compiler
+./bin/quiche examples/scripts/sudoku.q
 ```
 
 See [examples/](examples/) and [tests/](tests/) for more code samples.

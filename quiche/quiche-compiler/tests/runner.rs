@@ -11,5 +11,5 @@ fn integration_tests() {
         return;
     }
     // Run tests using the transpiler logic (creates cargo project with runtime dep)
-    runner_utils::run_self_hosted_tests("metaquiche-native", "metaquiche-native");
+    runner_utils::run_self_hosted_tests("quiche-compiler", "mq");
 }
