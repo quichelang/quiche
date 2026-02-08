@@ -586,6 +586,21 @@ fn lower_expr(expr: &q::QuicheExpr) -> e::Expr {
                 inclusive: false,
             }
         }
+        q::QuicheExpr::Borrow { kind, expr } => {
+            let inner = lower_expr(expr);
+            let macro_name = match kind {
+                q::BorrowKind::Ref => "qref",
+                q::BorrowKind::RefMut => "mutref",
+            };
+            e::Expr::MacroCall {
+                path: vec![macro_name.to_string()],
+                args: vec![inner],
+            }
+        }
+        q::QuicheExpr::Deref(expr) => e::Expr::MacroCall {
+            path: vec!["deref".to_string()],
+            args: vec![lower_expr(expr)],
+        },
     }
 }
 

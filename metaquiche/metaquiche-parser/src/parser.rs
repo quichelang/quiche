@@ -101,15 +101,63 @@ impl<'a> Parser<'a> {
         Ok(self.peeked.as_ref().unwrap())
     }
 
+    /// Convert token kind to human-readable display string
+    fn token_display(kind: &TokenKind) -> String {
+        match kind {
+            TokenKind::LParen => "'('".to_string(),
+            TokenKind::RParen => "')'".to_string(),
+            TokenKind::LBracket => "'['".to_string(),
+            TokenKind::RBracket => "']'".to_string(),
+            TokenKind::LBrace => "'{'".to_string(),
+            TokenKind::RBrace => "'}'".to_string(),
+            TokenKind::Colon => "':'".to_string(),
+            TokenKind::Comma => "','".to_string(),
+            TokenKind::Dot => "'.'".to_string(),
+            TokenKind::DotDot => "'..'".to_string(),
+            TokenKind::Ellipsis => "'...'".to_string(),
+            TokenKind::Semicolon => "';'".to_string(),
+            TokenKind::Arrow => "'->'".to_string(),
+            TokenKind::Plus => "'+'".to_string(),
+            TokenKind::Minus => "'-'".to_string(),
+            TokenKind::Star => "'*'".to_string(),
+            TokenKind::Slash => "'/'".to_string(),
+            TokenKind::Percent => "'%'".to_string(),
+            TokenKind::At => "'@'".to_string(),
+            TokenKind::Eq => "'='".to_string(),
+            TokenKind::EqEq => "'=='".to_string(),
+            TokenKind::NotEq => "'!='".to_string(),
+            TokenKind::Lt => "'<'".to_string(),
+            TokenKind::LtEq => "'<='".to_string(),
+            TokenKind::Gt => "'>'".to_string(),
+            TokenKind::GtEq => "'>='".to_string(),
+            TokenKind::Pipe => "'|'".to_string(),
+            TokenKind::Amp => "'&'".to_string(),
+            TokenKind::Caret => "'^'".to_string(),
+            TokenKind::Tilde => "'~'".to_string(),
+            TokenKind::Newline => "end of line".to_string(),
+            TokenKind::Indent => "indentation".to_string(),
+            TokenKind::Dedent => "dedent".to_string(),
+            TokenKind::Eof => "end of file".to_string(),
+            TokenKind::Keyword(kw) => format!("'{:?}'", kw).to_lowercase(),
+            TokenKind::Ident(s) => format!("identifier '{}'", s),
+            TokenKind::String(_) => "string literal".to_string(),
+            TokenKind::FString { .. } => "f-string".to_string(),
+            TokenKind::Int(_) => "integer".to_string(),
+            TokenKind::Float(_) => "float".to_string(),
+            TokenKind::Comment(_) => "comment".to_string(),
+            _ => format!("{:?}", kind),
+        }
+    }
+
     /// Consume token if it matches, return error otherwise
     fn expect(&mut self, kind: &TokenKind) -> Result<Token, ParseError> {
         if self.check(kind) {
             self.advance()
         } else {
             Err(self.error(format!(
-                "Expected {:?}, got {:?}",
-                kind,
-                self.current_kind()
+                "Expected {}, got {}",
+                Self::token_display(kind),
+                Self::token_display(self.current_kind())
             )))
         }
     }
@@ -120,9 +168,9 @@ impl<'a> Parser<'a> {
             self.advance()
         } else {
             Err(self.error(format!(
-                "Expected keyword {:?}, got {:?}",
-                kw,
-                self.current_kind()
+                "Expected '{}', got {}",
+                format!("{:?}", kw).to_lowercase(),
+                Self::token_display(self.current_kind())
             )))
         }
     }
@@ -511,7 +559,8 @@ impl<'a> Parser<'a> {
         // The codegen handles the Struct base by emitting a struct + impl block.
 
         // Check if this is an Enum definition
-        if base_names.contains(&"Enum") {
+        // Support both class X(Enum): and class X(Type): syntax for sum types
+        if base_names.contains(&"Enum") || base_names.contains(&"Type") {
             return Ok(QuicheStmt::EnumDef(self.lower_to_enum(
                 name,
                 type_params,
@@ -786,7 +835,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Dot => {
                     self.advance()?;
-                    let attr = self.expect_ident()?;
+                    let attr = self.expect_ident_or_keyword()?;
                     expr = QuicheExpr::Attribute {
                         value: Box::new(expr),
                         attr,
@@ -1223,8 +1272,28 @@ impl<'a> Parser<'a> {
                 Ok(name)
             }
             _ => Err(self.error(format!(
-                "Expected identifier, got {:?}",
-                self.current_kind()
+                "Expected identifier, got {}",
+                Self::token_display(self.current_kind())
+            ))),
+        }
+    }
+
+    /// Expect and consume an identifier or keyword (for attribute access after .)
+    /// This allows keywords like 'try', 'match', etc. to be used as method names
+    fn expect_ident_or_keyword(&mut self) -> Result<String, ParseError> {
+        match self.current_kind().clone() {
+            TokenKind::Ident(name) => {
+                self.advance()?;
+                Ok(name)
+            }
+            TokenKind::Keyword(kw) => {
+                self.advance()?;
+                // Convert keyword to string representation
+                Ok(format!("{:?}", kw).to_lowercase())
+            }
+            _ => Err(self.error(format!(
+                "Expected identifier, got {}",
+                Self::token_display(self.current_kind())
             ))),
         }
     }
@@ -1815,7 +1884,10 @@ impl<'a> Parser<'a> {
                     body: LambdaBody::Expr(body),
                 })
             }
-            _ => Err(self.error(format!("Unexpected token: {:?}", self.current_kind()))),
+            _ => Err(self.error(format!(
+                "Unexpected token: {}",
+                Self::token_display(self.current_kind())
+            ))),
         }
     }
 

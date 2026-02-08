@@ -104,6 +104,22 @@ pub enum QuicheExpr {
     },
     /// F-string: f"Hello {name}"
     FString(Vec<FStringPart>),
+    /// Borrow expression: &expr, &mut expr (explicit AST node)
+    Borrow {
+        kind: BorrowKind,
+        expr: Box<QuicheExpr>,
+    },
+    /// Dereference expression: *expr
+    Deref(Box<QuicheExpr>),
+}
+
+/// How a borrow is taken (mirrors Rust's BorrowKind)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BorrowKind {
+    /// Shared reference: &
+    Ref,
+    /// Mutable reference: &mut
+    RefMut,
 }
 
 /// Part of an f-string - either literal text or a replacement field
