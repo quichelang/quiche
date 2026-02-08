@@ -8,6 +8,7 @@ members = [
     "quiche/quiche-runtime",
     "quiche/parsley",
     "quiche/perceus-mem",
+    "quiche/quiche-elevate-bridge",
 ]
 resolver = "2"
 

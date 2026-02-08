@@ -15,6 +15,7 @@ metaquiche-parser = { path = "../../metaquiche/metaquiche-parser" }
 metaquiche-shared = { path = "../../metaquiche/metaquiche-shared" }
 metaquiche-host = { path = "../../metaquiche/metaquiche-host" }
 parsley = { path = "../parsley" }
+elevate = { path = "../../../elevate" }
 
 [lib]
 name = "quiche_compiler"
