@@ -161,6 +161,7 @@ dependencies = [
  "metaquiche-parser",
  "metaquiche-shared",
  "perceus-mem",
+ "quiche-bridge",
  "regex",
 ]
 

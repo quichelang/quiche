@@ -9,21 +9,12 @@
 pub mod ast_transformer {
     include!(concat!(env!("OUT_DIR"), "/ast_transformer.rs"));
 }
-// TODO: memory_analysis.qrs has pattern matching issues that need fixing
 pub mod memory_analysis {
     include!(concat!(env!("OUT_DIR"), "/memory_analysis.rs"));
 }
-// TODO: introspect.qrs has type issues that need fixing
-// pub mod introspect {
-//     include!(concat!(env!("OUT_DIR"), "/introspect.rs"));
-// }
 pub mod qtest {
     include!(concat!(env!("OUT_DIR"), "/qtest.rs"));
 }
-// TODO: pathlib.qrs has type issues that need fixing
-// pub mod pathlib {
-//     include!(concat!(env!("OUT_DIR"), "/pathlib.rs"));
-// }
 pub mod re;
 
 // Re-export perceus-mem types for use in generated code
@@ -340,7 +331,9 @@ pub fn ast_wrap_mutref_type(
 ) -> Box<metaquiche_parser::ast::QuicheExpr> {
     // Subscript { value: Name("mutref"), slice: inner }
     Box::new(metaquiche_parser::ast::QuicheExpr::Subscript {
-        value: Box::new(metaquiche_parser::ast::QuicheExpr::Name("mutref".to_string())),
+        value: Box::new(metaquiche_parser::ast::QuicheExpr::Name(
+            "mutref".to_string(),
+        )),
         slice: inner,
     })
 }
@@ -350,7 +343,9 @@ pub fn ast_wrap_mutref_call(
 ) -> Box<metaquiche_parser::ast::QuicheExpr> {
     // Call { func: Name("mutref"), args: [inner], keywords: [] }
     Box::new(metaquiche_parser::ast::QuicheExpr::Call {
-        func: Box::new(metaquiche_parser::ast::QuicheExpr::Name("mutref".to_string())),
+        func: Box::new(metaquiche_parser::ast::QuicheExpr::Name(
+            "mutref".to_string(),
+        )),
         args: vec![*inner],
         keywords: vec![],
     })
@@ -362,7 +357,9 @@ pub fn ast_cast_usize(
     // Cast { expr: inner, target_type: Name("usize") }
     Box::new(metaquiche_parser::ast::QuicheExpr::Cast {
         expr: inner,
-        target_type: Box::new(metaquiche_parser::ast::QuicheExpr::Name("usize".to_string())),
+        target_type: Box::new(metaquiche_parser::ast::QuicheExpr::Name(
+            "usize".to_string(),
+        )),
     })
 }
 
@@ -531,7 +528,11 @@ pub fn make_while_stmt(
     body: Vec<metaquiche_parser::ast::QuicheStmt>,
     orelse: Vec<metaquiche_parser::ast::QuicheStmt>,
 ) -> metaquiche_parser::ast::QuicheStmt {
-    metaquiche_parser::ast::QuicheStmt::While(metaquiche_parser::ast::WhileStmt { test, body, orelse })
+    metaquiche_parser::ast::QuicheStmt::While(metaquiche_parser::ast::WhileStmt {
+        test,
+        body,
+        orelse,
+    })
 }
 
 pub fn make_for_stmt(

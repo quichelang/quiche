@@ -1,5 +1,5 @@
-# Quiche Test Framework (qtest) - MetaQuiche Edition
-# Simple result-based testing for .qrs files
+# Quiche Test Framework (qtest)
+# Simple result-based testing for .q files
 
 # ============================================================================
 # Test Result Types
@@ -76,27 +76,25 @@ def create_test_summary() -> TestSummary:
         failures=Vec.new()
     )
 
-def record_result(summary: mutref[TestSummary], name: String, result: TestResult):
+def record_result(summary: TestSummary, name: String, result: TestResult):
     """Record a test result in the summary."""
-    s = deref(summary)
-    s.total = s.total + 1
+    summary.total = summary.total + 1
     match result:
         case TestResult.Passed:
-            s.passed = s.passed + 1
+            summary.passed = summary.passed + 1
         case TestResult.Failed(reason):
-            s.failed = s.failed + 1
-            s.failures.push(strcat(name, ": ", reason))
+            summary.failed = summary.failed + 1
+            summary.failures.push(strcat(name, ": ", reason))
         case TestResult.Skipped(_):
-            s.skipped = s.skipped + 1
+            summary.skipped = summary.skipped + 1
 
-def print_summary(summary: ref[TestSummary]):
+def print_summary(summary: TestSummary):
     """Print test summary."""
-    s = deref(summary)
     print("")
     print("========================================")
-    print(strcat("Tests: ", s.passed, " passed, ", s.failed, " failed, ", s.skipped, " skipped"))
+    print(strcat("Tests: ", summary.passed, " passed, ", summary.failed, " failed, ", summary.skipped, " skipped"))
     print("========================================")
-    if s.failed > 0:
+    if summary.failed > 0:
         print("Failures:")
-        for f in s.failures.iter():
-            print(strcat("  - ", deref(f)))
+        for f in summary.failures:
+            print(strcat("  - ", f))

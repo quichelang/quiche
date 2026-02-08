@@ -197,6 +197,11 @@ fn lower_impl(imp: &q::ImplDef) -> e::ImplBlock {
         .collect();
     e::ImplBlock {
         target: imp.target_type.clone(),
+        trait_target: imp.trait_name.as_ref().map(|name| e::Type {
+            path: vec![name.clone()],
+            args: vec![],
+            trait_bounds: vec![],
+        }),
         methods,
     }
 }
@@ -290,6 +295,7 @@ fn lower_class_def(c: &q::ClassDef) -> Vec<e::Item> {
     if !methods.is_empty() {
         items.push(e::Item::Impl(e::ImplBlock {
             target: c.name.clone(),
+            trait_target: None,
             methods,
         }));
     }
@@ -1106,27 +1112,43 @@ fn lower_cast(expr: &q::QuicheExpr, target_type: &q::QuicheExpr) -> e::Expr {
 // ─────────────────────────────────────────────────────────────────────────
 
 fn lower_match_arm(case: &q::MatchCase) -> e::MatchArm {
-    // Match case body: use last expression as value, rest as statements
+    // Match case body: lower all statements
     let body_stmts: Vec<e::Stmt> = case.body.iter().filter_map(|s| lower_stmt(s)).collect();
     let value = if body_stmts.is_empty() {
         e::Expr::Tuple(vec![]) // unit
     } else if body_stmts.len() == 1 {
-        // Single statement — if it's a return or expr, extract
+        // Single statement — if it's a return or expr, extract directly
         match &body_stmts[0] {
             e::Stmt::Return(Some(val)) => val.clone(),
             e::Stmt::Expr(val) => val.clone(),
-            _ => e::Expr::Tuple(vec![]),
+            _ => stmts_to_iife(body_stmts),
         }
     } else {
-        // Multiple statements — wrap in block (Elevate doesn't have block exprs,
-        // so emit the last one as value and rest via rustblock)
-        e::Expr::Tuple(vec![]) // placeholder
+        // Multiple statements — wrap in IIFE: (|| { stmts })()
+        stmts_to_iife(body_stmts)
     };
 
     e::MatchArm {
         pattern: lower_pattern(&case.pattern),
         guard: case.guard.as_ref().map(|g| lower_expr(g)),
         value,
+    }
+}
+
+/// Wrap a list of statements in an immediately-invoked closure expression:
+/// `(|| { stmt1; stmt2; ... })()`
+///
+/// Elevate's MatchArm.value is a single Expr, but Quiche match arms can
+/// contain multiple side-effecting statements. This IIFE pattern is the
+/// same approach Elevate's own parser uses for block-bodied match arms.
+fn stmts_to_iife(stmts: Vec<e::Stmt>) -> e::Expr {
+    e::Expr::Call {
+        callee: Box::new(e::Expr::Closure {
+            params: vec![],
+            return_type: None,
+            body: e::Block { statements: stmts },
+        }),
+        args: vec![],
     }
 }
 
