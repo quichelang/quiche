@@ -922,7 +922,7 @@ fn lower_list_comp(element: &q::QuicheExpr, generators: &[q::Comprehension]) -> 
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Dict comprehension → .iter().map().collect()
+// Dict comprehension → HashMap::from_iter(iter.into_iter().map(|v| (k, v)))
 // ─────────────────────────────────────────────────────────────────────────
 
 fn lower_dict_comp(
@@ -971,12 +971,15 @@ fn lower_dict_comp(
         }),
         args: vec![map_closure],
     };
+
+    // Use HashMap::from_iter() instead of .collect() so Elevate's type
+    // inference correctly resolves the result as HashMap<K, V>.
     e::Expr::Call {
-        callee: Box::new(e::Expr::Field {
-            base: Box::new(map_call),
-            field: "collect".to_string(),
-        }),
-        args: vec![],
+        callee: Box::new(e::Expr::Path(vec![
+            "HashMap".to_string(),
+            "from_iter".to_string(),
+        ])),
+        args: vec![map_call],
     }
 }
 

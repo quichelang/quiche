@@ -37,7 +37,10 @@ pub fn compile_via_elevate(source: &str, filename: &str) -> Option<String> {
     let elevate_ast = desugar::lower(&parsed);
 
     // Step 3: Type inference (Elevate pass)
-    let typed = match elevate::passes::lower_to_typed(&elevate_ast) {
+    let tc_opts = elevate::passes::TypecheckOptions {
+        numeric_coercion: true,
+    };
+    let typed = match elevate::passes::lower_to_typed_with_options(&elevate_ast, &tc_opts) {
         Ok(module) => module,
         Err(diagnostics) => {
             Emitter::print_failed_header(filename);

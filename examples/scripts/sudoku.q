@@ -5,7 +5,7 @@ def print_board(board: Vec[Vec[i32]]):
     for i in range(9):
         if i % 3 == 0 and i != 0:
             print("-------+-------+-------")
-        row_str: String = "".to_string()
+        row_str: String = String.new()
         for j in range(9):
             if j % 3 == 0 and j != 0:
                 row_str.push_str(" |")

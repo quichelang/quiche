@@ -14,7 +14,10 @@ pub fn compile(source: &str) -> Result<String, String> {
     let elevate_ast = desugar::lower(&parsed);
 
     // Step 3: Elevate type inference
-    let typed = elevate::passes::lower_to_typed(&elevate_ast)
+    let tc_opts = elevate::passes::TypecheckOptions {
+        numeric_coercion: true,
+    };
+    let typed = elevate::passes::lower_to_typed_with_options(&elevate_ast, &tc_opts)
         .map_err(|diags| format!("Type error: {:?}", diags))?;
 
     // Step 4: Ownership analysis + lowering
@@ -58,7 +61,10 @@ class Point(Struct):
         let elevate_ast = desugar::lower(&parsed);
         eprintln!("=== Elevate AST ===\n{elevate_ast:#?}");
 
-        let typed = elevate::passes::lower_to_typed(&elevate_ast);
+        let tc_opts = elevate::passes::TypecheckOptions {
+            numeric_coercion: true,
+        };
+        let typed = elevate::passes::lower_to_typed_with_options(&elevate_ast, &tc_opts);
         eprintln!("=== Typed result ===\n{typed:#?}");
 
         match compile(source) {
@@ -170,7 +176,10 @@ def go():
             eprintln!("  item[{i}]: {}", item_summary(item));
         }
 
-        match elevate::passes::lower_to_typed(&elevate_ast) {
+        let tc_opts = elevate::passes::TypecheckOptions {
+            numeric_coercion: true,
+        };
+        match elevate::passes::lower_to_typed_with_options(&elevate_ast, &tc_opts) {
             Ok(typed) => {
                 let lowered = elevate::passes::lower_to_rust(&typed);
                 let rust_code = elevate::codegen::emit_rust_module(&lowered);
@@ -198,7 +207,10 @@ def go():
             eprintln!("  item[{i}]: {}", item_summary(item));
         }
 
-        match elevate::passes::lower_to_typed(&elevate_ast) {
+        let tc_opts = elevate::passes::TypecheckOptions {
+            numeric_coercion: true,
+        };
+        match elevate::passes::lower_to_typed_with_options(&elevate_ast, &tc_opts) {
             Ok(typed) => {
                 let lowered = elevate::passes::lower_to_rust(&typed);
                 let rust_code = elevate::codegen::emit_rust_module(&lowered);
