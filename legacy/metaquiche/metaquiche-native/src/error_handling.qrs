@@ -1,0 +1,28 @@
+# Error handling utilities for Quiche
+# Pythonic patterns for handling Result types without panics
+
+from std.fmt import Debug
+from std.io import Error as IoError
+
+@extern(path="std::result::Result", no_generic=True)
+class Result[T, E]:
+    pass
+
+# unwrap_or_exit: Unwrap Result or print error and exit
+# Usage: source = unwrap_or_exit_io(read_to_string(path), "Failed to read file")
+def unwrap_or_exit_io(result: Result[String, IoError], msg: String) -> String:
+    match result:
+        case Ok(v): return v
+        case Err(e):
+            print(msg + ": " + e.to_string())
+            exit(1)
+    # Unreachable but needed for type system
+    return ""
+
+# unwrap_or_default: Unwrap Result or return default value
+# Usage: count = unwrap_or_default_io(parse_int(s), 0)
+def unwrap_or_default_io(result: Result[String, IoError], default: String) -> String:
+    match result:
+        case Ok(v): return v
+        case Err(_): return default
+

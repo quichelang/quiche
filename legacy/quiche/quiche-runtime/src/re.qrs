@@ -1,0 +1,208 @@
+# Quiche `re` Module
+#
+# Python-like regex API wrapping Rust's regex crate.
+# This module provides familiar functions for regex operations.
+
+from quiche_runtime import re as _re_backend
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Types
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Match(Struct):
+    """Result of a successful regex match."""
+    start: int    # Start byte offset in text
+    end: int      # End byte offset in text  
+    text: str     # The matched substring
+
+class Regex(Struct):
+    """A compiled regular expression.
+    
+    Compile patterns once and reuse them for better performance.
+    
+    Example:
+        pattern = re.compile(r"\\d+")
+        if pattern.is_match(text):
+            print("Contains digits")
+    """
+    _inner: _re_backend.QuicheRegex
+
+    def is_match(self, text: str) -> bool:
+        """Test if regex matches anywhere in text."""
+        return _re_backend.re_is_match_compiled(self._inner, text)
+
+    def search(self, text: str) -> Option[Match]:
+        """Find first match anywhere in text."""
+        result = _re_backend.re_search_compiled(self._inner, text)
+        if result is None:
+            return None
+        return Match(start=result.start, end=result.end, text=result.text)
+
+    def match(self, text: str) -> Option[Match]:
+        """Match at beginning of text only."""
+        result = _re_backend.re_match_compiled(self._inner, text)
+        if result is None:
+            return None
+        return Match(start=result.start, end=result.end, text=result.text)
+
+    def findall(self, text: str) -> list[str]:
+        """Return all non-overlapping matches."""
+        return _re_backend.re_findall_compiled(self._inner, text)
+
+    def sub(self, repl: str, text: str) -> str:
+        """Replace all occurrences with replacement string."""
+        return _re_backend.re_sub_compiled(self._inner, repl, text)
+
+    def split(self, text: str) -> list[str]:
+        """Split text by pattern matches."""
+        return _re_backend.re_split_compiled(self._inner, text)
+
+    def pattern(self) -> str:
+        """Get the pattern string."""
+        return _re_backend.re_pattern(self._inner)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Module-level functions (convenience API)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def compile(pattern: str) -> Result[Regex, str]:
+    """Compile a regex pattern into a reusable Regex object.
+    
+    Args:
+        pattern: Regular expression pattern string
+        
+    Returns:
+        Result containing compiled Regex or error message
+        
+    Example:
+        pattern = re.compile(r"\\d+").unwrap()
+        matches = pattern.findall("a1b2c3")  # ["1", "2", "3"]
+    """
+    result = _re_backend.re_compile(pattern)
+    if result.is_err():
+        return Err(result.unwrap_err())
+    return Ok(Regex(_inner=result.unwrap()))
+
+def search(pattern: str, text: str) -> Result[Option[Match], str]:
+    """Find first occurrence of pattern anywhere in text.
+    
+    Args:
+        pattern: Regex pattern to search for
+        text: Text to search in
+        
+    Returns:
+        Result containing Option[Match] or error message
+        
+    Example:
+        m = re.search(r"\\d+", "abc123def").unwrap()
+        if m is not None:
+            print(m.text)  # "123"
+    """
+    result = _re_backend.re_search(pattern, text)
+    if result.is_err():
+        return Err(result.unwrap_err())
+    inner = result.unwrap()
+    if inner is None:
+        return Ok(None)
+    return Ok(Match(start=inner.start, end=inner.end, text=inner.text))
+
+def match(pattern: str, text: str) -> Result[Option[Match], str]:
+    """Match pattern at the beginning of text only.
+    
+    Unlike search(), this only matches if the pattern is at position 0.
+    
+    Args:
+        pattern: Regex pattern to match
+        text: Text to match against
+        
+    Returns:
+        Result containing Option[Match] or error message
+        
+    Example:
+        re.match(r"\\d+", "123abc")  # Ok(Some(Match))
+        re.match(r"\\d+", "abc123")  # Ok(None)
+    """
+    result = _re_backend.re_match(pattern, text)
+    if result.is_err():
+        return Err(result.unwrap_err())
+    inner = result.unwrap()
+    if inner is None:
+        return Ok(None)
+    return Ok(Match(start=inner.start, end=inner.end, text=inner.text))
+
+def findall(pattern: str, text: str) -> Result[list[str], str]:
+    """Find all non-overlapping matches of pattern in text.
+    
+    Args:
+        pattern: Regex pattern to find
+        text: Text to search in
+        
+    Returns:
+        Result containing list of matched strings or error message
+        
+    Example:
+        matches = re.findall(r"\\d+", "a1b22c333").unwrap()
+        # ["1", "22", "333"]
+    """
+    result = _re_backend.re_findall(pattern, text)
+    if result.is_err():
+        return Err(result.unwrap_err())
+    return Ok(result.unwrap())
+
+def sub(pattern: str, repl: str, text: str) -> Result[str, str]:
+    """Replace all occurrences of pattern with replacement string.
+    
+    Args:
+        pattern: Regex pattern to replace
+        repl: Replacement string
+        text: Text to perform replacements in
+        
+    Returns:
+        Result containing modified string or error message
+        
+    Example:
+        result = re.sub(r"\\d+", "X", "a1b22c333").unwrap()
+        # "aXbXcX"
+    """
+    result = _re_backend.re_sub(pattern, repl, text)
+    if result.is_err():
+        return Err(result.unwrap_err())
+    return Ok(result.unwrap())
+
+def split(pattern: str, text: str) -> Result[list[str], str]:
+    """Split text by pattern matches.
+    
+    Args:
+        pattern: Regex pattern to split by
+        text: Text to split
+        
+    Returns:
+        Result containing list of parts or error message
+        
+    Example:
+        parts = re.split(r"\\s+", "hello   world").unwrap()
+        # ["hello", "world"]
+    """
+    result = _re_backend.re_split(pattern, text)
+    if result.is_err():
+        return Err(result.unwrap_err())
+    return Ok(result.unwrap())
+
+def is_match(pattern: str, text: str) -> Result[bool, str]:
+    """Test if pattern matches anywhere in text.
+    
+    This is more efficient than search() when you only need to know
+    if a match exists, not where it is.
+    
+    Args:
+        pattern: Regex pattern to test
+        text: Text to test against
+        
+    Returns:
+        Result containing bool or error message
+        
+    Example:
+        if re.is_match(r"\\d+", text).unwrap():
+            print("Contains digits")
+    """
+    return _re_backend.re_is_match(pattern, text)

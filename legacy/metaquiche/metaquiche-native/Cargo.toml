@@ -1,0 +1,30 @@
+[package]
+name = "metaquiche-native"
+version = "0.1.0"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[build-dependencies]
+# quiche_compiler removed
+
+[dependencies]
+metaquiche-parser = { path = "../metaquiche-parser" }
+metaquiche-shared = { path = "../metaquiche-shared" }
+quiche-host = { path = "../quiche-host" }
+parsley = { path = "../../quiche/parsley" }
+
+[lib]
+name = "metaquiche_native"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mq"
+path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3.24.0"
+
+[features]
+bootstrap = []

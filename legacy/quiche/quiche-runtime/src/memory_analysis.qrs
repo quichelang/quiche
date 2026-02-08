@@ -1,0 +1,386 @@
+# Memory Analysis Module
+#
+# Analyzes AST to determine allocation strategies for perceus-mem.
+# Integrates with compiler telemetry for warnings/errors.
+#
+# NOTE: MemConfig, EscapeInfo, MemoryAnalyzer structs are defined in lib.rs
+# to avoid type conflicts with @extern returns.
+
+from rust.metaquiche_parser.ast import QuicheModule, Stmt, Expr, FunctionDef, ClassDef, Keyword, Constant
+from std.collections import HashMap
+
+# Import crate-level types (including AllocationStrategy enum)
+from rust.crate import MemConfig, EscapeInfo, MemoryAnalyzer, AllocationStrategy, OwnershipAction
+
+# Import telemetry for diagnostics
+@extern(path="crate::emit_warning")
+def emit_warning(message: String): pass
+
+@extern(path="crate::emit_error")
+def emit_error(message: String): pass
+
+@extern(path="crate::emit_note")
+def emit_note(message: String): pass
+
+# Type constructors (defined in lib.rs)
+@extern(path="crate::create_MemConfig")
+def new_mem_config() -> crate.MemConfig: pass
+
+@extern(path="crate::create_EscapeInfo")
+def new_escape_info() -> crate.EscapeInfo: pass
+
+@extern(path="crate::create_MemoryAnalyzer")
+def new_memory_analyzer() -> crate.MemoryAnalyzer: pass
+
+
+def init_inline_types(analyzer: mutref[MemoryAnalyzer]):
+    """Initialize built-in inline types"""
+    deref(analyzer).inline_types.push("i8")
+    deref(analyzer).inline_types.push("i16")
+    deref(analyzer).inline_types.push("i32")
+    deref(analyzer).inline_types.push("i64")
+    deref(analyzer).inline_types.push("u8")
+    deref(analyzer).inline_types.push("u16")
+    deref(analyzer).inline_types.push("u32")
+    deref(analyzer).inline_types.push("u64")
+    deref(analyzer).inline_types.push("f32")
+    deref(analyzer).inline_types.push("f64")
+    deref(analyzer).inline_types.push("bool")
+    deref(analyzer).inline_types.push("char")
+    deref(analyzer).inline_types.push("usize")
+    deref(analyzer).inline_types.push("isize")
+
+
+def analyze_module(analyzer: mutref[MemoryAnalyzer], module: QuicheModule):
+    """Pass 0: Analyze entire module for memory patterns"""
+    if deref(analyzer).verbose:
+        print("MemoryAnalyzer: Starting analysis...")
+    
+    init_inline_types(analyzer)
+    
+    for stmt in module.body.clone():
+        collect_mem_decorators(analyzer, stmt)
+    
+    for stmt in module.body:
+        analyze_escape_patterns(analyzer, stmt)
+    
+    if deref(analyzer).verbose:
+        print("MemoryAnalyzer: Analysis complete.")
+
+
+def collect_mem_decorators(analyzer: mutref[MemoryAnalyzer], stmt: Stmt):
+    """Collect @mem decorator configurations from classes and functions"""
+    match stmt:
+        case Stmt.ClassDef(c):
+            config: MemConfig = parse_mem_decorator(c.decorator_list)
+            if config.is_inline:
+                deref(analyzer).inline_types.push(c.name.clone())
+                deref(analyzer).type_strategies.insert(c.name.clone(), AllocationStrategy.Inline)
+                if deref(analyzer).verbose:
+                    print("  Found @mem(inline=True) on class: " + c.name)
+                    
+        case Stmt.FunctionDef(f):
+            config: MemConfig = parse_mem_decorator(f.decorator_list)
+            
+            if config.is_inline and config.is_region:
+                emit_error("@mem cannot have both inline=True and region=True on function: " + f.name)
+            
+            if config.is_raw and (config.is_inline or config.is_region):
+                emit_warning("@mem(raw=True) overrides other options on function: " + f.name)
+            
+            deref(analyzer).func_configs.insert(f.name.clone(), config)
+                    
+        case _:
+            pass
+
+
+def parse_mem_decorator(decorators: Vec[Expr]) -> MemConfig:
+    """Parse @mem decorator and extract options"""
+    config: MemConfig = new_mem_config()
+    
+    for dec in decorators:
+        match dec:
+            case Expr.Call(func=f, args=a, keywords=kw):
+                func_inner: Expr = deref(f)
+                match func_inner:
+                    case Expr.Name(n):
+                        if n == "mem":
+                            for keyword in kw:
+                                parse_mem_keyword(mutref(config), keyword)
+                    case _:
+                        pass
+            case Expr.Name(n):
+                pass  # Simple @mem with no args
+            case _:
+                pass
+    
+    return config
+
+
+def parse_mem_keyword(config: mutref[MemConfig], kw: Keyword):
+    """Parse a single keyword argument from @mem decorator"""
+    match kw.arg:
+        case Some(arg_name):
+            val_inner: Expr = deref(kw.value)
+            match val_inner:
+                case Expr.Constant(c):
+                    match c:
+                        case Constant.Bool(b):
+                            if arg_name == "inline":
+                                deref(config).is_inline = b
+                            elif arg_name == "region":
+                                deref(config).is_region = b
+                            elif arg_name == "raw":
+                                deref(config).is_raw = b
+                            else:
+                                emit_warning("Unknown @mem option: " + arg_name)
+                        case _:
+                            emit_error("@mem options must be boolean")
+                case _:
+                    emit_error("@mem options must be constant values")
+        case None:
+            emit_error("@mem options must be named (e.g., @mem(inline=True))")
+
+
+def analyze_escape_patterns(analyzer: mutref[MemoryAnalyzer], stmt: Stmt):
+    """Analyze which values escape their defining scope"""
+    match stmt:
+        case Stmt.FunctionDef(f):
+            deref(analyzer).current_escape = new_escape_info()
+            for s in f.body:
+                analyze_stmt_escape(analyzer, s)
+        case _:
+            pass
+
+
+def analyze_stmt_escape(analyzer: mutref[MemoryAnalyzer], stmt: Stmt):
+    """Analyze a statement for escape patterns"""
+    match stmt:
+        case Stmt.Return(opt_val):
+            match opt_val:
+                case Some(e):
+                    mark_escaping(analyzer, deref(e))
+                case None: pass
+            
+        case Stmt.Assign(a):
+            for target in a.targets:
+                match target:
+                    case Expr.Attribute(value=val, attr=attr_name):
+                        mark_escaping(analyzer, deref(a.value))
+                    case Expr.Name(n):
+                        deref(analyzer).current_escape.local_only.push(n)
+                    case _:
+                        pass
+                                
+        case Stmt.If(i):
+            for s in i.body:
+                analyze_stmt_escape(analyzer, s)
+            for s in i.orelse:
+                analyze_stmt_escape(analyzer, s)
+                
+        case Stmt.For(f):
+            for s in f.body:
+                analyze_stmt_escape(analyzer, s)
+                
+        case Stmt.While(w):
+            for s in w.body:
+                analyze_stmt_escape(analyzer, s)
+                
+        case _:
+            pass
+
+
+def mark_escaping(analyzer: mutref[MemoryAnalyzer], expr: Expr):
+    """Mark names in an expression as escaping"""
+    match expr:
+        case Expr.Name(n):
+            deref(analyzer).current_escape.escaping.push(n)
+        case Expr.Call(func=f, args=a, keywords=kw):
+            for arg in a:
+                mark_escaping(analyzer, arg)
+        case Expr.List(elts):
+            for e in elts:
+                mark_escaping(analyzer, e)
+        case Expr.Tuple(elts):
+            for e in elts:
+                mark_escaping(analyzer, e)
+        case _:
+            pass
+
+
+def get_strategy_for_type(analyzer: ref[MemoryAnalyzer], type_name: String) -> AllocationStrategy:
+    """Get allocation strategy for a type"""
+    # Explicitly check for primitives to ensure they are Inline (Stack)
+    if type_name == "u8" or type_name == "u16" or type_name == "u32" or type_name == "u64" or type_name == "usize": return AllocationStrategy.Inline
+    if type_name == "i8" or type_name == "i16" or type_name == "i32" or type_name == "i64" or type_name == "isize": return AllocationStrategy.Inline
+    if type_name == "bool" or type_name == "char" or type_name == "f32" or type_name == "f64": return AllocationStrategy.Inline
+
+    for t in deref(analyzer).inline_types.clone():
+        if t == type_name:
+            return AllocationStrategy.Inline
+    
+    match deref(analyzer).type_strategies.get(ref(type_name)):
+        case Some(strategy):
+            return deref(strategy)
+        case None:
+            return AllocationStrategy.Managed
+
+
+def get_func_config(analyzer: ref[MemoryAnalyzer], func_name: String) -> MemConfig:
+    """Get memory configuration for a function"""
+    match deref(analyzer).func_configs.get(ref(func_name)):
+        case Some(config):
+            return deref(config)
+        case None:
+            return new_mem_config()
+
+
+def is_value_escaping(analyzer: ref[MemoryAnalyzer], name: String) -> bool:
+    """Check if a value escapes the current scope"""
+    for n in deref(analyzer).current_escape.escaping.clone():
+        if n == name:
+            return True
+    return False
+
+
+def analyze_memory(module: QuicheModule, verbose: bool) -> MemoryAnalyzer:
+    """Main entry point for memory analysis"""
+    analyzer: MemoryAnalyzer = new_memory_analyzer()
+    analyzer.verbose = verbose
+    analyze_module(mutref(analyzer), module)
+    return analyzer
+
+
+def is_variable_used_after(analyzer: ref[MemoryAnalyzer], name: String, current_idx: usize, body: Vec[Stmt]) -> bool:
+    """Check if a variable is used after the current statement index in a block"""
+    idx = 0
+    for stmt in body.clone():
+        if idx > current_idx:
+            if is_variable_used(analyzer, name.clone(), stmt):
+                return True
+        idx = idx + 1
+    return False
+
+
+def is_variable_used(analyzer: ref[MemoryAnalyzer], name: String, stmt: Stmt) -> bool:
+    """Check if a variable is used in a statement"""
+    match stmt:
+        case Stmt.Return(opt_val):
+             match opt_val:
+                 case Some(e): return is_name_in_expr(name.clone(), deref(e))
+                 case None: return False
+                 
+        case Stmt.Expr(e):
+             return is_name_in_expr(name.clone(), deref(e))
+             
+        case Stmt.Assign(a):
+             # Check value (RHS)
+             if is_name_in_expr(name.clone(), deref(a.value)): return True
+             # Check targets (LHS) - e.g. x[i] = 1 uses i
+             # But assigning TO x doesn't count as using x's value, unless it's x.attr or x[i]
+             for target in a.targets:
+                 match target:
+                    case Expr.Subscript(value=val, slice=slice):
+                        if is_name_in_expr(name.clone(), deref(val)): return True
+                        if is_name_in_expr(name.clone(), deref(slice)): return True
+                    case Expr.Attribute(value=val, attr=attr):
+                        if is_name_in_expr(name.clone(), deref(val)): return True
+                    case _: pass
+             return False
+
+        case Stmt.If(i):
+            if is_name_in_expr(name.clone(), deref(i.test)): return True
+            for s in i.body:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            for s in i.orelse:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            return False
+
+        case Stmt.For(f):
+            if is_name_in_expr(name.clone(), deref(f.iter)): return True
+            for s in f.body:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            for s in f.orelse:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            return False
+
+        case Stmt.While(w):
+            if is_name_in_expr(name.clone(), deref(w.test)): return True
+            for s in w.body:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            for s in w.orelse:
+                if is_variable_used(analyzer, name.clone(), s): return True
+            return False
+            
+        case _: return False
+
+
+def is_name_in_expr(name: String, expr: Expr) -> bool:
+    """Check if a name appears in an expression"""
+    match expr:
+        case Expr.Name(n):
+            return n == name
+            
+        case Expr.Call(func=func, args=args, keywords=kw):
+            if is_name_in_expr(name.clone(), deref(func)): return True
+            for arg in args:
+                if is_name_in_expr(name.clone(), arg): return True
+            for k in kw:
+                if is_name_in_expr(name.clone(), deref(k.value)): return True
+            return False
+            
+        case Expr.Attribute(value=val, attr=attr):
+            return is_name_in_expr(name.clone(), deref(val))
+            
+        case Expr.Subscript(value=val, slice=slice):
+            if is_name_in_expr(name.clone(), deref(val)): return True
+            return is_name_in_expr(name.clone(), deref(slice))
+            
+        case Expr.BinOp(left=left, op=op, right=right):
+            if is_name_in_expr(name.clone(), deref(left)): return True
+            return is_name_in_expr(name.clone(), deref(right))
+            
+        case Expr.UnaryOp(op=op, operand=operand):
+            return is_name_in_expr(name.clone(), deref(operand))
+            
+        case Expr.BoolOp(op=op, values=values):
+            for v in values:
+                if is_name_in_expr(name.clone(), v): return True
+            return False
+            
+        case Expr.Compare(left=left, ops=ops, comparators=comparators):
+            if is_name_in_expr(name.clone(), deref(left)): return True
+            for c in comparators:
+                if is_name_in_expr(name.clone(), c): return True
+            return False
+            
+        case Expr.List(elts):
+            for e in elts:
+                if is_name_in_expr(name.clone(), e): return True
+            return False
+            
+        case Expr.Tuple(elts):
+            for e in elts:
+                if is_name_in_expr(name.clone(), e): return True
+            return False
+            
+        # case Expr.Dict(keys, values):
+        #    for k in keys:
+        #        if is_name_in_expr(name.clone(), k): return True
+        #    for v in values:
+        #        if is_name_in_expr(name.clone(), v): return True
+        #    return False
+            
+        # TODO: Handle DictComp, ListComp (need to check scope)
+        # For now, conservative: assume used if it's in the generators?
+        # That's hard to analyze without full traversal.
+        
+        case _: return False
+
+
+def decide_ownership_action(analyzer: ref[MemoryAnalyzer], name: String, current_idx: usize, body: Vec[Stmt]) -> OwnershipAction:
+    """Decide ownership action for a variable at a call site"""
+    if is_variable_used_after(analyzer, name.clone(), current_idx, body):
+        return OwnershipAction.Clone
+    else:
+        return OwnershipAction.Move

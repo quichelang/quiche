@@ -1,20 +1,8 @@
 [workspace]
 members = [
-    "metaquiche/metaquiche-parser",
-    "metaquiche/quiche-host",
-    "metaquiche/metaquiche-shared",
-    "metaquiche/metaquiche-native",
-    "quiche/quiche-compiler",
-    "quiche/quiche-runtime",
-    "quiche/parsley",
-    "quiche/perceus-mem",
-    "quiche/quiche-bridge",
+    "quiche",
 ]
 resolver = "2"
-
-# Workspace dependencies
-[workspace.dependencies]
-# (empty - no shared workspace deps)
 
 # Workspace-wide lint configuration
 [workspace.lints.clippy]

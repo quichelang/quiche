@@ -1,0 +1,12 @@
+//! Shared utilities for the Quiche metaquiche compilers
+//!
+//! This crate provides common functionality used by both:
+//! - metaquiche-host (Rust-based bootstrap compiler)
+//! - metaquiche-native (Self-hosted Quiche compiler)
+
+pub mod error_exit;
+pub mod i18n;
+pub mod macros;
+pub mod runner;
+pub mod telemetry;
+pub mod template;

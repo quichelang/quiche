@@ -1,0 +1,14 @@
+[package]
+name = "perceus-mem"
+version = "0.1.0"
+edition = "2021"
+description = "Memory management with generation-based reference counting and regions"
+license = "MIT"
+
+
+[features]
+default = []
+thread-safe = []  # Toggles AtomicPolicy TBD
+
+[dev-dependencies]
+# For testing

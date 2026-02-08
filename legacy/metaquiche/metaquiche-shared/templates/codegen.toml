@@ -1,0 +1,175 @@
+# Code generation string templates for compiler parity
+# Both host and native compilers use these to ensure identical code output.
+# Format: key = "value" (simple string assignment)
+
+[codegen]
+description = "Code generation strings for Quiche to Rust transpilation"
+
+[codegen.strings]
+# Statement patterns
+function_def_start           = "pub fn "
+function_def_end             = "}\n\n"
+class_def_end                = "}\n\n"
+match_end                    = "}\n"
+
+# Docstring pattern
+docstring_start              = '#![doc = "'
+docstring_end                = '"]\n'
+
+# Type annotation patterns
+return_arrow                 = " -> "
+arrow                        = " -> "
+type_param_start             = "<"
+type_param_end               = ">"
+type_param_sep               = ", "
+
+# Reference operators - transcribe Quiche to Rust macros
+ref_macro                    = "crate::quiche::qref!"
+mutref_macro                 = "crate::quiche::mutref!"
+deref_macro                  = "crate::quiche::deref!"
+strcat_macro                 = "crate::quiche::strcat!"
+
+# Control flow
+break_stmt                   = "break;\n"
+continue_stmt                = "continue;\n"
+
+# Pattern matching
+wildcard                     = "_"
+pattern_struct_end           = ", .. }"
+pattern_struct_empty         = " { .. }"
+pattern_arrow                = " => {\n"
+pattern_guard_if             = " if "
+
+# Literals
+none_literal                 = "None"
+true_literal                 = "true"
+false_literal                = "false"
+
+# Operators
+namespace_sep                = "::"
+field_access                 = "."
+reference_op                 = "&"
+
+# Collections
+vec_new                      = "Vec::new()"
+hashmap_new                  = "std::collections::HashMap::new()"
+vec_turbofish_start          = "Vec::<"
+vec_turbofish_end            = ">::new()"
+
+# Methods & Misc
+len_sub                      = ".len() - "
+clone_call                   = ".clone()"
+close_bracket_clone          = "].clone()"
+question_mark                = "?"
+
+# Punctuation & Delimiters
+nop                          = ""
+space                        = " "
+underscore                   = "_"
+comma                        = ","
+comma_sep                    = ", "
+colon_sep                    = ": "
+semicolon                    = ";"
+lparen                       = "("
+rparen                       = ")"
+lbracket                     = "["
+rbracket                     = "]"
+lbrace                       = "{"
+rbrace                       = "}"
+quote                        = "\""
+newline                      = "\n"
+
+# Block delimiters
+space_brace_open             = " { "
+space_brace_newline          = " {\n"
+brace_close_newline          = "}\n"
+brace_close_double_newline   = "}\n\n"
+
+# Statement terminators
+semicolon_newline            = ";\n"
+comma_newline                = ",\n"
+paren_comma_newline          = "),\n"
+paren_semicolon_newline      = ");\n"
+
+# For loop
+for_loop_start               = "for __q in ("
+for_loop_body                = ") {\n"
+assign_q                     = " = __q;\n"
+assign_op                    = " = "
+
+# Print / Format
+println_start                = 'println!("'
+println_str                  = 'println!("{}", '
+format_arg                   = "{}"
+format_debug                 = ', "{:?}", '
+
+# Self / Types
+self_mut                     = "&mut self"
+default_call                 = "Default::default()"
+use_crate                    = "use crate::"
+pub_type                     = "pub type "
+extern_comment               = "// Extern class "
+generic_t                    = "<T>"
+generic_t_eq                 = "<T> = "
+any_type                     = "Any"
+
+# Unimplemented placeholders
+unimplemented_stmt           = "// Unimplemented stmt\n"
+unimplemented_expr           = "/* expr */"
+unimplemented_const          = "/* const */"
+
+# Std lib helpers
+string_from_start            = 'String::from("'
+string_from_end              = '")'
+std_process_exit             = "std::process::exit("
+assert_start                 = "assert!("
+assert_msg_sep               = ', "{:?}", '
+
+# Comparison operators
+op_eq                        = "=="
+op_ne                        = "!="
+op_lt                        = "<"
+op_le                        = "<="
+op_gt                        = ">"
+op_ge                        = ">="
+
+# Logical operators
+op_and                       = "&&"
+op_or                        = "||"
+op_not                       = "!"
+
+# Arithmetic operators
+op_add                       = "+"
+op_sub                       = "-"
+op_mul                       = "*"
+op_div                       = "/"
+op_mod                       = "%"
+
+# Bitwise operators
+op_bitand                    = "&"
+op_bitor                     = "|"
+op_bitxor                    = "^"
+op_lshift                    = "<<"
+op_rshift                    = ">>"
+
+# Keywords
+kw_let                       = "let "
+kw_let_mut                   = "let mut "
+kw_return                    = "return "
+kw_if                        = "if "
+kw_else                      = " else "
+kw_while                     = "while "
+kw_match                     = "match "
+kw_impl                      = "impl "
+kw_pub                       = "pub "
+kw_pub_fn                    = "pub fn "
+kw_pub_use                   = "pub use "
+kw_use                       = "use "
+kw_as                        = " as "
+kw_crate                     = "crate::"
+kw_super                     = "super::"
+kw_pub_struct                = "pub struct "
+kw_pub_enum                  = "pub enum "
+kw_pub_type                  = "pub type "
+kw_derive_clone_debug        = "#[derive(Clone, Debug)]\n"
+kw_derive_clone_debug_default = "#[derive(Clone, Debug, Default)]\n"
