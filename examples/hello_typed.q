@@ -1,0 +1,5 @@
+def add(a: i64, b: i64) -> i64:
+    return a + b
+
+def main():
+    add(3, 4)
