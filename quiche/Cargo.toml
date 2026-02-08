@@ -1,0 +1,19 @@
+[package]
+name = "quiche"
+version = "0.1.0"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+elevate = { path = "../../elevate" }
+thiserror = "2.0"
+regex = "1"
+
+[[bin]]
+name = "quiche"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
