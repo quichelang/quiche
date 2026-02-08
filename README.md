@@ -1,101 +1,166 @@
-# Quiche
+# Quiche 🥧
 
-A Python-like language that compiles to Rust.
+**Write Python. Run Rust.**
 
-> [!IMPORTANT]
-> Quiche is a self-hosted, experimental language exploring how far safe Rust can be stretched to achieve Python-like expressiveness without sacrificing Rust-level performance.
-
-**[See Examples →](examples/)** | **[Documentation](docs/)** | **[Tests](tests/)** | **[Status](docs/status.md)**
-
-## What It Looks Like
-
-### Quiche (`.q` files) — Pythonic, clean
+Quiche is a language that looks and feels like Python but compiles to **100% safe Rust** — no `unsafe`, no runtime panics, no garbage collector. You get the clean syntax you love with the raw performance and safety guarantees you need.
 
 ```python
-from rust.std.collections import HashMap
-
 class Student(Struct):
     name: String
     age: u8
-
-    def new(name: String, age: u8) -> Student:
-        return Student(name=name, age=age)
 
     def bio(self) -> String:
         return f"{self.name} is {self.age} years old"
 
 def main():
-    nums = [1, 2, 3, 4, 5]
-    doubled = [x * 2 for x in nums]
-
-    add = |x: i32, y: i32| x + y
-    print(f"Sum: {add(2, 3)}")
-    print(f"Length: {len(doubled)}")
-
     students = [
-        Student.new("Alice", 20),
-        Student.new("Bob", 22)
+        Student(name="Alice", age=20),
+        Student(name="Bob", age=22)
     ]
     for s in students:
         print(s.bio())
 ```
 
-### MetaQuiche (`.qrs` files) — Explicit memory control
+**That's it.** No lifetimes. No borrows. No `Arc<Mutex<T>>`. No fighting the compiler. Just write what you mean.
 
-```python
-def solve(board: mutref[Vec[Vec[i32]]]) -> bool:
-    row: i32 = find_empty_row(ref(deref(board)))
-    if row == -1:
-        return True
+## Why?
 
-    for num in range(1, 10):
-        if is_valid(ref(deref(board)), row as usize, col as usize, num as i32):
-            deref(board)[row as usize][col as usize] = num as i32
-            if solve(board):
-                return True
-            deref(board)[row as usize][col as usize] = 0
+Rust is an incredible language — but for quick scripts, prototypes, and simple programs, the learning curve is brutal:
 
-    return False
-```
+| The pain | Quiche's answer |
+|----------|----------------|
+| Ownership & borrowing | **Automatic** — the compiler figures it out |
+| Lifetime annotations | **None** — inferred at compile time |
+| Type annotations | **Optional** — infer what you can, annotate what you want |
+| `.clone()` everywhere | **Auto-cloning** — Quiche inserts clones only when needed |
+| `&str` vs `String` | **Just `String`** — Quiche picks the right one |
+| Macro syntax (`println!`) | **Just functions** — `print("hello")` |
+| `match` exhaustiveness | **Handled** — Quiche generates correct patterns |
+
+The output is **real Rust** — you can inspect it, learn from it, and ship it.
 
 ## Quick Start
 
 ```bash
-# Build bootstrap compiler + Quiche compiler
-make
+# Install (requires Rust toolchain)
+cargo build -p quiche --release
 
-# Run Quiche (.q) code
-./bin/quiche examples/scripts/demo.q
-./bin/quiche examples/scripts/sudoku.q
+# Run a script
+quiche hello.q
+
+# See the generated Rust
+quiche hello.q --emit-rust
+
+# Inspect the parsed AST
+quiche hello.q --emit-elevate
 ```
 
-See [examples/](examples/) and [tests/](tests/) for more code samples.
+## What It Can Do
 
-## Status
+### Functions — just define them
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| 1. Bootstrap | Host compiler in Rust | ✅ Done |
-| 2. Self-hosting | Compiler compiles itself | ✅ Done |
-| 3. Minimal deps | 15 crates total (was 100+) | ✅ Done |
-| 4. Custom parser | Hand-written recursive-descent | ✅ Done |
-| 5. Template system | Shared codegen strings for parity | ✅ Done |
-| 6. i18n | Zero-dep template-based `t!()` | ✅ Done |
-| 7. Perceus memory | FBIP, regions, weak refs, managed types | ✅ Done |
-| 8. Quiche dialect | Comprehensions, f-strings, auto-borrowing | 🔄 Active |
-| 9. Diagnostics | Colorized errors, telemetry | 🔄 Active |
-| 10. Testing | qtest framework + smoke tests | 🔄 Active |
+```python
+def add(a: i64, b: i64) -> i64:
+    return a + b
 
-See **[docs/status.md](docs/status.md)** for a detailed breakdown including metrics, gaps, and roadmap.
+def greet(name: String):
+    print(f"Hello, {name}!")
+```
+
+### Structs — classes that just work
+
+```python
+class Point(Struct):
+    x: i32
+    y: i32
+
+    def distance(self, other: Point) -> f64:
+        dx: f64 = (self.x - other.x) as f64
+        dy: f64 = (self.y - other.y) as f64
+        return (dx * dx + dy * dy).sqrt()
+```
+
+### Enums — algebraic types, Python-style
+
+```python
+class Shape(Enum):
+    Circle = (f64,)          # radius
+    Rect = (f64, f64)        # width, height
+
+class Printable(Trait):
+    def describe(self) -> String: pass
+
+@impl(Printable)
+class Shape:
+    def describe(self) -> String:
+        match self:
+            case Circle(r): return f"Circle r={r}"
+            case Rect(w, h): return f"Rect {w}x{h}"
+```
+
+### Collections — Python syntax, Rust speed
+
+```python
+nums = [1, 2, 3, 4, 5]
+doubled = [x * 2 for x in nums]
+add = |x: i32, y: i32| x + y
+```
+
+### Imports — pull from the Rust ecosystem
+
+```python
+from std.collections import HashMap
+from std.io import BufReader
+```
+
+## How It Works
+
+```
+hello.q  →  Quiche Parser  →  Elevate AST  →  Rust Codegen  →  rustc  →  binary
+```
+
+1. **Parse** — Quiche's hand-written recursive descent parser reads `.q` files
+2. **Lower** — The [Elevate](https://github.com/jagtesh/elevate) compiler handles type inference, ownership analysis, and auto-cloning
+3. **Emit** — Clean, idiomatic Rust is generated
+4. **Compile** — Standard `rustc` produces an optimized native binary
+
+The generated Rust is readable and correct — no `unsafe` blocks, no `unwrap()`, no panics.
+
+## Experiment Flags
+
+Quiche uses the Elevate compiler backend, which has several experimental features you can try:
+
+```bash
+quiche hello.q --exp-infer-local-bidi        # Bidirectional type inference
+quiche hello.q --exp-numeric-coercion        # Auto numeric type coercion
+quiche hello.q --exp-move-mut-args           # Mutable ownership transfer
+quiche hello.q --fail-on-hot-clone           # Error on implicit clones
+```
+
+Run `quiche --help` for the full list.
+
+## Project Status
+
+| Feature | Status |
+|---------|--------|
+| Functions, structs, enums, traits | ✅ |
+| Pattern matching | ✅ |
+| List comprehensions | ✅ |
+| F-strings | ✅ |
+| Closures / lambdas | ✅ |
+| Auto-borrowing & auto-cloning | ✅ |
+| If/elif/else, for, while, match | ✅ |
+| Imports from Rust stdlib | ✅ |
+| Type inference | 🔄 Experimental |
+| Crate-level compilation | 🔜 Next |
+| Package manager integration | 🔜 Planned |
 
 ## Documentation
 
-- [Design Philosophy](docs/design.md) — MetaQuiche vs Quiche dialects
-- [Language Features](docs/features.md) — What works and what's coming
-- [Build Guide](docs/building.md) — Detailed build instructions
-- [Compiler Architecture](docs/compiler_architecture.md) — Multi-stage bootstrap design
-- [Project Status](docs/status.md) — Detailed progress and metrics
-- [Why Quiche?](docs/why-quiche.md) — Vision and motivation
+- **[Examples](examples/)** — Working `.q` scripts
+- **[Tests](tests/)** — Test suite
+- **[Language Design](docs/language_design/)** — Specification and design docs
+- **[Editor Extensions](editors/)** — VSCode and Zed support
 
 ## License
 
