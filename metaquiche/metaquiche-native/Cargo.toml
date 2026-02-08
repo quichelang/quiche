@@ -10,7 +10,6 @@ workspace = true
 # quiche_compiler removed
 
 [dependencies]
-quiche-runtime = { path = "../../quiche/quiche-runtime" }
 metaquiche-parser = { path = "../metaquiche-parser" }
 metaquiche-shared = { path = "../metaquiche-shared" }
 metaquiche-host = { path = "../metaquiche-host" }

@@ -87,7 +87,6 @@ dependencies = [
  "metaquiche-parser",
  "metaquiche-shared",
  "parsley",
- "quiche-runtime",
  "tempfile",
 ]
 

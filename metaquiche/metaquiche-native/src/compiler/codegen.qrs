@@ -1,5 +1,5 @@
 import rust.metaquiche_parser.ast as q_ast
-from rust.quiche_runtime import deref, qref
+from rust.crate.quiche import deref, qref
 
 
 # extern_defs is provided by the wrapper module

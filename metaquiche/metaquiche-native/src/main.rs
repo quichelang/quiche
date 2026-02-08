@@ -19,7 +19,98 @@
 
 pub mod compiler;
 pub mod quiche {
-    pub use quiche_runtime::{QuicheGeneric, QuicheResult, check, deref, mutref, qref, strcat};
+    // Macros defined locally (no external dependency)
+    macro_rules! qref {
+        ($e:expr) => {
+            &($e)
+        };
+    }
+    pub(crate) use qref;
+
+    macro_rules! mutref {
+        ($e:expr) => {
+            &mut ($e)
+        };
+    }
+    pub(crate) use mutref;
+
+    // QuicheDeref trait for deref! macro - handles Box<T> and references
+    pub trait QuicheDeref {
+        type Target;
+        fn quiche_deref(&self) -> Self::Target;
+    }
+
+    impl<T: Clone> QuicheDeref for Box<T> {
+        type Target = T;
+        fn quiche_deref(&self) -> T {
+            (**self).clone()
+        }
+    }
+
+    impl<T: Clone> QuicheDeref for &T {
+        type Target = T;
+        fn quiche_deref(&self) -> T {
+            (*self).clone()
+        }
+    }
+
+    impl<T: Clone> QuicheDeref for &mut T {
+        type Target = T;
+        fn quiche_deref(&self) -> T {
+            (*self).clone()
+        }
+    }
+
+    macro_rules! deref {
+        ($e:expr) => {{
+            use crate::quiche::QuicheDeref;
+            ($e).quiche_deref()
+        }};
+    }
+    pub(crate) use deref;
+
+    macro_rules! strcat {
+        ($arg:expr) => { ($arg).to_string() };
+        ($first:expr, $($rest:expr),+ $(,)?) => {{
+            let mut __s = ($first).to_string();
+            $( __s.push_str(&($rest).to_string()); )+
+            __s
+        }};
+    }
+    pub(crate) use strcat;
+
+    // High Priority: Consumes Self (Result/Option)
+    pub trait QuicheResult {
+        type Output;
+        fn quiche_handle(self) -> Self::Output;
+    }
+
+    impl<T, E: std::fmt::Debug> QuicheResult for Result<T, E> {
+        type Output = T;
+        fn quiche_handle(self) -> T {
+            self.expect("Quiche Error")
+        }
+    }
+
+    // Low Priority: Takes &Self (Clone fallback)
+    pub trait QuicheGeneric {
+        fn quiche_handle(&self) -> Self;
+    }
+
+    impl<T: Clone> QuicheGeneric for T {
+        fn quiche_handle(&self) -> Self {
+            self.clone()
+        }
+    }
+
+    macro_rules! check {
+        ($val:expr) => {{
+            use crate::quiche::{QuicheGeneric, QuicheResult};
+            ($val).quiche_handle()
+        }};
+    }
+    pub(crate) use check;
+    pub(crate) use check as call;
 
     pub fn as_str_helper<T: AsRef<str> + ?Sized>(s: &T) -> String {
         s.as_ref().to_string()
@@ -821,7 +912,7 @@ pub mod generated_main {
     use super::quiche::*;
     use super::{concat2, concat3, concat4};
     use crate::compiler;
-    use quiche_runtime::qref;
+    use crate::quiche::{check, deref, mutref, qref, strcat};
 
     // Re-export ast from metaquiche_parser so generated code can reference ast::
     pub use metaquiche_parser::ast;

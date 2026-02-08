@@ -4,20 +4,22 @@ This directory contains example Quiche code.
 
 ## Script Examples
 
-Standalone `.qrs` scripts that can be run directly:
+Standalone scripts that can be run directly:
 
 ```bash
 # From the repository root
-./bin/quiche examples/scripts/sudoku.qrs
-
-# Or from this directory
-../../bin/quiche scripts/sudoku.qrs
+./bin/quiche examples/scripts/demo.q
+./bin/quiche examples/scripts/sudoku.q
 ```
 
-| Script | Description |
-|--------|-------------|
-| `scripts/sudoku.qrs` | Sudoku solver using backtracking algorithm |
-| `scripts/traits.qrs` | Trait implementation example |
+| Script | Dialect | Description |
+|--------|---------|-------------|
+| `scripts/demo.q` | Quiche | Structs, methods, f-strings, comprehensions, lambdas |
+| `scripts/sudoku.q` | Quiche | Sudoku solver with auto-borrowing |
+| `scripts/sudoku.qrs` | MetaQuiche | Sudoku solver with explicit refs |
+| `scripts/test.q` | Quiche | Basic smoke test |
+| `scripts/test.qrs` | MetaQuiche | Basic smoke test |
+| `scripts/traits.qrs` | MetaQuiche | Trait implementation example |
 
 ## Cargo Examples
 
