@@ -40,7 +40,7 @@ The bridge handles desugaring, and Elevate handles everything downstream.
 |-------|------|
 | `metaquiche-parser` | Shared parser (Rust). Handles `.q` and `.qrs` syntax. |
 | `metaquiche-shared` | Templates, telemetry, i18n — shared utilities. |
-| `quiche-elevate-bridge` | **Shared bridge**: Quiche AST → Elevate IR. Single source of desugaring truth. Both frontends call into this. |
+| `quiche-bridge` | **Shared bridge**: Quiche AST → Elevate IR. Single source of desugaring truth. Both frontends call into this. |
 | `elevate` | Backend: type inference, ownership analysis, Rust codegen. |
 | `quiche-runtime` | Runtime macros and traits (`qref!`, `deref!`, etc.). |
 | `perceus-mem` | Zero-cost automatic memory management. |
@@ -67,13 +67,13 @@ The bridge handles desugaring, and Elevate handles everything downstream.
 | Crate | Change |
 |-------|--------|
 | `quiche-compiler` | Rewrite `main.qrs` → `main.q` (simplified syntax, auto-borrowing). CLI stays: `new`, `build`, `run`, `test`, `qtest`. |
-| `quiche-elevate-bridge` | Promoted to shared crate. Owns all desugaring logic. Both frontends parse → serialize AST → call bridge → get Elevate IR. Eliminates duplicate `desugar.rs` in host and compiler. |
+| `quiche-bridge` | Promoted to shared crate. Owns all desugaring logic. Both frontends parse → serialize AST → call bridge → get Elevate IR. Eliminates duplicate `desugar.rs` in host and compiler. |
 
 ## How It Works
 
 ### The Bridge: Single Source of Truth
 
-`quiche-elevate-bridge` owns all desugaring logic. It accepts a Quiche AST
+`quiche-bridge` owns all desugaring logic. It accepts a Quiche AST
 (serialized via bincode for cross-process use) and outputs
 Elevate IR. Both frontends call into this same crate:
 

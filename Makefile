@@ -1,110 +1,80 @@
-.PHONY: all bootstrap stage0 stage1 stage2 bootstrap-verify verify diff-stages bootstrap-release quiche quiche-release release install test test-bootstrap test-quiche clean
+.PHONY: all stage0 stage1 stage2 bootstrap verify diff-stages release install test clean
 
-# Host compiler binary (mq0)
+# Stage 0: Host compiler (Rust) — quiche-host
 HOST_BIN_DIR := target/debug
-HOST_BIN := $(HOST_BIN_DIR)/mq0
+HOST_BIN := $(HOST_BIN_DIR)/quiche-host
 
-# Stage 1 (built with host)
+# Stage 1: quiche-compiler built by Stage 0
 STAGE1_TARGET_DIR := target/stage1
-STAGE1_BIN := $(STAGE1_TARGET_DIR)/debug/mq
+STAGE1_BIN := $(STAGE1_TARGET_DIR)/debug/quiche
+
+# Stage 2: quiche-compiler built by Stage 1 (self-hosting verification)
 STAGE2_TARGET_DIR := target/stage2
-STAGE2_BIN := $(STAGE2_TARGET_DIR)/debug/mq
+STAGE2_BIN := $(STAGE2_TARGET_DIR)/debug/quiche
 
 # Release builds
-STAGE1_RELEASE_BIN := $(STAGE1_TARGET_DIR)/release/mq
-STAGE2_RELEASE_BIN := $(STAGE2_TARGET_DIR)/release/mq
-
-# Quiche compiler (user-facing .q compiler)
-QUICHE_TARGET_DIR := target/quiche
-QUICHE_BIN := $(QUICHE_TARGET_DIR)/debug/mq
-QUICHE_RELEASE_BIN := $(QUICHE_TARGET_DIR)/release/mq
+STAGE1_RELEASE_BIN := $(STAGE1_TARGET_DIR)/release/quiche
+STAGE2_RELEASE_BIN := $(STAGE2_TARGET_DIR)/release/quiche
 
 # Output directory for binaries
 BIN_DIR := bin
 
 # Default target
-all: bootstrap-verify quiche
+all: stage2
 
-# Create bin directory and symlinks
+# Create bin directory
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 
 stage0: $(BIN_DIR)
-	cargo build -p metaquiche-host
-	@ln -sf ../$(HOST_BIN) $(BIN_DIR)/mq0
+	cargo build -p quiche-host
+	@ln -sf ../$(HOST_BIN) $(BIN_DIR)/quiche-host
 	@ln -sf ../$(HOST_BIN) $(BIN_DIR)/stage0
 
 stage1: stage0 $(BIN_DIR)
-	@echo "Building Stage 1 (Host -> Self)..."
-	QUICHE_STAGE=stage1 QUICHE_COMPILER_BIN=$(abspath $(HOST_BIN)) CARGO_TARGET_DIR=$(STAGE1_TARGET_DIR) cargo build -p metaquiche-native
-	@ln -sf ../$(STAGE1_BIN) $(BIN_DIR)/mq1
+	@echo "Building Stage 1 (quiche-host → quiche-compiler)..."
+	QUICHE_COMPILER_BIN=$(abspath $(HOST_BIN)) CARGO_TARGET_DIR=$(STAGE1_TARGET_DIR) cargo build -p quiche-compiler
 	@ln -sf ../$(STAGE1_BIN) $(BIN_DIR)/stage1
 
 stage2: stage1 $(BIN_DIR)
-	@echo "Building Stage 2 (Stage 1 -> Self)..."
-	QUICHE_STAGE=stage2 QUICHE_COMPILER_BIN=$(abspath $(STAGE1_BIN)) CARGO_TARGET_DIR=$(STAGE2_TARGET_DIR) cargo build -p metaquiche-native
-	@ln -sf ../$(STAGE2_BIN) $(BIN_DIR)/mq
+	@echo "Building Stage 2 (Stage 1 → quiche-compiler)..."
+	QUICHE_COMPILER_BIN=$(abspath $(STAGE1_BIN)) CARGO_TARGET_DIR=$(STAGE2_TARGET_DIR) cargo build -p quiche-compiler
+	@ln -sf ../$(STAGE2_BIN) $(BIN_DIR)/quiche
 	@ln -sf ../$(STAGE2_BIN) $(BIN_DIR)/stage2
 
 bootstrap: stage2
 
-bootstrap-verify: stage2
+verify: stage2
 	@echo "Verifying Stage 1 output matches Stage 2 output..."
-	python3 verify.py diff '$(STAGE1_TARGET_DIR)/debug/build/metaquiche-native-*/out' '$(STAGE2_TARGET_DIR)/debug/build/metaquiche-native-*/out'
-
-verify: bootstrap-verify
+	python3 verify.py diff '$(STAGE1_TARGET_DIR)/debug/build/quiche-compiler-*/out' '$(STAGE2_TARGET_DIR)/debug/build/quiche-compiler-*/out'
 
 diff-stages: stage2
 	@echo "Showing differences between Stage 1 and Stage 2..."
-	python3 verify.py show-diff '$(STAGE1_TARGET_DIR)/debug/build/metaquiche-native-*/out' '$(STAGE2_TARGET_DIR)/debug/build/metaquiche-native-*/out'
+	python3 verify.py show-diff '$(STAGE1_TARGET_DIR)/debug/build/quiche-compiler-*/out' '$(STAGE2_TARGET_DIR)/debug/build/quiche-compiler-*/out'
 
 # Release builds (optimized)
-bootstrap-release: stage1
+release: stage1
 	@echo "Building Release Stage 1..."
-	QUICHE_STAGE=stage1 QUICHE_COMPILER_BIN=$(abspath $(HOST_BIN)) CARGO_TARGET_DIR=$(STAGE1_TARGET_DIR) cargo build -p metaquiche-native --release
+	QUICHE_COMPILER_BIN=$(abspath $(HOST_BIN)) CARGO_TARGET_DIR=$(STAGE1_TARGET_DIR) cargo build -p quiche-compiler --release
 	@echo "Building Release Stage 2..."
-	QUICHE_STAGE=stage2 QUICHE_COMPILER_BIN=$(abspath $(STAGE1_RELEASE_BIN)) CARGO_TARGET_DIR=$(STAGE2_TARGET_DIR) cargo build -p metaquiche-native --release
+	QUICHE_COMPILER_BIN=$(abspath $(STAGE1_RELEASE_BIN)) CARGO_TARGET_DIR=$(STAGE2_TARGET_DIR) cargo build -p quiche-compiler --release
 	@mkdir -p $(BIN_DIR)
-	@ln -sf ../$(STAGE2_RELEASE_BIN) $(BIN_DIR)/stage2-release
-	@echo "Bootstrap release binary: $(BIN_DIR)/stage2-release"
+	@ln -sf ../$(STAGE2_RELEASE_BIN) $(BIN_DIR)/quiche
+	@echo "Release binary: $(BIN_DIR)/quiche"
 
-quiche: stage2 $(BIN_DIR)
-	@echo "Building Quiche compiler (MetaQuiche -> Quiche)..."
-	QUICHE_STAGE=quiche QUICHE_COMPILER_BIN=$(abspath $(STAGE2_BIN)) CARGO_TARGET_DIR=$(QUICHE_TARGET_DIR) cargo build -p quiche-compiler
-	@ln -sf ../$(QUICHE_BIN) $(BIN_DIR)/quiche
-	@ln -sf ../$(QUICHE_BIN) $(BIN_DIR)/mq-quiche
-	@echo "Quiche compiler binary: $(BIN_DIR)/quiche"
-
-quiche-release: stage2 $(BIN_DIR)
-	@echo "Building Quiche compiler release..."
-	QUICHE_STAGE=quiche QUICHE_COMPILER_BIN=$(abspath $(STAGE2_BIN)) CARGO_TARGET_DIR=$(QUICHE_TARGET_DIR) cargo build -p quiche-compiler --release
-	@ln -sf ../$(QUICHE_RELEASE_BIN) $(BIN_DIR)/quiche
-	@ln -sf ../$(QUICHE_RELEASE_BIN) $(BIN_DIR)/mq-quiche
-	@echo "Quiche release binary: $(BIN_DIR)/quiche"
-
-release: quiche-release
-
-# Install binaries to per-user cargo path
-install: quiche-release
+# Install to user cargo path
+install: release
 	@echo "Installing Quiche compiler to $$HOME/.cargo/bin..."
 	@mkdir -p $$HOME/.cargo/bin
-	cp $(QUICHE_RELEASE_BIN) $$HOME/.cargo/bin/quiche
-	cp $(QUICHE_RELEASE_BIN) $$HOME/.cargo/bin/mq
-	@echo "Installed! Run 'quiche --help' (or 'mq --help') to verify."
+	cp $(STAGE2_RELEASE_BIN) $$HOME/.cargo/bin/quiche
+	@echo "Installed! Run 'quiche --help' to verify."
 
-test: test-bootstrap test-quiche
-
-test-bootstrap: stage2
-	@echo "Running bootstrap regression test..."
-	./$(STAGE2_BIN) tests/test_private_visibility.qrs
-	@echo "Bootstrap regression test passed!"
-
-test-quiche: quiche
-	@echo "Running Quiche (.q) smoke tests..."
-	./$(QUICHE_BIN) tests/test_codegen_scope_regression.q
-	./$(QUICHE_BIN) tests/test_comprehensions.q
-	./$(QUICHE_BIN) tests/test_fstring.q
-	@echo "Quiche smoke tests passed!"
+test: stage2
+	@echo "Running smoke tests..."
+	./$(STAGE2_BIN) tests/test_codegen_scope_regression.q
+	./$(STAGE2_BIN) tests/test_comprehensions.q
+	./$(STAGE2_BIN) tests/test_fstring.q
+	@echo "Smoke tests passed!"
 
 clean:
-	rm -rf target bin stage0 stage1 stage2
+	rm -rf target bin

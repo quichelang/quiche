@@ -12,7 +12,7 @@ workspace = true
 [dependencies]
 metaquiche-parser = { path = "../metaquiche-parser" }
 metaquiche-shared = { path = "../metaquiche-shared" }
-metaquiche-host = { path = "../metaquiche-host" }
+quiche-host = { path = "../quiche-host" }
 parsley = { path = "../../quiche/parsley" }
 
 [lib]

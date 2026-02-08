@@ -1,14 +1,14 @@
 [workspace]
 members = [
     "metaquiche/metaquiche-parser",
-    "metaquiche/metaquiche-host",
+    "metaquiche/quiche-host",
     "metaquiche/metaquiche-shared",
     "metaquiche/metaquiche-native",
     "quiche/quiche-compiler",
     "quiche/quiche-runtime",
     "quiche/parsley",
     "quiche/perceus-mem",
-    "quiche/quiche-elevate-bridge",
+    "quiche/quiche-bridge",
 ]
 resolver = "2"
 

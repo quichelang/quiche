@@ -74,23 +74,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
-name = "metaquiche-host"
-version = "0.1.0"
-dependencies = [
- "metaquiche-parser",
- "metaquiche-shared",
- "regex",
- "tempfile",
-]
-
-[[package]]
 name = "metaquiche-native"
 version = "0.1.0"
 dependencies = [
- "metaquiche-host",
  "metaquiche-parser",
  "metaquiche-shared",
  "parsley",
+ "quiche-host",
  "tempfile",
 ]
 
@@ -134,24 +124,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "quiche-bridge"
+version = "0.1.0"
+dependencies = [
+ "elevate",
+ "metaquiche-parser",
+]
+
+[[package]]
 name = "quiche-compiler"
 version = "0.1.0"
 dependencies = [
  "elevate",
- "metaquiche-host",
  "metaquiche-parser",
  "metaquiche-shared",
  "parsley",
+ "quiche-bridge",
  "quiche-runtime",
  "tempfile",
 ]
 
 [[package]]
-name = "quiche-elevate-bridge"
+name = "quiche-host"
 version = "0.1.0"
 dependencies = [
- "elevate",
  "metaquiche-parser",
+ "metaquiche-shared",
+ "regex",
+ "tempfile",
 ]
 
 [[package]]

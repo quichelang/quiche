@@ -1,8 +1,8 @@
 // Legacy host compiler CLI - will be deprecated in favor of metaquiche-native
 
-use metaquiche_host::compile;
 use metaquiche_shared::error_exit::UnwrapOrExit;
 use metaquiche_shared::i18n::{tr, tr1};
+use quiche_host::compile;
 use std::env;
 use std::fs;
 use std::path::Path;

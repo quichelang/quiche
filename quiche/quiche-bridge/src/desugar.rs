@@ -3,11 +3,6 @@
 //! Converts a `metaquiche_parser::ast::QuicheModule` into an
 //! `elevate::ast::Module`, desugaring Python-like constructs (f-strings,
 //! list comprehensions, range(), etc.) into their Elevate equivalents.
-//!
-//! ⚠️  THIS FILE IS DUPLICATED in quiche-elevate-bridge/src/desugar.rs.
-//!     Keep both copies in sync. The bridge copy exists because quiche-compiler
-//!     requires QUICHE_COMPILER_BIN to build (MetaQuiche bootstrap), so the
-//!     bridge crate cannot depend on quiche-compiler directly.
 
 use elevate::ast as e;
 use metaquiche_parser::ast as q;

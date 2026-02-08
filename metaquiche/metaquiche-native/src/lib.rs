@@ -31,7 +31,7 @@ pub fn compile(source: &str, filename: &str) -> Option<String> {
     };
 
     // Generate Rust code using metaquiche-host's codegen
-    let mut cg = metaquiche_host::Codegen::new();
+    let mut cg = quiche_host::Codegen::new();
     let rust_code = cg.generate_module(&parsed);
 
     Some(dedup_shadowed_let_mut(&rust_code))

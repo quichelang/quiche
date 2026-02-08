@@ -1,5 +1,5 @@
 [package]
-name = "metaquiche-host"
+name = "quiche-host"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,7 +14,7 @@ regex = "1.5"
 path = "src/lib.rs"
 
 [[bin]]
-name = "mq0"
+name = "quiche-host"
 path = "src/main.rs"
 
 [dev-dependencies]
