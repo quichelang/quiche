@@ -796,7 +796,23 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expr_or_assign(&mut self) -> Result<e::Stmt, ParseError> {
-        let expr = self.parse_expr()?;
+        let mut expr = self.parse_expr()?;
+
+        // Handle bare comma-separated expressions: `a, *rest, b = items`
+        // Creates an implicit Tuple for destructuring
+        if self.check(&TokenKind::Comma) && !self.check(&TokenKind::Newline) {
+            let mut elems = vec![expr];
+            while self.eat(&TokenKind::Comma)? {
+                if self.check(&TokenKind::Eq)
+                    || self.check(&TokenKind::Newline)
+                    || self.check(&TokenKind::Eof)
+                {
+                    break; // trailing comma
+                }
+                elems.push(self.parse_expr()?);
+            }
+            expr = e::Expr::Tuple(elems);
+        }
 
         // Check for type annotation: `name: Type = value`
         if self.check(&TokenKind::Colon) {
@@ -831,6 +847,16 @@ impl<'a> Parser<'a> {
         if self.check(&TokenKind::Eq) {
             self.advance()?;
             let value = self.parse_expr()?;
+
+            // Check if LHS is a tuple containing *splat → destructure
+            if let Some(pattern) = self.try_expr_to_destructure(&expr) {
+                return Ok(e::Stmt::DestructureConst {
+                    pattern,
+                    value,
+                    is_const: false,
+                });
+            }
+
             let target = self.expr_to_assign_target(expr)?;
             return Ok(e::Stmt::Assign {
                 target,
@@ -896,6 +922,93 @@ impl<'a> Parser<'a> {
             e::Expr::Field { base, field } => Ok(e::AssignTarget::Field { base, field }),
             e::Expr::Index { base, index } => Ok(e::AssignTarget::Index { base, index }),
             _ => Err(self.error("invalid assignment target".into())),
+        }
+    }
+
+    /// Check if an expression is a tuple containing at least one *splat,
+    /// and convert it to a DestructurePattern::Slice.
+    fn try_expr_to_destructure(&self, expr: &e::Expr) -> Option<e::DestructurePattern> {
+        // Single starred expression: *rest = items
+        if Self::is_starred(expr) {
+            let name = Self::starred_name(expr).unwrap();
+            return Some(e::DestructurePattern::Slice {
+                prefix: vec![],
+                rest: Some(name),
+                suffix: vec![],
+            });
+        }
+
+        // Tuple containing starred: a, *rest, b = items
+        let e::Expr::Tuple(elems) = expr else {
+            return None;
+        };
+
+        // Must contain at least one starred element
+        if !elems.iter().any(|e| Self::is_starred(e)) {
+            return None;
+        }
+
+        let mut prefix = Vec::new();
+        let mut rest: Option<String> = None;
+        let mut suffix = Vec::new();
+        let mut after_star = false;
+
+        for elem in elems {
+            if Self::is_starred(elem) {
+                if rest.is_some() {
+                    return None; // multiple stars not allowed
+                }
+                rest = Some(Self::starred_name(elem).unwrap());
+                after_star = true;
+            } else {
+                let pat = self.expr_to_destructure_name(elem)?;
+                if after_star {
+                    suffix.push(pat);
+                } else {
+                    prefix.push(pat);
+                }
+            }
+        }
+
+        Some(e::DestructurePattern::Slice {
+            prefix,
+            rest,
+            suffix,
+        })
+    }
+
+    fn is_starred(expr: &e::Expr) -> bool {
+        matches!(expr, e::Expr::MacroCall { path, .. } if path.len() == 1 && path[0] == "__star__")
+    }
+
+    fn starred_name(expr: &e::Expr) -> Option<String> {
+        if let e::Expr::MacroCall { path, args } = expr {
+            if path.len() == 1 && path[0] == "__star__" {
+                if let Some(e::Expr::Path(p)) = args.first() {
+                    return p.first().cloned();
+                }
+            }
+        }
+        None
+    }
+
+    fn expr_to_destructure_name(&self, expr: &e::Expr) -> Option<e::DestructurePattern> {
+        match expr {
+            e::Expr::Path(p) if p.len() == 1 => {
+                if p[0] == "_" {
+                    Some(e::DestructurePattern::Ignore)
+                } else {
+                    Some(e::DestructurePattern::Name(p[0].clone()))
+                }
+            }
+            e::Expr::Tuple(elems) => {
+                let mut items = Vec::new();
+                for elem in elems {
+                    items.push(self.expr_to_destructure_name(elem)?);
+                }
+                Some(e::DestructurePattern::Tuple(items))
+            }
+            _ => None,
         }
     }
 
@@ -1016,6 +1129,15 @@ impl<'a> Parser<'a> {
             return Ok(e::Expr::Unary {
                 op: e::UnaryOp::Neg,
                 expr: Box::new(expr),
+            });
+        }
+        // *name → starred expression (for destructuring: a, *rest = items)
+        if self.check(&TokenKind::Star) {
+            self.advance()?;
+            let name = self.expect_ident()?;
+            return Ok(e::Expr::MacroCall {
+                path: vec!["__star__".into()],
+                args: vec![e::Expr::Path(vec![name])],
             });
         }
         self.parse_postfix()

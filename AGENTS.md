@@ -43,6 +43,9 @@ make clean && make stage1 && make stage2
 - **Use `deref(x)`** for dereferencing boxed values
 - **Check `.qrs` files** for Quiche source code
 - **Use jj** for version control (see [docs/jj-guide.md](docs/jj-guide.md))
+- **One commit per feature**: After each logical feature, run `jj new -m "description"` to start a fresh change. Do NOT keep amending the same working copy with `jj describe`.
+- **Split if needed**: Use `JJ_EDITOR=true jj split -r <rev> -m "msg" -- <fileglobs>` for non-interactive file-based splits.
+- **Never monolith**: A commit with 5+ unrelated changes must be split before moving on.
 
 ## Don'ts ❌
 
