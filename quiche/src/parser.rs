@@ -327,10 +327,18 @@ impl<'a> Parser<'a> {
                 break;
             }
             let name = self.expect_ident()?;
-            params.push(e::GenericParam {
-                name,
-                bounds: vec![],
-            });
+            // Parse optional trait bounds: T: Display or T: Display + Debug
+            let bounds = if self.eat(&TokenKind::Colon)? {
+                let mut bounds = Vec::new();
+                bounds.push(self.parse_type()?);
+                while self.eat(&TokenKind::Plus)? {
+                    bounds.push(self.parse_type()?);
+                }
+                bounds
+            } else {
+                vec![]
+            };
+            params.push(e::GenericParam { name, bounds });
             if !self.eat(&TokenKind::Comma)? {
                 break;
             }
