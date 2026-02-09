@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::process::{self, Command};
 
-use quiche::{CompileOptions, ExperimentFlags};
+use quiche::ExperimentFlags;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -17,21 +17,28 @@ fn main() {
     let emit_rust = has_flag(&args, "--emit-rust");
     let emit_elevate = has_flag(&args, "--emit-elevate");
 
-    // Parse experiment flags
-    let experiments = ExperimentFlags {
-        move_mut_args: has_flag(&args, "--exp-move-mut-args"),
-        infer_local_bidi: has_flag(&args, "--exp-infer-local-bidi"),
-        effect_rows_internal: has_flag(&args, "--exp-effect-rows"),
-        infer_principal_fallback: has_flag(&args, "--exp-infer-principal-fallback"),
-        numeric_coercion: has_flag(&args, "--exp-numeric-coercion"),
-    };
+    // Start with defaults (4 core experiments enabled)
+    let mut options = quiche::default_options();
 
-    // Parse compile options
-    let options = CompileOptions {
-        experiments,
-        fail_on_hot_clone: has_flag(&args, "--fail-on-hot-clone"),
-        ..Default::default()
-    };
+    // Allow CLI overrides for individual experiment flags
+    if has_flag(&args, "--exp-move-mut-args") || has_flag(&args, "--exp-mov-mut-args") {
+        options.experiments.move_mut_args = true;
+    }
+    if has_flag(&args, "--exp-infer-local-bidi") {
+        options.experiments.infer_local_bidi = true;
+    }
+    if has_flag(&args, "--exp-effect-rows") {
+        options.experiments.effect_rows_internal = true;
+    }
+    if has_flag(&args, "--exp-numeric-coercion") {
+        options.experiments.numeric_coercion = true;
+    }
+    if has_flag(&args, "--exp-infer-principal-fallback") {
+        options.experiments.infer_principal_fallback = true;
+    }
+    if has_flag(&args, "--fail-on-hot-clone") {
+        options.fail_on_hot_clone = true;
+    }
 
     let source = match fs::read_to_string(filename) {
         Ok(s) => s,
@@ -75,7 +82,7 @@ fn main() {
         eprintln!("🔒 fail-on-hot-clone enabled");
     }
 
-    match quiche::compile_with_options(&source, &options) {
+    match quiche::compile_file(&source, filename, &options) {
         Ok(rust_code) => {
             if emit_rust {
                 print!("{}", rust_code);
@@ -156,18 +163,21 @@ USAGE:
     quiche <file.q> [OPTIONS]
 
 By default, quiche compiles and runs the script.
+Core experiment flags are enabled by default.
 
 OPTIONS:
     --emit-rust              Emit generated Rust code to stdout
     --emit-elevate           Emit parsed Elevate AST to stdout
     -h, --help               Show this help message
 
-EXPERIMENT FLAGS:
+EXPERIMENT FLAGS (enabled by default):
     --exp-move-mut-args           Mutable argument ownership transfer
     --exp-infer-local-bidi        Bidirectional local type inference
     --exp-effect-rows             Internal effect row types
-    --exp-infer-principal-fallback  Principal type fallback inference
     --exp-numeric-coercion        Automatic numeric type coercion
+
+EXPERIMENT FLAGS (opt-in):
+    --exp-infer-principal-fallback  Principal type fallback inference
 
 COMPILER OPTIONS:
     --fail-on-hot-clone           Error instead of warn on implicit clones
@@ -175,7 +185,6 @@ COMPILER OPTIONS:
 EXAMPLES:
     quiche hello.q                          # compile + run
     quiche hello.q --emit-rust              # show generated Rust
-    quiche hello.q --emit-elevate           # show parsed AST
-    quiche hello.q --exp-infer-local-bidi   # run with type inference"
+    quiche hello.q --emit-elevate           # show parsed AST"
     );
 }

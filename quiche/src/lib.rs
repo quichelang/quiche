@@ -9,6 +9,20 @@ pub mod parser;
 // Re-export Elevate options so the CLI can use them without depending on elevate directly
 pub use elevate::{CompileOptions, CompilerOutput, ExperimentFlags};
 
+/// Default options with core experiment flags enabled.
+pub fn default_options() -> CompileOptions {
+    CompileOptions {
+        experiments: ExperimentFlags {
+            move_mut_args: true,
+            infer_local_bidi: true,
+            effect_rows_internal: true,
+            numeric_coercion: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
 /// Parse Quiche source into an Elevate AST Module.
 pub fn parse(source: &str) -> Result<elevate::ast::Module, String> {
     parser::parse(source).map_err(|e| format!("{e}"))
@@ -23,6 +37,28 @@ pub fn compile(source: &str) -> Result<String, String> {
 pub fn compile_with_options(source: &str, options: &CompileOptions) -> Result<String, String> {
     let module = parser::parse(source).map_err(|e| format!("{e}"))?;
     let output = elevate::compile_ast_with_options(&module, options).map_err(|e| format!("{e}"))?;
+    Ok(output.rust_code)
+}
+
+/// Compile a .q file with source-mapped diagnostics.
+/// Passes the filename and source text to Elevate so errors show file:line:col.
+pub fn compile_file(
+    source: &str,
+    filename: &str,
+    options: &CompileOptions,
+) -> Result<String, String> {
+    let module = parser::parse(source).map_err(|e| format!("{e}"))?;
+    let mut opts = options.clone();
+    opts.source_name = Some(filename.to_string());
+    let output = elevate::compile_ast_with_options(&module, &opts).map_err(|e| {
+        // CompileError Display already uses source_map::render_diagnostic,
+        // but we need to also supply source_text for line:col resolution
+        let mut err = e;
+        if err.source_text.is_none() {
+            err.source_text = Some(source.to_string());
+        }
+        format!("{err}")
+    })?;
     Ok(output.rust_code)
 }
 

@@ -105,7 +105,7 @@ impl<'a> Parser<'a> {
         if self.check(kind) {
             self.advance()
         } else {
-            Err(self.error(format!("expected {:?}, got {:?}", kind, self.kind())))
+            Err(self.error(format!("expected {}, got {}", kind, self.kind())))
         }
     }
 
@@ -113,7 +113,7 @@ impl<'a> Parser<'a> {
         if self.check_kw(kw) {
             self.advance()
         } else {
-            Err(self.error(format!("expected '{:?}', got {:?}", kw, self.kind())))
+            Err(self.error(format!("expected '{kw:?}', got {}", self.kind())))
         }
     }
 
@@ -147,7 +147,7 @@ impl<'a> Parser<'a> {
                 self.advance()?;
                 Ok(name)
             }
-            _ => Err(self.error(format!("expected identifier, got {:?}", self.kind()))),
+            _ => Err(self.error(format!("expected identifier, got {}", self.kind()))),
         }
     }
 
@@ -846,7 +846,7 @@ impl<'a> Parser<'a> {
                     Ok(e::Pattern::Binding(name))
                 }
             }
-            _ => Err(self.error(format!("expected pattern, got {:?}", self.kind()))),
+            _ => Err(self.error(format!("expected pattern, got {}", self.kind()))),
         }
     }
 
@@ -1246,6 +1246,33 @@ impl<'a> Parser<'a> {
                         }
                     }
                 }
+                // Convert range(end) → 0..end, range(start, end) → start..end
+                if let e::Expr::Path(ref path) = expr {
+                    if path.len() == 1 && path[0] == "range" {
+                        match args.len() {
+                            1 => {
+                                expr = e::Expr::Range {
+                                    start: Some(Box::new(e::Expr::Int(0))),
+                                    end: Some(Box::new(args.into_iter().next().unwrap())),
+                                    inclusive: false,
+                                };
+                                continue;
+                            }
+                            2 => {
+                                let mut it = args.into_iter();
+                                let start = it.next().unwrap();
+                                let end = it.next().unwrap();
+                                expr = e::Expr::Range {
+                                    start: Some(Box::new(start)),
+                                    end: Some(Box::new(end)),
+                                    inclusive: false,
+                                };
+                                continue;
+                            }
+                            _ => {} // fall through to normal Call
+                        }
+                    }
+                }
                 expr = e::Expr::Call {
                     callee: Box::new(expr),
                     args,
@@ -1455,7 +1482,7 @@ impl<'a> Parser<'a> {
                     },
                 })
             }
-            _ => Err(self.error(format!("expected expression, got {:?}", self.kind()))),
+            _ => Err(self.error(format!("expected expression, got {}", self.kind()))),
         }
     }
 

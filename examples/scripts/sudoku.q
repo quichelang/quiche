@@ -14,27 +14,27 @@ def print_board(board: Vec[Vec[i32]]):
                 row_str.push_str(" .")
             else:
                 row_str.push_str(" ")
-                row_str.push_str(ref(val.to_string()))
+                row_str.push_str(val.to_string())
         print(row_str)
 
 def find_empty_location(board: Vec[Vec[i32]]) -> Vec[i32]:
     # board is mutref (handled by transformer)
     for row in range(0, 9):
         for col in range(0, 9):
-            if board[row as usize][col as usize] == 0:
+            if board[row][col] == 0:
                 # Explicit cast to satisfy return type Vec[i32]
-                return [row as i32, col as i32]
+                return [row, col]
     return [-1, -1]
 
 def is_valid(board: Vec[Vec[i32]], row: i32, col: i32, num: i32) -> bool:
     # Check row
     for x in range(0, 9):
-        if board[row as usize][x as usize] == num:
+        if board[row][x] == num:
             return False
 
     # Check col
     for x in range(0, 9):
-        if board[x as usize][col as usize] == num:
+        if board[x][col] == num:
             return False
 
     # Check box
@@ -44,7 +44,7 @@ def is_valid(board: Vec[Vec[i32]], row: i32, col: i32, num: i32) -> bool:
         for j in range(0, 3):
             r = i + start_row
             c = j + start_col
-            if board[r as usize][c as usize] == num:
+            if board[r][c] == num:
                 return False
 
     return True
@@ -82,7 +82,7 @@ def get_board() -> Vec[Vec[i32]]:
         [0, 0, 0, 0, 8, 0, 0, 7, 9]
     ]
 
-def run():
+def main():
     # 0 represents empty cells
     board: Vec[Vec[i32]] = get_board()
 
@@ -91,5 +91,3 @@ def run():
         print_board(board)
     else:
         print("No solution exists")
-
-run()
