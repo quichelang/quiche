@@ -205,36 +205,28 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_decorators(&mut self) -> Result<Vec<String>, ParseError> {
+    fn parse_decorators(&mut self) -> Result<Vec<(String, Option<String>)>, ParseError> {
         let mut decs = Vec::new();
         while self.check(&TokenKind::At) {
             self.advance()?;
             let name = self.expect_ident()?;
-            // Skip decorator arguments like @impl(Trait)
+            // Capture first argument from @decorator(Arg)
             if self.check(&TokenKind::LParen) {
                 self.advance()?;
-                let mut depth = 1;
-                while depth > 0 {
-                    match self.kind() {
-                        TokenKind::LParen => {
-                            depth += 1;
-                            self.advance()?;
-                        }
-                        TokenKind::RParen => {
-                            depth -= 1;
-                            self.advance()?;
-                        }
-                        TokenKind::Eof => {
-                            return Err(self.error("unexpected EOF in decorator".into()));
-                        }
-                        _ => {
-                            self.advance()?;
-                        }
-                    }
+                let arg = if let TokenKind::Ident(_) = self.kind() {
+                    let a = self.expect_ident()?;
+                    Some(a)
+                } else {
+                    None
+                };
+                // Skip remaining arguments if any
+                while !self.check(&TokenKind::RParen) && !self.check(&TokenKind::Eof) {
+                    self.advance()?;
                 }
-                decs.push(name);
+                self.expect(&TokenKind::RParen)?;
+                decs.push((name, arg));
             } else {
-                decs.push(name);
+                decs.push((name, None));
             }
             self.skip_newlines()?;
         }
@@ -319,7 +311,9 @@ impl<'a> Parser<'a> {
             type_params,
             params,
             return_type,
+            effect_row: None,
             body,
+            span: None,
         })
     }
 
@@ -427,10 +421,13 @@ impl<'a> Parser<'a> {
     // Class → Struct / Enum / Trait / Impl
     // ─────────────────────────────────────────────────────────────────────────
 
-    fn parse_class_def(&mut self, decorators: Vec<String>) -> Result<Vec<e::Item>, ParseError> {
+    fn parse_class_def(
+        &mut self,
+        decorators: Vec<(String, Option<String>)>,
+    ) -> Result<Vec<e::Item>, ParseError> {
         self.expect_kw(Keyword::Class)?;
         let name = self.expect_ident()?;
-        let _type_params = self.parse_type_params()?;
+        let type_params = self.parse_type_params()?;
 
         // Base class: class Foo(Struct): / class Foo(Enum): / class Foo(Trait):
         let base = if self.eat(&TokenKind::LParen)? {
@@ -444,12 +441,28 @@ impl<'a> Parser<'a> {
         self.expect(&TokenKind::Colon)?;
 
         // @impl decorator → methods only
-        if decorators.iter().any(|d| d == "impl") {
+        let impl_dec = decorators.iter().find(|(d, _)| d == "impl");
+        if let Some((_, trait_arg)) = impl_dec {
+            let trait_target = trait_arg.as_ref().map(|t| e::Type {
+                path: vec![t.clone()],
+                args: vec![],
+                trait_bounds: vec![],
+            });
             let (_fields, methods) = self.parse_class_body(&name)?;
             return Ok(vec![e::Item::Impl(e::ImplBlock {
+                type_params: type_params.clone(),
                 target: name,
-                trait_target: None, // TODO: extract trait from decorator args
+                target_args: type_params
+                    .iter()
+                    .map(|p| e::Type {
+                        path: vec![p.name.clone()],
+                        args: vec![],
+                        trait_bounds: vec![],
+                    })
+                    .collect(),
+                trait_target,
                 methods,
+                span: None,
             })]);
         }
 
@@ -459,13 +472,25 @@ impl<'a> Parser<'a> {
                 let mut items = vec![e::Item::Struct(e::StructDef {
                     visibility: e::Visibility::Public,
                     name: name.clone(),
+                    type_params: type_params.clone(),
                     fields,
+                    span: None,
                 })];
                 if !methods.is_empty() {
                     items.push(e::Item::Impl(e::ImplBlock {
+                        type_params: type_params.clone(),
                         target: name,
+                        target_args: type_params
+                            .iter()
+                            .map(|p| e::Type {
+                                path: vec![p.name.clone()],
+                                args: vec![],
+                                trait_bounds: vec![],
+                            })
+                            .collect(),
                         trait_target: None,
                         methods,
+                        span: None,
                     }));
                 }
                 Ok(items)
@@ -476,17 +501,30 @@ impl<'a> Parser<'a> {
                 Ok(vec![e::Item::Enum(e::EnumDef {
                     visibility: e::Visibility::Public,
                     name,
+                    type_params,
                     variants,
+                    span: None,
                 })])
             }
             Some("Trait") => {
-                let body = self.parse_block()?;
-                let methods = self.extract_trait_methods(body);
+                let (_fields, methods) = self.parse_class_body(&name)?;
+                let method_sigs = methods
+                    .into_iter()
+                    .map(|m| e::TraitMethodSig {
+                        name: m.name,
+                        type_params: m.type_params,
+                        params: m.params,
+                        return_type: m.return_type,
+                        effect_row: m.effect_row,
+                        span: None,
+                    })
+                    .collect();
                 Ok(vec![e::Item::Trait(e::TraitDef {
                     visibility: e::Visibility::Public,
                     name,
                     supertraits: vec![],
-                    methods,
+                    methods: method_sigs,
+                    span: None,
                 })])
             }
             _ => {
@@ -495,13 +533,25 @@ impl<'a> Parser<'a> {
                 let mut items = vec![e::Item::Struct(e::StructDef {
                     visibility: e::Visibility::Public,
                     name: name.clone(),
+                    type_params: type_params.clone(),
                     fields,
+                    span: None,
                 })];
                 if !methods.is_empty() {
                     items.push(e::Item::Impl(e::ImplBlock {
+                        type_params: type_params.clone(),
                         target: name,
+                        target_args: type_params
+                            .iter()
+                            .map(|p| e::Type {
+                                path: vec![p.name.clone()],
+                                args: vec![],
+                                trait_bounds: vec![],
+                            })
+                            .collect(),
                         trait_target: None,
                         methods,
+                        span: None,
                     }));
                 }
                 Ok(items)
@@ -616,12 +666,6 @@ impl<'a> Parser<'a> {
             }
         }
         variants
-    }
-
-    fn extract_trait_methods(&self, body: e::Block) -> Vec<e::TraitMethodSig> {
-        let sigs = Vec::new();
-        let _ = body;
-        sigs
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -919,6 +963,7 @@ impl<'a> Parser<'a> {
                             ty: Some(ty),
                             value,
                             is_const: false,
+                            span: None,
                         }));
                     }
                     // Bare annotation without value (e.g., field decl in class body)
@@ -928,6 +973,7 @@ impl<'a> Parser<'a> {
                         ty: Some(ty),
                         value: e::Expr::Tuple(vec![]),
                         is_const: false,
+                        span: None,
                     }));
                 }
             }
@@ -1876,6 +1922,7 @@ impl<'a> Parser<'a> {
                         args: vec![],
                     },
                     is_const: false,
+                    span: None,
                 }),
                 // for var in iter { ... }
                 e::Stmt::For {
@@ -1968,6 +2015,7 @@ impl<'a> Parser<'a> {
                         args: vec![],
                     },
                     is_const: false,
+                    span: None,
                 }),
                 // for var in iter { __v.push((key, val)); }
                 e::Stmt::For {

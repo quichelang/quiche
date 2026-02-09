@@ -15,7 +15,9 @@ pub fn default_options() -> CompileOptions {
         experiments: ExperimentFlags {
             move_mut_args: true,
             infer_local_bidi: true,
+            effect_rows: true,
             effect_rows_internal: true,
+            infer_principal_fallback: true,
             numeric_coercion: true,
             ..Default::default()
         },
