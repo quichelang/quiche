@@ -2,8 +2,6 @@ use std::env;
 use std::fs;
 use std::process::{self, Command};
 
-use quiche::ExperimentFlags;
-
 fn main() {
     let args: Vec<String> = env::args().collect();
 

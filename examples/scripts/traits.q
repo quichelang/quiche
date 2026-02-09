@@ -14,14 +14,14 @@ class Point:
         return f"Point({self.x}, {self.y})"
 
 def main():
-    p: Point = Point.new(x=5, y=5)
+    p: Point = Point.new(y=6, x=5)
     print(p.display())
     
-    p2: Point = Point.new(5, 5)
+    p2: Point = Point.new(5, 6)
     print(p2.display())
     
-    p3: Point = Point(x=5, y=5)
+    p3: Point = Point(y=6, x=5)
     print(p3.display())
     
-    p4: Point = Point(5, 5)
+    p4: Point = Point(5, 6)
     print(p4.display())

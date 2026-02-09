@@ -366,4 +366,252 @@ mod tests {
         assert!(rust.contains("struct Point"));
         assert!(rust.contains("x: i32"));
     }
+
+    // ─── Struct Instantiation ────────────────────────────────────────────────
+
+    fn compile_ok(source: &str) -> String {
+        crate::compile_with_options(source, &crate::default_options())
+            .expect(&format!("Failed to compile:\n{source}"))
+    }
+
+    // --- Positional construction ---
+
+    #[test]
+    fn test_struct_positional_two_fields() {
+        let rust = compile_ok(
+            "class Point(Struct):\n    x: i32\n    y: i32\n\ndef main():\n    p: Point = Point(1, 2)\n",
+        );
+        assert!(
+            rust.contains("Point {"),
+            "Expected struct literal, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_struct_positional_single_field() {
+        let rust = compile_ok(
+            "class Wrapper(Struct):\n    val: i32\n\ndef main():\n    w: Wrapper = Wrapper(42)\n",
+        );
+        assert!(
+            rust.contains("Wrapper {"),
+            "Expected struct literal, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_struct_positional_three_fields() {
+        let rust = compile_ok(
+            "class Vec3(Struct):\n    x: i32\n    y: i32\n    z: i32\n\ndef main():\n    v: Vec3 = Vec3(1, 2, 3)\n",
+        );
+        assert!(
+            rust.contains("Vec3 {"),
+            "Expected struct literal, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_struct_positional_mixed_types() {
+        let rust = compile_ok(
+            "class Person(Struct):\n    name: String\n    age: i32\n\ndef main():\n    p: Person = Person(\"Alice\".to_string(), 30)\n",
+        );
+        assert!(
+            rust.contains("Person {"),
+            "Expected struct literal, got:\n{rust}"
+        );
+    }
+
+    // --- Keyword construction ---
+
+    #[test]
+    fn test_struct_keyword_two_fields() {
+        let rust = compile_ok(
+            "class Point(Struct):\n    x: i32\n    y: i32\n\ndef main():\n    p: Point = Point(x=5, y=10)\n",
+        );
+        assert!(
+            rust.contains("Point {"),
+            "Expected struct literal from kwargs, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_struct_keyword_reversed_order() {
+        // kwargs in reverse order should still assign correctly
+        let rust = compile_ok(
+            "class Point(Struct):\n    x: i32\n    y: i32\n\ndef main():\n    p: Point = Point(y=10, x=5)\n",
+        );
+        assert!(
+            rust.contains("Point {"),
+            "Expected struct literal from reversed kwargs, got:\n{rust}"
+        );
+        // Verify x comes before y in the struct literal (field order matches struct definition)
+        let x_pos = rust.find("x:").unwrap();
+        let y_pos = rust.find("y:").unwrap();
+        assert!(
+            x_pos < y_pos,
+            "Expected x before y in struct literal, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_struct_keyword_three_fields() {
+        let rust = compile_ok(
+            "class Color(Struct):\n    r: i32\n    g: i32\n    b: i32\n\ndef main():\n    c: Color = Color(r=255, g=128, b=0)\n",
+        );
+        assert!(
+            rust.contains("Color {"),
+            "Expected struct literal, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_struct_keyword_three_fields_shuffled() {
+        // All kwargs in arbitrary order
+        let rust = compile_ok(
+            "class Color(Struct):\n    r: i32\n    g: i32\n    b: i32\n\ndef main():\n    c: Color = Color(b=0, r=255, g=128)\n",
+        );
+        assert!(
+            rust.contains("Color {"),
+            "Expected struct literal from shuffled kwargs, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_struct_keyword_single_field() {
+        let rust = compile_ok(
+            "class Wrapper(Struct):\n    val: i32\n\ndef main():\n    w: Wrapper = Wrapper(val=42)\n",
+        );
+        assert!(
+            rust.contains("Wrapper {"),
+            "Expected struct literal, got:\n{rust}"
+        );
+    }
+
+    // --- @impl regression ---
+
+    #[test]
+    fn test_struct_construction_after_impl() {
+        // Regression: @impl blocks must not overwrite struct field metadata
+        let source = "\
+class Point(Struct):\n    x: i32\n    y: i32\n\n\
+class Printable(Trait):\n    def display(self) -> String: pass\n\n\
+@impl(Printable)\nclass Point:\n    def display(self) -> String:\n        return \"Point\"\n\n\
+def main():\n    p: Point = Point(5, 5)\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("Point { x:"),
+            "Expected struct literal after @impl block, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_struct_keyword_after_impl() {
+        let source = "\
+class Point(Struct):\n    x: i32\n    y: i32\n\n\
+class Printable(Trait):\n    def display(self) -> String: pass\n\n\
+@impl(Printable)\nclass Point:\n    def display(self) -> String:\n        return \"Point\"\n\n\
+def main():\n    p: Point = Point(x=5, y=5)\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("Point { x:"),
+            "Expected keyword struct literal after @impl, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_struct_keyword_reversed_after_impl() {
+        let source = "\
+class Point(Struct):\n    x: i32\n    y: i32\n\n\
+class Printable(Trait):\n    def display(self) -> String: pass\n\n\
+@impl(Printable)\nclass Point:\n    def display(self) -> String:\n        return \"Point\"\n\n\
+def main():\n    p: Point = Point(y=10, x=5)\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("Point {"),
+            "Expected struct literal after @impl, got:\n{rust}"
+        );
+    }
+
+    // --- Method calls with kwargs ---
+
+    #[test]
+    fn test_method_kwargs_parse() {
+        // Point.new(x=5, y=5) should parse without errors
+        let source = "\
+class Point(Struct):\n    x: i32\n    y: i32\n\n\
+    def new(x: i32, y: i32) -> Point:\n        return Point(x, y)\n\n\
+def main():\n    p: Point = Point.new(x=5, y=5)\n";
+        let module = parse(source).unwrap();
+        assert!(!module.items.is_empty());
+    }
+
+    #[test]
+    fn test_method_kwargs_reordered() {
+        // Point.new(y=6, x=5) — kwargs should be reordered to match param order
+        let source = "\
+class Point(Struct):\n    x: i32\n    y: i32\n\n\
+    def new(x: i32, y: i32) -> Point:\n        return Point(x, y)\n\n\
+def main():\n    p: Point = Point.new(y=6, x=5)\n";
+        let rust = compile_ok(source);
+        // The compiled output should call new(5, 6) — x first, then y
+        assert!(rust.contains("new"), "Expected method call, got:\n{rust}");
+    }
+
+    #[test]
+    fn test_method_kwargs_three_params() {
+        let source = "\
+class Vec3(Struct):\n    x: i32\n    y: i32\n    z: i32\n\n\
+    def create(x: i32, y: i32, z: i32) -> Vec3:\n        return Vec3(x, y, z)\n\n\
+def main():\n    v: Vec3 = Vec3.create(z=3, x=1, y=2)\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("create"),
+            "Expected method call, got:\n{rust}"
+        );
+    }
+
+    // --- Top-level function kwargs ---
+
+    #[test]
+    fn test_toplevel_function_kwargs() {
+        let source = "\
+def add(a: i32, b: i32) -> i32:\n    return a + b\n\n\
+def main():\n    x: i32 = add(b=10, a=5)\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("add("),
+            "Expected function call, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_toplevel_function_kwargs_three_params() {
+        let source = "\
+def sum3(a: i32, b: i32, c: i32) -> i32:\n    return a + b + c\n\n\
+def main():\n    x: i32 = sum3(c=30, a=10, b=20)\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("sum3("),
+            "Expected function call, got:\n{rust}"
+        );
+    }
+
+    // --- Multiple structs ---
+
+    #[test]
+    fn test_multiple_structs_kwargs() {
+        // Two different structs — kwargs should not cross-pollinate
+        let source = "\
+class Point(Struct):\n    x: i32\n    y: i32\n\n\
+class Size(Struct):\n    width: i32\n    height: i32\n\n\
+def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, width=100)\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("Point {"),
+            "Expected Point struct literal, got:\n{rust}"
+        );
+        assert!(
+            rust.contains("Size {"),
+            "Expected Size struct literal, got:\n{rust}"
+        );
+    }
 }

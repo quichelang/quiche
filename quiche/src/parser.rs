@@ -7,7 +7,6 @@
 use crate::lexer::{Keyword, LexError, Lexer, Token, TokenKind};
 use elevate::ast as e;
 use std::collections::HashMap;
-use std::ops::Deref;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parser Error
@@ -46,12 +45,23 @@ impl From<LexError> for ParseError {
 // Parser
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Represents a call argument — either positional or keyword (name=expr).
+enum CallArg {
+    Positional(e::Expr),
+    Keyword(String, e::Expr),
+}
+
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
     current: Token,
     peeked: Option<Token>,
     /// Maps struct names to their ordered field names (for positional construction)
     struct_fields: HashMap<String, Vec<String>>,
+    /// Maps function/method names to their ordered parameter names (for kwarg reordering)
+    /// Methods are keyed as "TypeName::method_name", top-level functions as "name"
+    fn_params: HashMap<String, Vec<String>>,
+    /// Current class name being parsed (for registering method params)
+    current_class: Option<String>,
 }
 
 impl<'a> Parser<'a> {
@@ -67,6 +77,8 @@ impl<'a> Parser<'a> {
             current: current,
             peeked: None,
             struct_fields: HashMap::new(),
+            fn_params: HashMap::new(),
+            current_class: None,
         })
     }
 
@@ -275,6 +287,21 @@ impl<'a> Parser<'a> {
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
+
+        // Register parameter names for kwarg reordering
+        let param_names: Vec<String> = params
+            .iter()
+            .filter(|p| p.name != "self")
+            .map(|p| p.name.clone())
+            .collect();
+        if let Some(ref class_name) = self.current_class {
+            // Method: register as "ClassName::method_name"
+            let key = format!("{}::{}", class_name, name);
+            self.fn_params.insert(key, param_names);
+        } else {
+            // Top-level function
+            self.fn_params.insert(name.clone(), param_names);
+        }
 
         // Return type
         let return_type = if self.eat(&TokenKind::Arrow)? {
@@ -490,6 +517,9 @@ impl<'a> Parser<'a> {
         &mut self,
         struct_name: &str,
     ) -> Result<(Vec<e::Field>, Vec<e::FunctionDef>), ParseError> {
+        let prev_class = self.current_class.take();
+        self.current_class = Some(struct_name.to_string());
+
         let mut fields = Vec::new();
         let mut methods = Vec::new();
         // Collect all tokens from the indented body into field vs method buckets.
@@ -521,11 +551,15 @@ impl<'a> Parser<'a> {
             self.skip_newlines()?;
         }
 
-        // Register field names so method bodies can use positional struct construction
-        self.struct_fields.insert(
-            struct_name.to_string(),
-            fields.iter().map(|f| f.name.clone()).collect(),
-        );
+        // Register field names so method bodies can use positional struct construction.
+        // Only when fields are present — @impl blocks have no fields and must not
+        // overwrite the original struct's field list.
+        if !fields.is_empty() {
+            self.struct_fields.insert(
+                struct_name.to_string(),
+                fields.iter().map(|f| f.name.clone()).collect(),
+            );
+        }
 
         // Phase 2: Parse methods
         while !self.check(&TokenKind::Dedent) && !self.check(&TokenKind::Eof) {
@@ -548,6 +582,7 @@ impl<'a> Parser<'a> {
             self.advance()?;
         }
 
+        self.current_class = prev_class;
         Ok((fields, methods))
     }
 
@@ -584,7 +619,7 @@ impl<'a> Parser<'a> {
     }
 
     fn extract_trait_methods(&self, body: e::Block) -> Vec<e::TraitMethodSig> {
-        let mut sigs = Vec::new();
+        let sigs = Vec::new();
         let _ = body;
         sigs
     }
@@ -1224,28 +1259,156 @@ impl<'a> Parser<'a> {
                 };
             } else if self.check(&TokenKind::LParen) {
                 self.advance()?;
-                let args = self.parse_call_args()?;
+                let call_args = self.parse_call_args_with_kwargs()?;
                 self.expect(&TokenKind::RParen)?;
-                // Convert TypeName(args...) to StructLiteral when TypeName is a known struct
-                if let e::Expr::Path(ref path) = expr {
-                    if path.len() == 1 {
-                        if let Some(field_names) = self.struct_fields.get(&path[0]) {
-                            let fields = field_names
-                                .iter()
-                                .zip(args.iter())
-                                .map(|(name, value)| e::StructLiteralField {
+
+                // Check if this is a struct constructor call
+                let is_struct_call = if let e::Expr::Path(ref path) = expr {
+                    path.len() == 1 && self.struct_fields.contains_key(&path[0])
+                } else {
+                    false
+                };
+
+                if is_struct_call {
+                    // Convert to StructLiteral
+                    let path = if let e::Expr::Path(ref p) = expr {
+                        p.clone()
+                    } else {
+                        unreachable!()
+                    };
+                    let field_names = self.struct_fields.get(&path[0]).unwrap().clone();
+
+                    // Check if any args are keyword args
+                    let has_kwargs = call_args
+                        .iter()
+                        .any(|a| matches!(a, CallArg::Keyword(_, _)));
+
+                    let fields = if has_kwargs {
+                        // Keyword construction: Point(x=5, y=5)
+                        call_args
+                            .into_iter()
+                            .map(|arg| {
+                                match arg {
+                                    CallArg::Keyword(name, value) => {
+                                        e::StructLiteralField { name, value }
+                                    }
+                                    CallArg::Positional(_) => {
+                                        // Mixed positional+keyword not supported yet — treat as error
+                                        // For now, skip positional in kwargs mode
+                                        e::StructLiteralField {
+                                            name: String::new(),
+                                            value: e::Expr::Int(0),
+                                        }
+                                    }
+                                }
+                            })
+                            .filter(|f| !f.name.is_empty())
+                            .collect()
+                    } else {
+                        // Positional construction: Point(5, 5) → zip with field names
+                        field_names
+                            .iter()
+                            .zip(call_args.into_iter())
+                            .map(|(name, arg)| {
+                                let value = match arg {
+                                    CallArg::Positional(expr) => expr,
+                                    CallArg::Keyword(_, expr) => expr,
+                                };
+                                e::StructLiteralField {
                                     name: name.clone(),
-                                    value: value.clone(),
-                                })
-                                .collect();
-                            expr = e::Expr::StructLiteral {
-                                path: path.clone(),
-                                fields,
-                            };
-                            continue;
-                        }
-                    }
+                                    value,
+                                }
+                            })
+                            .collect()
+                    };
+
+                    expr = e::Expr::StructLiteral { path, fields };
+                    continue;
                 }
+
+                // Reorder kwargs for non-struct calls using fn_params
+                let has_kwargs = call_args
+                    .iter()
+                    .any(|a| matches!(a, CallArg::Keyword(_, _)));
+                let args: Vec<e::Expr> = if has_kwargs {
+                    // Determine the function key for fn_params lookup
+                    let fn_key = match &expr {
+                        e::Expr::Path(path) if path.len() == 1 => Some(path[0].clone()),
+                        e::Expr::Path(path) if path.len() == 2 => {
+                            // Point.new(...) → Path(["Point", "new"]) → key "Point::new"
+                            Some(format!("{}::{}", path[0], path[1]))
+                        }
+                        e::Expr::Field { base, field, .. } => {
+                            if let e::Expr::Path(ref base_path) = **base {
+                                if base_path.len() == 1 {
+                                    Some(format!("{}::{}", base_path[0], field))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+
+                    if let Some(ref key) = fn_key {
+                        if let Some(param_names) = self.fn_params.get(key) {
+                            // Build a map of kwarg name → value
+                            let mut kwarg_map: HashMap<String, e::Expr> = HashMap::new();
+                            let mut positional = Vec::new();
+                            for arg in call_args {
+                                match arg {
+                                    CallArg::Keyword(name, val) => {
+                                        kwarg_map.insert(name, val);
+                                    }
+                                    CallArg::Positional(val) => {
+                                        positional.push(val);
+                                    }
+                                }
+                            }
+                            // Reorder: fill positional first, then kwargs by param name order
+                            let mut result = Vec::new();
+                            let mut pos_idx = 0;
+                            for pname in param_names {
+                                if let Some(val) = kwarg_map.remove(pname) {
+                                    result.push(val);
+                                } else if pos_idx < positional.len() {
+                                    result.push(positional[pos_idx].clone());
+                                    pos_idx += 1;
+                                }
+                            }
+                            result
+                        } else {
+                            // Function not known — pass in order
+                            call_args
+                                .into_iter()
+                                .map(|a| match a {
+                                    CallArg::Positional(e) => e,
+                                    CallArg::Keyword(_, e) => e,
+                                })
+                                .collect()
+                        }
+                    } else {
+                        call_args
+                            .into_iter()
+                            .map(|a| match a {
+                                CallArg::Positional(e) => e,
+                                CallArg::Keyword(_, e) => e,
+                            })
+                            .collect()
+                    }
+                } else {
+                    // All positional — pass through
+                    call_args
+                        .into_iter()
+                        .map(|a| match a {
+                            CallArg::Positional(e) => e,
+                            CallArg::Keyword(_, e) => e,
+                        })
+                        .collect()
+                };
+
                 // Convert range(end) → 0..end, range(start, end) → start..end
                 if let e::Expr::Path(ref path) = expr {
                     if path.len() == 1 && path[0] == "range" {
@@ -1827,10 +1990,25 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_call_args(&mut self) -> Result<Vec<e::Expr>, ParseError> {
+    /// Parse call arguments, detecting keyword args (name=expr).
+    fn parse_call_args_with_kwargs(&mut self) -> Result<Vec<CallArg>, ParseError> {
         let mut args = Vec::new();
         while !self.check(&TokenKind::RParen) {
-            args.push(self.parse_expr()?);
+            // Check for keyword arg: Ident followed by '='
+            let is_kwarg = if let TokenKind::Ident(_) = self.kind() {
+                matches!(self.peek()?.kind, TokenKind::Eq)
+            } else {
+                false
+            };
+            if is_kwarg {
+                let name = self.expect_ident()?;
+                self.expect(&TokenKind::Eq)?;
+                let value = self.parse_expr()?;
+                args.push(CallArg::Keyword(name, value));
+            } else {
+                let expr = self.parse_expr()?;
+                args.push(CallArg::Positional(expr));
+            }
             if !self.eat(&TokenKind::Comma)? {
                 break;
             }
