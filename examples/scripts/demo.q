@@ -1,58 +1,41 @@
-from rust.std.collections import HashMap
+from std.collections import HashMap
 
-# Note: Methods REQUIRE return type annotations in Quiche
-# Use StructName(field=value, ...) syntax for construction
+# Quiche Demo: structs, methods, constructors, lambdas
+# This demos features that fully transpile through Elevate to Rust.
 
 class Student(Struct):
     name: String
-    age: u8
+    age: i64
 
-    def new(name: String, age: u8) -> Student:
+    def new(name: String, age: i64) -> Student:
         return Student(name, age)
 
     def bio(self) -> String:
         return f"{self.name} is {self.age} years old"
 
-class Class(Struct):
+class Classroom(Struct):
     code: String
-    description: String
-    teacher_name: String
-    students: HashMap[String, Student]
+    teacher: String
 
-    def new(code: String, description: String, teacher_name: String, students: Vec[Student]) -> Class:
-        return Class(code, description, teacher_name, {kv.name: kv for kv in students})
+    def new(code: String, teacher: String) -> Classroom:
+        return Classroom(code, teacher)
 
-    def summary(self) -> String:
-        return f"""
-    Summary:
-        Class {self.code} has {self.students.len()} students and is taught by {self.teacher_name}.
-        The average age of the students is {self.avg_age()}.
-        """
+    def info(self) -> String:
+        return f"Class {self.code} taught by {self.teacher}"
 
-    def avg_age(self) -> f32:
-        if self.students.len() > 0:
-            total = self.students.values().fold(0, |acc, s| acc + s.age) as f32
-            return total / self.students.len() as f32
-        return 0.0
-
-# List comprehensions and lambdas
+# Lambdas and list comprehensions
 def main():
+    # List comprehension
     nums = [1, 2, 3, 4, 5]
     doubled = [x * 2 for x in nums]
-    
-    # Rust-style lambda syntax
-    add = |x: i32, y: i32| x + y
-    print(f"Sum: {add(2, 3)}")
-    
-    # Pythonic len()
-    print(f"Length: {len(doubled)}")
 
-    students = [
-        Student.new("Yolanda", 16),
-        Student.new("Droopy", 13),
-        Student.new("SnoopDog", 18),
-        Student.new("SniperMan", 15)
-    ]
-    klass = Class.new("AP45", "Advanced placement computer science", "Harman Kodak", students)
-    print(students[0].bio())
-    print(klass.summary())
+    # Lambda
+    add = |x: i64, y: i64| x + y
+    print(f"Sum: {add(2, 3)}")
+
+    # Struct construction and methods
+    s: Student = Student.new("Alice", 20)
+    print(s.bio())
+
+    room: Classroom = Classroom.new("CS101", "Dr. Smith")
+    print(room.info())

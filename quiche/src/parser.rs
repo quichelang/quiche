@@ -6,6 +6,8 @@
 
 use crate::lexer::{Keyword, LexError, Lexer, Token, TokenKind};
 use elevate::ast as e;
+use std::collections::HashMap;
+use std::ops::Deref;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parser Error
@@ -48,6 +50,8 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     current: Token,
     peeked: Option<Token>,
+    /// Maps struct names to their ordered field names (for positional construction)
+    struct_fields: HashMap<String, Vec<String>>,
 }
 
 impl<'a> Parser<'a> {
@@ -60,8 +64,9 @@ impl<'a> Parser<'a> {
         let current = lexer.next_token()?;
         Ok(Parser {
             lexer,
-            current,
+            current: current,
             peeked: None,
+            struct_fields: HashMap::new(),
         })
     }
 
@@ -155,34 +160,35 @@ impl<'a> Parser<'a> {
         self.skip_newlines()?;
 
         while !matches!(self.kind(), TokenKind::Eof) {
-            match self.parse_item()? {
-                Some(item) => items.push(item),
-                None => {} // skip non-item statements at module level
-            }
+            let parsed = self.parse_item()?;
+            items.extend(parsed);
             self.skip_newlines()?;
         }
 
         Ok(e::Module { items })
     }
 
-    fn parse_item(&mut self) -> Result<Option<e::Item>, ParseError> {
+    fn parse_item(&mut self) -> Result<Vec<e::Item>, ParseError> {
         // Handle decorators
         let decorators = self.parse_decorators()?;
 
         match self.kind() {
             TokenKind::Keyword(Keyword::Def) => {
-                Ok(Some(e::Item::Function(self.parse_function_def()?)))
+                Ok(vec![e::Item::Function(self.parse_function_def()?)])
             }
             TokenKind::Keyword(Keyword::Class) => self.parse_class_def(decorators),
-            TokenKind::Keyword(Keyword::From) => self.parse_from_import(),
+            TokenKind::Keyword(Keyword::From) => match self.parse_from_import()? {
+                Some(item) => Ok(vec![item]),
+                None => Ok(vec![]),
+            },
             TokenKind::Keyword(Keyword::Import) => {
                 self.parse_bare_import()?;
-                Ok(None)
+                Ok(vec![])
             }
             _ => {
                 // Top-level expression or assignment — skip for now
                 self.parse_stmt()?;
-                Ok(None)
+                Ok(vec![])
             }
         }
     }
@@ -316,12 +322,19 @@ impl<'a> Parser<'a> {
         let mut params = Vec::new();
         while !self.check(&TokenKind::RParen) {
             let name = self.expect_ident()?;
-            // Skip `self` as a param — Elevate handles it differently
+            // Emit `self` as a param with type `Self` — Elevate's
+            // type_from_ast_with_impl_self resolves Self → impl target type.
             if name == "self" {
-                // Optional type annotation
-                if self.eat(&TokenKind::Colon)? {
-                    self.parse_type()?; // consume and discard
-                }
+                let ty = if self.eat(&TokenKind::Colon)? {
+                    self.parse_type()?
+                } else {
+                    e::Type {
+                        path: vec!["Self".into()],
+                        args: vec![],
+                        trait_bounds: vec![],
+                    }
+                };
+                params.push(e::Param { name, ty });
                 if !self.eat(&TokenKind::Comma)? {
                     break;
                 }
@@ -387,10 +400,10 @@ impl<'a> Parser<'a> {
     // Class → Struct / Enum / Trait / Impl
     // ─────────────────────────────────────────────────────────────────────────
 
-    fn parse_class_def(&mut self, decorators: Vec<String>) -> Result<Option<e::Item>, ParseError> {
+    fn parse_class_def(&mut self, decorators: Vec<String>) -> Result<Vec<e::Item>, ParseError> {
         self.expect_kw(Keyword::Class)?;
         let name = self.expect_ident()?;
-        let type_params = self.parse_type_params()?;
+        let _type_params = self.parse_type_params()?;
 
         // Base class: class Foo(Struct): / class Foo(Enum): / class Foo(Trait):
         let base = if self.eat(&TokenKind::LParen)? {
@@ -402,22 +415,20 @@ impl<'a> Parser<'a> {
         };
 
         self.expect(&TokenKind::Colon)?;
-        let body_stmts = self.parse_block()?;
 
-        // Check for @impl decorator
+        // @impl decorator → methods only
         if decorators.iter().any(|d| d == "impl") {
-            let methods = self.extract_methods(body_stmts, &name);
-            return Ok(Some(e::Item::Impl(e::ImplBlock {
+            let (_fields, methods) = self.parse_class_body(&name)?;
+            return Ok(vec![e::Item::Impl(e::ImplBlock {
                 target: name,
                 trait_target: None, // TODO: extract trait from decorator args
                 methods,
-            })));
+            })]);
         }
 
         match base.as_deref() {
             Some("Struct") => {
-                let fields = self.extract_fields(body_stmts.clone());
-                let methods = self.extract_methods(body_stmts, &name);
+                let (fields, methods) = self.parse_class_body(&name)?;
                 let mut items = vec![e::Item::Struct(e::StructDef {
                     visibility: e::Visibility::Public,
                     name: name.clone(),
@@ -430,58 +441,114 @@ impl<'a> Parser<'a> {
                         methods,
                     }));
                 }
-                // Return first item; for multi-item, we'd need a different approach.
-                // For now return struct only — methods come via impl block.
-                Ok(items.into_iter().next())
+                Ok(items)
             }
             Some("Enum") | Some("Type") => {
-                let variants = self.extract_variants(body_stmts);
-                Ok(Some(e::Item::Enum(e::EnumDef {
+                let body = self.parse_block()?;
+                let variants = self.extract_variants(body);
+                Ok(vec![e::Item::Enum(e::EnumDef {
                     visibility: e::Visibility::Public,
                     name,
                     variants,
-                })))
+                })])
             }
             Some("Trait") => {
-                let methods = self.extract_trait_methods(body_stmts);
-                Ok(Some(e::Item::Trait(e::TraitDef {
+                let body = self.parse_block()?;
+                let methods = self.extract_trait_methods(body);
+                Ok(vec![e::Item::Trait(e::TraitDef {
                     visibility: e::Visibility::Public,
                     name,
                     supertraits: vec![],
                     methods,
-                })))
+                })])
             }
             _ => {
                 // Plain class → struct + impl
-                let fields = self.extract_fields(body_stmts.clone());
-                let methods = self.extract_methods(body_stmts, &name);
-                let mut result = vec![e::Item::Struct(e::StructDef {
+                let (fields, methods) = self.parse_class_body(&name)?;
+                let mut items = vec![e::Item::Struct(e::StructDef {
                     visibility: e::Visibility::Public,
                     name: name.clone(),
                     fields,
                 })];
                 if !methods.is_empty() {
-                    result.push(e::Item::Impl(e::ImplBlock {
+                    items.push(e::Item::Impl(e::ImplBlock {
                         target: name,
                         trait_target: None,
                         methods,
                     }));
                 }
-                Ok(result.into_iter().next())
+                Ok(items)
             }
         }
     }
 
-    fn extract_fields(&self, body: e::Block) -> Vec<e::Field> {
+    /// Parse a class body, extracting fields and methods directly.
+    /// This avoids parse_stmt which discards `def` in statement position.
+    /// Registers field names in `struct_fields` before parsing methods,
+    /// so that `TypeName(args...)` inside method bodies can be converted to StructLiteral.
+    fn parse_class_body(
+        &mut self,
+        struct_name: &str,
+    ) -> Result<(Vec<e::Field>, Vec<e::FunctionDef>), ParseError> {
         let mut fields = Vec::new();
-        for stmt in body.statements {
-            if let e::Stmt::Const(c) = stmt {
-                if let Some(ty) = c.ty {
-                    fields.push(e::Field { name: c.name, ty });
+        let mut methods = Vec::new();
+        // Collect all tokens from the indented body into field vs method buckets.
+        // Fields come before methods in Quiche class bodies.
+
+        self.skip_newlines()?;
+        self.expect(&TokenKind::Indent)?;
+
+        // Phase 1: Parse fields (everything before the first `def`)
+        while !self.check(&TokenKind::Dedent) && !self.check(&TokenKind::Eof) {
+            self.skip_newlines()?;
+            if self.check(&TokenKind::Dedent) || self.check(&TokenKind::Eof) {
+                break;
+            }
+            if self.check(&TokenKind::Keyword(Keyword::Def)) {
+                break; // Switch to method parsing phase
+            }
+            if self.check(&TokenKind::Keyword(Keyword::Pass)) {
+                self.advance()?;
+            } else {
+                // Field declaration: name: Type [= default]
+                let stmt = self.parse_stmt()?;
+                if let e::Stmt::Const(c) = stmt {
+                    if let Some(ty) = c.ty {
+                        fields.push(e::Field { name: c.name, ty });
+                    }
                 }
             }
+            self.skip_newlines()?;
         }
-        fields
+
+        // Register field names so method bodies can use positional struct construction
+        self.struct_fields.insert(
+            struct_name.to_string(),
+            fields.iter().map(|f| f.name.clone()).collect(),
+        );
+
+        // Phase 2: Parse methods
+        while !self.check(&TokenKind::Dedent) && !self.check(&TokenKind::Eof) {
+            self.skip_newlines()?;
+            if self.check(&TokenKind::Dedent) || self.check(&TokenKind::Eof) {
+                break;
+            }
+            if self.check(&TokenKind::Keyword(Keyword::Def)) {
+                methods.push(self.parse_function_def()?);
+            } else if self.check(&TokenKind::Keyword(Keyword::Pass)) {
+                self.advance()?;
+            } else {
+                // Skip unexpected tokens in class body
+                self.advance()?;
+            }
+            self.skip_newlines()?;
+        }
+
+        if self.check(&TokenKind::Dedent) {
+            self.advance()?;
+        }
+
+        Ok((fields, methods))
     }
 
     fn extract_variants(&self, body: e::Block) -> Vec<e::EnumVariant> {
@@ -514,18 +581,6 @@ impl<'a> Parser<'a> {
             }
         }
         variants
-    }
-
-    fn extract_methods(&self, body: e::Block, _target: &str) -> Vec<e::FunctionDef> {
-        let mut methods = Vec::new();
-        for stmt in body.statements {
-            // Functions inside class body are parsed as Expr(Call) or similar —
-            // but actually they're parsed as stmts. We need to handle this
-            // differently. For now, we can't extract functions from Block statements.
-            // TODO: the parser needs to handle nested function defs.
-            let _ = stmt;
-        }
-        methods
     }
 
     fn extract_trait_methods(&self, body: e::Block) -> Vec<e::TraitMethodSig> {
@@ -1148,6 +1203,21 @@ impl<'a> Parser<'a> {
         loop {
             if self.eat(&TokenKind::Dot)? {
                 let field = self.expect_ident()?;
+                // Static method heuristic: if base is a capitalized Path (type name)
+                // and this is followed by '(' (a call), merge into path for `Type::method`.
+                // e.g. Student.new(...) → Path(["Student", "new"]) → Student::new(...)
+                if let e::Expr::Path(ref segments) = expr {
+                    if let Some(first) = segments.first() {
+                        if first.starts_with(|c: char| c.is_uppercase())
+                            && self.check(&TokenKind::LParen)
+                        {
+                            let mut path = segments.clone();
+                            path.push(field);
+                            expr = e::Expr::Path(path);
+                            continue;
+                        }
+                    }
+                }
                 expr = e::Expr::Field {
                     base: Box::new(expr),
                     field,
@@ -1156,6 +1226,26 @@ impl<'a> Parser<'a> {
                 self.advance()?;
                 let args = self.parse_call_args()?;
                 self.expect(&TokenKind::RParen)?;
+                // Convert TypeName(args...) to StructLiteral when TypeName is a known struct
+                if let e::Expr::Path(ref path) = expr {
+                    if path.len() == 1 {
+                        if let Some(field_names) = self.struct_fields.get(&path[0]) {
+                            let fields = field_names
+                                .iter()
+                                .zip(args.iter())
+                                .map(|(name, value)| e::StructLiteralField {
+                                    name: name.clone(),
+                                    value: value.clone(),
+                                })
+                                .collect();
+                            expr = e::Expr::StructLiteral {
+                                path: path.clone(),
+                                fields,
+                            };
+                            continue;
+                        }
+                    }
+                }
                 expr = e::Expr::Call {
                     callee: Box::new(expr),
                     args,
@@ -1288,10 +1378,47 @@ impl<'a> Parser<'a> {
             }
             TokenKind::FString { content, .. } => {
                 self.advance()?;
-                // f-string → emit as format!() with the raw content
+                // f-string → emit as format!() with field access extracted to positional args.
+                // Rust stable doesn't support {self.name} in format strings,
+                // so we convert: f"{self.name} is {self.age}"
+                //            to: format!("{} is {}", self.name, self.age)
+                let mut format_str = String::new();
+                let mut args: Vec<e::Expr> = Vec::new();
+                let mut chars = content.chars().peekable();
+                while let Some(c) = chars.next() {
+                    if c == '{' {
+                        // Collect the expression inside { ... }
+                        let mut expr_str = String::new();
+                        while let Some(&nc) = chars.peek() {
+                            if nc == '}' {
+                                chars.next();
+                                break;
+                            }
+                            expr_str.push(nc);
+                            chars.next();
+                        }
+                        if expr_str.contains('.') || expr_str.contains('(') {
+                            // Field access or call — extract as positional arg
+                            format_str.push_str("{}");
+                            // Parse the expression: turn "self.name" → Expr::Field { base: Path(["self"]), field: "name" }
+                            let mut sub = Parser::new(&expr_str)?;
+                            let parsed_expr = sub.parse_expr()?;
+                            args.push(parsed_expr);
+                        } else {
+                            // Simple variable — keep inline (Rust supports {varname})
+                            format_str.push('{');
+                            format_str.push_str(&expr_str);
+                            format_str.push('}');
+                        }
+                    } else {
+                        format_str.push(c);
+                    }
+                }
+                let mut macro_args = vec![e::Expr::String(format_str)];
+                macro_args.extend(args);
                 Ok(e::Expr::MacroCall {
                     path: vec!["format".into()],
-                    args: vec![e::Expr::String(content)],
+                    args: macro_args,
                 })
             }
             TokenKind::LBrace => {
@@ -1583,7 +1710,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Build a dict comprehension: {key: val for var in iter if cond}
-    /// Desugars to IIFE: build Vec<(K,V)> with push, then .into_iter().collect() into HashMap
+    /// Desugars to IIFE: build Vec<(K,V)> with push, then .into_iter().collect()
     fn build_dict_comprehension(
         var: String,
         iter_expr: e::Expr,
@@ -1833,6 +1960,171 @@ mod tests {
                 assert_eq!(code, "println!(42);");
             }
             other => panic!("Expected RustBlock, got {:?}", other),
+        }
+    }
+
+    // ─── Struct + Impl Block Emission ────────────────────────────────────────
+
+    #[test]
+    fn test_struct_with_methods_emits_impl_block() {
+        let source = "\
+class Point(Struct):
+    x: i64
+    y: i64
+
+    def new(x: i64, y: i64) -> Point:
+        return Point(x, y)
+
+    def sum(self) -> i64:
+        return self.x + self.y
+";
+        let module = parse(source).unwrap();
+        // Should emit TWO items: Struct + Impl
+        assert!(
+            module.items.len() >= 2,
+            "Expected at least 2 items (Struct + Impl), got {}",
+            module.items.len()
+        );
+        assert!(
+            matches!(&module.items[0], Item::Struct(s) if s.name == "Point"),
+            "First item should be Struct(Point)"
+        );
+        match &module.items[1] {
+            Item::Impl(impl_block) => {
+                assert_eq!(impl_block.target, "Point");
+                assert_eq!(impl_block.methods.len(), 2);
+                assert_eq!(impl_block.methods[0].name, "new");
+                assert_eq!(impl_block.methods[1].name, "sum");
+            }
+            other => panic!("Expected Impl block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_struct_fields_extracted() {
+        let source = "\
+class Pair(Struct):
+    first: i64
+    second: String
+";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Struct(s) => {
+                assert_eq!(s.fields.len(), 2);
+                assert_eq!(s.fields[0].name, "first");
+                assert_eq!(s.fields[1].name, "second");
+            }
+            other => panic!("Expected Struct, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_struct_no_methods_no_impl() {
+        let source = "\
+class Simple(Struct):
+    value: i64
+";
+        let module = parse(source).unwrap();
+        // No methods → only Struct, no Impl
+        assert_eq!(module.items.len(), 1);
+        assert!(matches!(&module.items[0], Item::Struct(_)));
+    }
+
+    // ─── Static Method Calls ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_static_method_call_path() {
+        // Student.new("Alice", 16) should generate Path(["Student", "new"]) as callee
+        let stmts = parse_body("def test():\n    x = Student.new()\n");
+        match &stmts[0] {
+            Stmt::Assign { value, .. } => match value {
+                Expr::Call { callee, .. } => match callee.as_ref() {
+                    Expr::Path(segments) => {
+                        assert_eq!(segments, &["Student", "new"]);
+                    }
+                    other => panic!("Expected Path callee, got {:?}", other),
+                },
+                other => panic!("Expected Call, got {:?}", other),
+            },
+            other => panic!("Expected Assign, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_instance_method_remains_field() {
+        // obj.method() where obj is lowercase should remain as Field access
+        let stmts = parse_body("def test():\n    x = obj.method()\n");
+        match &stmts[0] {
+            Stmt::Assign { value, .. } => match value {
+                Expr::Call { callee, .. } => match callee.as_ref() {
+                    Expr::Field { base, field } => {
+                        assert!(matches!(base.as_ref(), Expr::Path(p) if p == &["obj"]));
+                        assert_eq!(field, "method");
+                    }
+                    other => panic!("Expected Field callee, got {:?}", other),
+                },
+                other => panic!("Expected Call, got {:?}", other),
+            },
+            other => panic!("Expected Assign, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_static_field_access_no_call() {
+        // Type.field without () should remain as Field (not merged into path)
+        let stmts = parse_body("def test():\n    x = Type.CONST\n");
+        match &stmts[0] {
+            Stmt::Assign { value, .. } => match value {
+                Expr::Field { base, field } => {
+                    assert!(matches!(base.as_ref(), Expr::Path(p) if p == &["Type"]));
+                    assert_eq!(field, "CONST");
+                }
+                other => panic!("Expected Field, got {:?}", other),
+            },
+            other => panic!("Expected Assign, got {:?}", other),
+        }
+    }
+
+    // ─── Enum Definitions ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_enum_variants() {
+        let source = "\
+class Color(Enum):
+    Red = ()
+    Green = (i32,)
+";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "Color");
+                assert_eq!(e.variants.len(), 2);
+                assert_eq!(e.variants[0].name, "Red");
+                assert_eq!(e.variants[1].name, "Green");
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    // ─── @impl Decorator ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_impl_decorator_emits_impl_only() {
+        let source = "\
+@impl
+class MyType:
+    def hello(self) -> String:
+        return \"hi\"
+";
+        let module = parse(source).unwrap();
+        assert_eq!(module.items.len(), 1);
+        match &module.items[0] {
+            Item::Impl(impl_block) => {
+                assert_eq!(impl_block.target, "MyType");
+                assert_eq!(impl_block.methods.len(), 1);
+                assert_eq!(impl_block.methods[0].name, "hello");
+            }
+            other => panic!("Expected Impl, got {:?}", other),
         }
     }
 }
