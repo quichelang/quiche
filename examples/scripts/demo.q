@@ -8,7 +8,7 @@ class Student(Struct):
     age: u8
 
     def new(name: String, age: u8) -> Student:
-        return Student(name=name, age=age)
+        return Student(name, age)
 
     def bio(self) -> String:
         return f"{self.name} is {self.age} years old"
@@ -20,7 +20,7 @@ class Class(Struct):
     students: HashMap[String, Student]
 
     def new(code: String, description: String, teacher_name: String, students: Vec[Student]) -> Class:
-        return Class(code=code, description=description, teacher_name=teacher_name, students={kv.name: kv for kv in students})
+        return Class(code, description, teacher_name, {kv.name: kv for kv in students})
 
     def summary(self) -> String:
         return f"""

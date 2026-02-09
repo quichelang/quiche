@@ -1262,7 +1262,112 @@ impl<'a> Parser<'a> {
                     args: vec![e::Expr::String(content)],
                 })
             }
+            TokenKind::LBrace => {
+                self.advance()?;
+                self.parse_dict_literal()
+            }
             _ => Err(self.error(format!("expected expression, got {:?}", self.kind()))),
+        }
+    }
+
+    /// Parse a dict literal: `{key: val, ...}` or `{**spread, key: val}`
+    /// Called after `{` has been consumed.
+    fn parse_dict_literal(&mut self) -> Result<e::Expr, ParseError> {
+        // Empty dict: {}
+        if self.check(&TokenKind::RBrace) {
+            self.advance()?;
+            return Ok(e::Expr::Call {
+                callee: Box::new(e::Expr::Path(vec!["HashMap".into(), "new".into()])),
+                args: vec![],
+            });
+        }
+
+        // Collect entries: either (key, val) pairs or **spread
+        enum DictEntry {
+            Pair(e::Expr, e::Expr),
+            Spread(e::Expr),
+        }
+        let mut entries = Vec::new();
+
+        loop {
+            if self.check(&TokenKind::RBrace) {
+                break;
+            }
+
+            // Check for **spread
+            if self.check(&TokenKind::DoubleStar) {
+                self.advance()?;
+                let spread_expr = self.parse_expr()?;
+                entries.push(DictEntry::Spread(spread_expr));
+            } else {
+                // key: value
+                let key = self.parse_expr()?;
+                self.expect(&TokenKind::Colon)?;
+                let value = self.parse_expr()?;
+                entries.push(DictEntry::Pair(key, value));
+            }
+
+            if !self.eat(&TokenKind::Comma)? {
+                break;
+            }
+        }
+        self.expect(&TokenKind::RBrace)?;
+
+        // Check if there are any spreads
+        let has_spread = entries.iter().any(|e| matches!(e, DictEntry::Spread(_)));
+
+        if !has_spread {
+            // Simple dict: HashMap::from([(k1, v1), (k2, v2)])
+            let pairs: Vec<e::Expr> = entries
+                .into_iter()
+                .map(|e| match e {
+                    DictEntry::Pair(k, v) => e::Expr::Tuple(vec![k, v]),
+                    _ => unreachable!(),
+                })
+                .collect();
+            Ok(e::Expr::Call {
+                callee: Box::new(e::Expr::Path(vec!["HashMap".into(), "from".into()])),
+                args: vec![e::Expr::Array(pairs)],
+            })
+        } else {
+            // Dict with spread: emit as RustBlock
+            // { let mut __m = HashMap::new(); __m.extend(spread); __m.insert(k, v); __m }
+            let mut code = String::from("{ let mut __m = std::collections::HashMap::new(); ");
+            for entry in entries {
+                match entry {
+                    DictEntry::Spread(expr) => {
+                        // We need to emit the spread expr as Rust — for simple paths
+                        if let e::Expr::Path(ref p) = expr {
+                            code.push_str(&format!(
+                                "__m.extend({}.iter().map(|(k, v)| (k.clone(), v.clone()))); ",
+                                p.join("::")
+                            ));
+                        }
+                    }
+                    DictEntry::Pair(key, value) => {
+                        // For string keys and simple values
+                        let key_str = Self::expr_to_rust_string(&key);
+                        let val_str = Self::expr_to_rust_string(&value);
+                        code.push_str(&format!("__m.insert({}, {}); ", key_str, val_str));
+                    }
+                }
+            }
+            code.push_str("__m }");
+            Ok(e::Expr::MacroCall {
+                path: vec!["__rust_expr__".into()],
+                args: vec![e::Expr::String(code)],
+            })
+        }
+    }
+
+    /// Best-effort conversion of an Expr to a Rust string for RustBlock emission.
+    fn expr_to_rust_string(expr: &e::Expr) -> String {
+        match expr {
+            e::Expr::String(s) => format!("String::from(\"{}\")", s),
+            e::Expr::Int(n) => n.to_string(),
+            e::Expr::Bool(b) => b.to_string(),
+            e::Expr::Path(p) => p.join("::"),
+            _ => "todo!()".into(),
         }
     }
 
@@ -1285,4 +1390,147 @@ impl<'a> Parser<'a> {
 pub fn parse(source: &str) -> Result<e::Module, ParseError> {
     let mut parser = Parser::new(source)?;
     parser.parse_module()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::parse;
+    use elevate::ast::*;
+
+    fn parse_body(source: &str) -> Vec<Stmt> {
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Function(f) => f.body.statements.clone(),
+            other => panic!("Expected Function, got {:?}", other),
+        }
+    }
+
+    // ─── Star Destructuring ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_star_prefix_rest() {
+        let stmts = parse_body("def test():\n    first, *rest = items\n");
+        match &stmts[0] {
+            Stmt::DestructureConst { pattern, .. } => match pattern {
+                DestructurePattern::Slice {
+                    prefix,
+                    rest,
+                    suffix,
+                } => {
+                    assert_eq!(prefix.len(), 1);
+                    assert!(matches!(&prefix[0], DestructurePattern::Name(n) if n == "first"));
+                    assert_eq!(rest.as_deref(), Some("rest"));
+                    assert!(suffix.is_empty());
+                }
+                other => panic!("Expected Slice pattern, got {:?}", other),
+            },
+            other => panic!("Expected DestructureConst, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_star_prefix_rest_suffix() {
+        let stmts = parse_body("def test():\n    a, *middle, last = items\n");
+        match &stmts[0] {
+            Stmt::DestructureConst { pattern, .. } => match pattern {
+                DestructurePattern::Slice {
+                    prefix,
+                    rest,
+                    suffix,
+                } => {
+                    assert_eq!(prefix.len(), 1);
+                    assert!(matches!(&prefix[0], DestructurePattern::Name(n) if n == "a"));
+                    assert_eq!(rest.as_deref(), Some("middle"));
+                    assert_eq!(suffix.len(), 1);
+                    assert!(matches!(&suffix[0], DestructurePattern::Name(n) if n == "last"));
+                }
+                other => panic!("Expected Slice pattern, got {:?}", other),
+            },
+            other => panic!("Expected DestructureConst, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_star_only() {
+        let stmts = parse_body("def test():\n    *everything = items\n");
+        match &stmts[0] {
+            Stmt::DestructureConst { pattern, .. } => match pattern {
+                DestructurePattern::Slice {
+                    prefix,
+                    rest,
+                    suffix,
+                } => {
+                    assert!(prefix.is_empty());
+                    assert_eq!(rest.as_deref(), Some("everything"));
+                    assert!(suffix.is_empty());
+                }
+                other => panic!("Expected Slice pattern, got {:?}", other),
+            },
+            other => panic!("Expected DestructureConst, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_star_with_ignore() {
+        let stmts = parse_body("def test():\n    _, *rest, _ = items\n");
+        match &stmts[0] {
+            Stmt::DestructureConst { pattern, .. } => match pattern {
+                DestructurePattern::Slice {
+                    prefix,
+                    rest,
+                    suffix,
+                } => {
+                    assert_eq!(prefix.len(), 1);
+                    assert!(matches!(&prefix[0], DestructurePattern::Ignore));
+                    assert_eq!(rest.as_deref(), Some("rest"));
+                    assert_eq!(suffix.len(), 1);
+                    assert!(matches!(&suffix[0], DestructurePattern::Ignore));
+                }
+                other => panic!("Expected Slice pattern, got {:?}", other),
+            },
+            other => panic!("Expected DestructureConst, got {:?}", other),
+        }
+    }
+
+    // ─── Print Built-in ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_print_no_args() {
+        let stmts = parse_body("def test():\n    print()\n");
+        match &stmts[0] {
+            Stmt::Expr(Expr::MacroCall { path, args }) => {
+                assert_eq!(path, &["println"]);
+                assert_eq!(args.len(), 1); // just the format string
+                assert!(matches!(&args[0], Expr::String(s) if s.is_empty()));
+            }
+            other => panic!("Expected MacroCall, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_print_multiple_args() {
+        let stmts = parse_body("def test():\n    print(a, b, c)\n");
+        match &stmts[0] {
+            Stmt::Expr(Expr::MacroCall { path, args }) => {
+                assert_eq!(path, &["println"]);
+                assert_eq!(args.len(), 4); // format string + 3 args
+                assert!(matches!(&args[0], Expr::String(s) if s == "{} {} {}"));
+            }
+            other => panic!("Expected MacroCall, got {:?}", other),
+        }
+    }
+
+    // ─── Rust Escape Hatch ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_rust_escape_hatch() {
+        let stmts = parse_body("def test():\n    rust(\"println!(42);\")\n");
+        match &stmts[0] {
+            Stmt::RustBlock(code) => {
+                assert_eq!(code, "println!(42);");
+            }
+            other => panic!("Expected RustBlock, got {:?}", other),
+        }
+    }
 }
