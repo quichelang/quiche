@@ -1244,11 +1244,36 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LBracket => {
                 self.advance()?;
-                let mut elems = Vec::new();
-                while !self.check(&TokenKind::RBracket) {
-                    elems.push(self.parse_expr()?);
-                    if !self.eat(&TokenKind::Comma)? {
-                        break;
+                if self.check(&TokenKind::RBracket) {
+                    self.advance()?;
+                    return Ok(e::Expr::Array(vec![]));
+                }
+                let first = self.parse_expr()?;
+                // List comprehension: [expr for var in iter] or [expr for var in iter if cond]
+                if self.check(&TokenKind::Keyword(Keyword::For)) {
+                    self.advance()?; // consume 'for'
+                    let var = self.expect_ident()?;
+                    self.expect(&TokenKind::Keyword(Keyword::In))?;
+                    let iter_expr = self.parse_expr()?;
+                    // Optional filter: if cond
+                    let filter = if self.eat(&TokenKind::Keyword(Keyword::If))? {
+                        Some(self.parse_expr()?)
+                    } else {
+                        None
+                    };
+                    self.expect(&TokenKind::RBracket)?;
+                    return Ok(Self::build_list_comprehension(
+                        var, iter_expr, first, filter,
+                    ));
+                }
+                // Regular array literal
+                let mut elems = vec![first];
+                if self.eat(&TokenKind::Comma)? {
+                    while !self.check(&TokenKind::RBracket) {
+                        elems.push(self.parse_expr()?);
+                        if !self.eat(&TokenKind::Comma)? {
+                            break;
+                        }
                     }
                 }
                 self.expect(&TokenKind::RBracket)?;
@@ -1304,6 +1329,25 @@ impl<'a> Parser<'a> {
                 let key = self.parse_expr()?;
                 self.expect(&TokenKind::Colon)?;
                 let value = self.parse_expr()?;
+
+                // Dict comprehension: {key: val for var in iter}
+                if self.check(&TokenKind::Keyword(Keyword::For)) {
+                    self.advance()?; // consume 'for'
+                    let var = self.expect_ident()?;
+                    self.expect(&TokenKind::Keyword(Keyword::In))?;
+                    let iter_expr = self.parse_expr()?;
+                    // Optional filter: if cond
+                    let filter = if self.eat(&TokenKind::Keyword(Keyword::If))? {
+                        Some(self.parse_expr()?)
+                    } else {
+                        None
+                    };
+                    self.expect(&TokenKind::RBrace)?;
+                    return Ok(Self::build_dict_comprehension(
+                        var, iter_expr, key, value, filter,
+                    ));
+                }
+
                 entries.push(DictEntry::Pair(key, value));
             }
 
@@ -1367,7 +1411,217 @@ impl<'a> Parser<'a> {
             e::Expr::Int(n) => n.to_string(),
             e::Expr::Bool(b) => b.to_string(),
             e::Expr::Path(p) => p.join("::"),
+            e::Expr::Binary { op, left, right } => {
+                let op_str = match op {
+                    e::BinaryOp::Add => "+",
+                    e::BinaryOp::Sub => "-",
+                    e::BinaryOp::Mul => "*",
+                    e::BinaryOp::Div => "/",
+                    e::BinaryOp::Rem => "%",
+                    e::BinaryOp::And => "&&",
+                    e::BinaryOp::Or => "||",
+                    e::BinaryOp::Eq => "==",
+                    e::BinaryOp::Ne => "!=",
+                    e::BinaryOp::Lt => "<",
+                    e::BinaryOp::Le => "<=",
+                    e::BinaryOp::Gt => ">",
+                    e::BinaryOp::Ge => ">=",
+                };
+                format!(
+                    "({} {} {})",
+                    Self::expr_to_rust_string(left),
+                    op_str,
+                    Self::expr_to_rust_string(right)
+                )
+            }
+            e::Expr::Unary { op, expr: inner } => {
+                let op_str = match op {
+                    e::UnaryOp::Not => "!",
+                    e::UnaryOp::Neg => "-",
+                };
+                format!("({}{})", op_str, Self::expr_to_rust_string(inner))
+            }
+            e::Expr::Field { base, field } => {
+                format!("{}.{}", Self::expr_to_rust_string(base), field)
+            }
+            e::Expr::Tuple(elems) => {
+                let parts: Vec<String> = elems.iter().map(Self::expr_to_rust_string).collect();
+                format!("({})", parts.join(", "))
+            }
+            e::Expr::Call { callee, args } => {
+                let args_str: Vec<String> = args.iter().map(Self::expr_to_rust_string).collect();
+                format!(
+                    "{}({})",
+                    Self::expr_to_rust_string(callee),
+                    args_str.join(", ")
+                )
+            }
+            e::Expr::Index { base, index } => {
+                format!(
+                    "{}[{}]",
+                    Self::expr_to_rust_string(base),
+                    Self::expr_to_rust_string(index)
+                )
+            }
             _ => "todo!()".into(),
+        }
+    }
+
+    /// Build a list comprehension: [expr for var in iter if cond]
+    /// Desugars to IIFE: (|| { let __v = Vec::new(); for var in iter { [if cond {] __v.push(expr); [}] } __v })()
+    fn build_list_comprehension(
+        var: String,
+        iter_expr: e::Expr,
+        map_expr: e::Expr,
+        filter: Option<e::Expr>,
+    ) -> e::Expr {
+        // Build the push statement: __v.push(map_expr)
+        let push_stmt = e::Stmt::Expr(e::Expr::Call {
+            callee: Box::new(e::Expr::Field {
+                base: Box::new(e::Expr::Path(vec!["__v".into()])),
+                field: "push".into(),
+            }),
+            args: vec![map_expr],
+        });
+
+        // For body: either just push, or if cond { push }
+        let for_body = if let Some(cond) = filter {
+            e::Block {
+                statements: vec![e::Stmt::If {
+                    condition: cond,
+                    then_block: e::Block {
+                        statements: vec![push_stmt],
+                    },
+                    else_block: None,
+                }],
+            }
+        } else {
+            e::Block {
+                statements: vec![push_stmt],
+            }
+        };
+
+        // Build IIFE body: let __v = Vec::new(); for var in iter { ... }; __v
+        let iife_body = e::Block {
+            statements: vec![
+                // let __v: Vec<_> = Vec::new()
+                e::Stmt::Const(e::ConstDef {
+                    visibility: e::Visibility::Private,
+                    name: "__v".into(),
+                    ty: Some(e::Type {
+                        path: vec!["Vec".into()],
+                        args: vec![e::Type {
+                            path: vec!["_".into()],
+                            args: vec![],
+                            trait_bounds: vec![],
+                        }],
+                        trait_bounds: vec![],
+                    }),
+                    value: e::Expr::Call {
+                        callee: Box::new(e::Expr::Path(vec!["Vec".into(), "new".into()])),
+                        args: vec![],
+                    },
+                    is_const: false,
+                }),
+                // for var in iter { ... }
+                e::Stmt::For {
+                    binding: e::DestructurePattern::Name(var),
+                    iter: iter_expr,
+                    body: for_body,
+                },
+                // __v (tail expression — return the vec)
+                e::Stmt::TailExpr(e::Expr::Path(vec!["__v".into()])),
+            ],
+        };
+
+        // Wrap in IIFE: (|| { ... })()
+        e::Expr::Call {
+            callee: Box::new(e::Expr::Closure {
+                params: vec![],
+                return_type: None,
+                body: iife_body,
+            }),
+            args: vec![],
+        }
+    }
+
+    /// Build a dict comprehension: {key: val for var in iter if cond}
+    /// Desugars to IIFE with HashMap::new() + insert()
+    fn build_dict_comprehension(
+        var: String,
+        iter_expr: e::Expr,
+        key_expr: e::Expr,
+        val_expr: e::Expr,
+        filter: Option<e::Expr>,
+    ) -> e::Expr {
+        // Build: __v.insert(key, val)
+        let insert_stmt = e::Stmt::Expr(e::Expr::Call {
+            callee: Box::new(e::Expr::Field {
+                base: Box::new(e::Expr::Path(vec!["__v".into()])),
+                field: "insert".into(),
+            }),
+            args: vec![key_expr, val_expr],
+        });
+
+        let for_body = if let Some(cond) = filter {
+            e::Block {
+                statements: vec![e::Stmt::If {
+                    condition: cond,
+                    then_block: e::Block {
+                        statements: vec![insert_stmt],
+                    },
+                    else_block: None,
+                }],
+            }
+        } else {
+            e::Block {
+                statements: vec![insert_stmt],
+            }
+        };
+
+        let iife_body = e::Block {
+            statements: vec![
+                e::Stmt::Const(e::ConstDef {
+                    visibility: e::Visibility::Private,
+                    name: "__v".into(),
+                    ty: Some(e::Type {
+                        path: vec!["HashMap".into()],
+                        args: vec![
+                            e::Type {
+                                path: vec!["_".into()],
+                                args: vec![],
+                                trait_bounds: vec![],
+                            },
+                            e::Type {
+                                path: vec!["_".into()],
+                                args: vec![],
+                                trait_bounds: vec![],
+                            },
+                        ],
+                        trait_bounds: vec![],
+                    }),
+                    value: e::Expr::Call {
+                        callee: Box::new(e::Expr::Path(vec!["HashMap".into(), "new".into()])),
+                        args: vec![],
+                    },
+                    is_const: false,
+                }),
+                e::Stmt::For {
+                    binding: e::DestructurePattern::Name(var),
+                    iter: iter_expr,
+                    body: for_body,
+                },
+                e::Stmt::TailExpr(e::Expr::Path(vec!["__v".into()])),
+            ],
+        };
+
+        e::Expr::Call {
+            callee: Box::new(e::Expr::Closure {
+                params: vec![],
+                return_type: None,
+                body: iife_body,
+            }),
+            args: vec![],
         }
     }
 
