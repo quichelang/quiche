@@ -189,10 +189,7 @@ impl<'a> Parser<'a> {
                 Ok(vec![e::Item::Function(self.parse_function_def()?)])
             }
             TokenKind::Keyword(Keyword::Class) => self.parse_class_def(decorators),
-            TokenKind::Keyword(Keyword::From) => match self.parse_from_import()? {
-                Some(item) => Ok(vec![item]),
-                None => Ok(vec![]),
-            },
+            TokenKind::Keyword(Keyword::From) => Ok(self.parse_from_import()?),
             TokenKind::Keyword(Keyword::Import) => {
                 self.parse_bare_import()?;
                 Ok(vec![])
@@ -237,22 +234,33 @@ impl<'a> Parser<'a> {
     // Imports: from X.Y import Z → RustUse { path: ["X", "Y", "Z"] }
     // ─────────────────────────────────────────────────────────────────────────
 
-    fn parse_from_import(&mut self) -> Result<Option<e::Item>, ParseError> {
+    fn parse_from_import(&mut self) -> Result<Vec<e::Item>, ParseError> {
         self.expect_kw(Keyword::From)?;
         let mut module_path = vec![self.expect_ident()?];
         while self.eat(&TokenKind::Dot)? {
             module_path.push(self.expect_ident()?);
         }
         self.expect_kw(Keyword::Import)?;
-        let name = self.expect_ident()?;
-        module_path.push(name);
 
-        // Consume optional "as alias" — we ignore aliases for now
-        if self.check_kw(Keyword::As) {
-            self.advance()?;
-            self.expect_ident()?;
+        // Parse comma-separated names: from X.Y import A, B, C
+        let mut items = Vec::new();
+        loop {
+            let name = self.expect_ident()?;
+            let mut path = module_path.clone();
+            path.push(name);
+
+            // Consume optional "as alias" — we ignore aliases for now
+            if self.check_kw(Keyword::As) {
+                self.advance()?;
+                self.expect_ident()?;
+            }
+            items.push(e::Item::RustUse(e::RustUse { path }));
+
+            if !self.eat(&TokenKind::Comma)? {
+                break;
+            }
         }
-        Ok(Some(e::Item::RustUse(e::RustUse { path: module_path })))
+        Ok(items)
     }
 
     fn parse_bare_import(&mut self) -> Result<(), ParseError> {
@@ -1462,6 +1470,21 @@ impl<'a> Parser<'a> {
                         })
                         .collect()
                 };
+
+                // Convert str(x) → x.to_string()
+                if let e::Expr::Path(ref path) = expr {
+                    if path.len() == 1 && path[0] == "str" && args.len() == 1 {
+                        let receiver = args.into_iter().next().unwrap();
+                        expr = e::Expr::Call {
+                            callee: Box::new(e::Expr::Field {
+                                base: Box::new(receiver),
+                                field: "to_string".into(),
+                            }),
+                            args: vec![],
+                        };
+                        continue;
+                    }
+                }
 
                 // Convert range(end) → 0..end, range(start, end) → start..end
                 if let e::Expr::Path(ref path) = expr {
