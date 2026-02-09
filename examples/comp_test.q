@@ -13,3 +13,8 @@ def main():
     vals: Vec[i64] = [1, 2, 3, 4, 5, 6]
     evens_doubled = [x * 2 for x in vals if x % 2 == 0]
     print("even*2 count:", evens_doubled.len())
+
+    # 4. Dict comprehension (i64 keys — no ownership issues)
+    items: Vec[i64] = [1, 2, 3, 4, 5]
+    d = {x: x * 10 for x in items}
+    print("dict size:", d.len())

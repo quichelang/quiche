@@ -1182,6 +1182,13 @@ impl<'a> Parser<'a> {
                         index: Box::new(index),
                     };
                 }
+            } else if self.check_kw(Keyword::As) {
+                self.advance()?; // consume 'as'
+                let target_type = self.parse_type()?;
+                expr = e::Expr::Cast {
+                    expr: Box::new(expr),
+                    target_type,
+                };
             } else {
                 break;
             }
@@ -1290,6 +1297,36 @@ impl<'a> Parser<'a> {
             TokenKind::LBrace => {
                 self.advance()?;
                 self.parse_dict_literal()
+            }
+            TokenKind::Pipe => {
+                self.advance()?; // consume opening |
+                // Parse params: |x, y: i32, z| or || (empty)
+                let mut params = Vec::new();
+                while !self.check(&TokenKind::Pipe) {
+                    let name = self.expect_ident()?;
+                    let ty = if self.eat(&TokenKind::Colon)? {
+                        self.parse_type()?
+                    } else {
+                        e::Type {
+                            path: vec!["_".into()],
+                            args: vec![],
+                            trait_bounds: vec![],
+                        }
+                    };
+                    params.push(e::Param { name, ty });
+                    if !self.eat(&TokenKind::Comma)? {
+                        break;
+                    }
+                }
+                self.expect(&TokenKind::Pipe)?; // consume closing |
+                let body_expr = self.parse_expr()?;
+                Ok(e::Expr::Closure {
+                    params,
+                    return_type: None,
+                    body: e::Block {
+                        statements: vec![e::Stmt::TailExpr(body_expr)],
+                    },
+                })
             }
             _ => Err(self.error(format!("expected expression, got {:?}", self.kind()))),
         }
@@ -1546,7 +1583,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Build a dict comprehension: {key: val for var in iter if cond}
-    /// Desugars to IIFE with HashMap::new() + insert()
+    /// Desugars to IIFE: build Vec<(K,V)> with push, then .into_iter().collect() into HashMap
     fn build_dict_comprehension(
         var: String,
         iter_expr: e::Expr,
@@ -1554,13 +1591,13 @@ impl<'a> Parser<'a> {
         val_expr: e::Expr,
         filter: Option<e::Expr>,
     ) -> e::Expr {
-        // Build: __v.insert(key, val)
-        let insert_stmt = e::Stmt::Expr(e::Expr::Call {
+        // Build: __v.push((key, val))
+        let push_stmt = e::Stmt::Expr(e::Expr::Call {
             callee: Box::new(e::Expr::Field {
                 base: Box::new(e::Expr::Path(vec!["__v".into()])),
-                field: "insert".into(),
+                field: "push".into(),
             }),
-            args: vec![key_expr, val_expr],
+            args: vec![e::Expr::Tuple(vec![key_expr, val_expr])],
         });
 
         let for_body = if let Some(cond) = filter {
@@ -1568,50 +1605,61 @@ impl<'a> Parser<'a> {
                 statements: vec![e::Stmt::If {
                     condition: cond,
                     then_block: e::Block {
-                        statements: vec![insert_stmt],
+                        statements: vec![push_stmt],
                     },
                     else_block: None,
                 }],
             }
         } else {
             e::Block {
-                statements: vec![insert_stmt],
+                statements: vec![push_stmt],
             }
+        };
+
+        // __v.into_iter().collect()
+        let collect_expr = e::Expr::Call {
+            callee: Box::new(e::Expr::Field {
+                base: Box::new(e::Expr::Call {
+                    callee: Box::new(e::Expr::Field {
+                        base: Box::new(e::Expr::Path(vec!["__v".into()])),
+                        field: "into_iter".into(),
+                    }),
+                    args: vec![],
+                }),
+                field: "collect".into(),
+            }),
+            args: vec![],
         };
 
         let iife_body = e::Block {
             statements: vec![
+                // let __v: Vec<_> = Vec::new()
                 e::Stmt::Const(e::ConstDef {
                     visibility: e::Visibility::Private,
                     name: "__v".into(),
                     ty: Some(e::Type {
-                        path: vec!["HashMap".into()],
-                        args: vec![
-                            e::Type {
-                                path: vec!["_".into()],
-                                args: vec![],
-                                trait_bounds: vec![],
-                            },
-                            e::Type {
-                                path: vec!["_".into()],
-                                args: vec![],
-                                trait_bounds: vec![],
-                            },
-                        ],
+                        path: vec!["Vec".into()],
+                        args: vec![e::Type {
+                            path: vec!["_".into()],
+                            args: vec![],
+                            trait_bounds: vec![],
+                        }],
                         trait_bounds: vec![],
                     }),
                     value: e::Expr::Call {
-                        callee: Box::new(e::Expr::Path(vec!["HashMap".into(), "new".into()])),
+                        callee: Box::new(e::Expr::Path(vec!["Vec".into(), "new".into()])),
                         args: vec![],
                     },
                     is_const: false,
                 }),
+                // for var in iter { __v.push((key, val)); }
                 e::Stmt::For {
                     binding: e::DestructurePattern::Name(var),
                     iter: iter_expr,
                     body: for_body,
                 },
-                e::Stmt::TailExpr(e::Expr::Path(vec!["__v".into()])),
+                // __v.into_iter().collect()
+                e::Stmt::TailExpr(collect_expr),
             ],
         };
 
