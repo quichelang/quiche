@@ -6,6 +6,7 @@
 
 use crate::lexer::{Keyword, LexError, Lexer, Token, TokenKind};
 use elevate::ast as e;
+use elevate::diag::Span;
 use std::collections::HashMap;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,6 +147,11 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Build an Elevate Span from a start byte offset to the current token.
+    fn span_from(&self, start: usize) -> Option<Span> {
+        Some(Span::new(start, self.current.start))
+    }
+
     fn skip_newlines(&mut self) -> Result<(), ParseError> {
         while matches!(self.kind(), TokenKind::Newline | TokenKind::Comment(_)) {
             self.advance()?;
@@ -277,6 +283,7 @@ impl<'a> Parser<'a> {
     // ─────────────────────────────────────────────────────────────────────────
 
     fn parse_function_def(&mut self) -> Result<e::FunctionDef, ParseError> {
+        let start_pos = self.current.start;
         self.expect_kw(Keyword::Def)?;
         let name = self.expect_ident()?;
 
@@ -321,7 +328,7 @@ impl<'a> Parser<'a> {
             return_type,
             effect_row: None,
             body,
-            span: None,
+            span: self.span_from(start_pos),
         })
     }
 
@@ -441,6 +448,7 @@ impl<'a> Parser<'a> {
         &mut self,
         decorators: Vec<(String, Option<String>)>,
     ) -> Result<Vec<e::Item>, ParseError> {
+        let class_start = self.current.start;
         self.expect_kw(Keyword::Class)?;
         let name = self.expect_ident()?;
         let type_params = self.parse_type_params()?;
@@ -478,7 +486,7 @@ impl<'a> Parser<'a> {
                     .collect(),
                 trait_target,
                 methods,
-                span: None,
+                span: self.span_from(class_start),
             })]);
         }
 
@@ -490,7 +498,7 @@ impl<'a> Parser<'a> {
                     name: name.clone(),
                     type_params: type_params.clone(),
                     fields,
-                    span: None,
+                    span: self.span_from(class_start),
                 })];
                 if !methods.is_empty() {
                     items.push(e::Item::Impl(e::ImplBlock {
@@ -506,7 +514,7 @@ impl<'a> Parser<'a> {
                             .collect(),
                         trait_target: None,
                         methods,
-                        span: None,
+                        span: self.span_from(class_start),
                     }));
                 }
                 Ok(items)
@@ -519,7 +527,7 @@ impl<'a> Parser<'a> {
                     name,
                     type_params,
                     variants,
-                    span: None,
+                    span: self.span_from(class_start),
                 })])
             }
             Some("Trait") => {
@@ -532,7 +540,7 @@ impl<'a> Parser<'a> {
                         params: m.params,
                         return_type: m.return_type,
                         effect_row: m.effect_row,
-                        span: None,
+                        span: self.span_from(class_start),
                     })
                     .collect();
                 Ok(vec![e::Item::Trait(e::TraitDef {
@@ -540,7 +548,7 @@ impl<'a> Parser<'a> {
                     name,
                     supertraits: vec![],
                     methods: method_sigs,
-                    span: None,
+                    span: self.span_from(class_start),
                 })])
             }
             _ => {
@@ -551,7 +559,7 @@ impl<'a> Parser<'a> {
                     name: name.clone(),
                     type_params: type_params.clone(),
                     fields,
-                    span: None,
+                    span: self.span_from(class_start),
                 })];
                 if !methods.is_empty() {
                     items.push(e::Item::Impl(e::ImplBlock {
@@ -567,7 +575,7 @@ impl<'a> Parser<'a> {
                             .collect(),
                         trait_target: None,
                         methods,
-                        span: None,
+                        span: self.span_from(class_start),
                     }));
                 }
                 Ok(items)
@@ -946,6 +954,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expr_or_assign(&mut self) -> Result<e::Stmt, ParseError> {
+        let stmt_start = self.current.start;
         let mut expr = self.parse_expr()?;
 
         // Handle bare comma-separated expressions: `a, *rest, b = items`
@@ -979,7 +988,7 @@ impl<'a> Parser<'a> {
                             ty: Some(ty),
                             value,
                             is_const: false,
-                            span: None,
+                            span: self.span_from(stmt_start),
                         }));
                     }
                     // Bare annotation without value (e.g., field decl in class body)
@@ -989,7 +998,7 @@ impl<'a> Parser<'a> {
                         ty: Some(ty),
                         value: e::Expr::Tuple(vec![]),
                         is_const: false,
-                        span: None,
+                        span: self.span_from(stmt_start),
                     }));
                 }
             }
