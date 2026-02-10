@@ -39,7 +39,7 @@ pub fn compile(source: &str) -> Result<String, String> {
 pub fn compile_with_options(source: &str, options: &CompileOptions) -> Result<String, String> {
     let module = parser::parse(source).map_err(|e| format!("{e}"))?;
     let output = elevate::compile_ast_with_options(&module, options).map_err(|e| format!("{e}"))?;
-    Ok(output.rust_code)
+    Ok(inject_display_impls(&output.rust_code))
 }
 
 /// Compile a .q file with source-mapped diagnostics.
@@ -61,7 +61,46 @@ pub fn compile_file(
         }
         format!("{err}")
     })?;
-    Ok(output.rust_code)
+    Ok(inject_display_impls(&output.rust_code))
+}
+
+/// Post-process generated Rust: auto-generate `impl Display` for structs
+/// that define a `to_string` method. This lets `print(x)` use the custom
+/// format without the user writing any trait boilerplate.
+fn inject_display_impls(rust_code: &str) -> String {
+    let re_struct = regex::Regex::new(r"pub struct (\w+)").unwrap();
+    let re_impl_to_string = regex::Regex::new(r"impl (\w+)\s*\{[^}]*fn to_string\s*\(").unwrap();
+
+    // Collect struct names that have a to_string method
+    let struct_names: std::collections::HashSet<String> = re_struct
+        .captures_iter(rust_code)
+        .map(|c| c[1].to_string())
+        .collect();
+
+    let impls_with_to_string: std::collections::HashSet<String> = re_impl_to_string
+        .captures_iter(rust_code)
+        .map(|c| c[1].to_string())
+        .collect();
+
+    let needs_display: Vec<&String> = struct_names
+        .iter()
+        .filter(|name| impls_with_to_string.contains(*name))
+        .collect();
+
+    if needs_display.is_empty() {
+        return rust_code.to_string();
+    }
+
+    let mut result = rust_code.to_string();
+    for name in &needs_display {
+        result.push_str(&format!(
+            "\nimpl std::fmt::Display for {name} {{\n    \
+             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{\n        \
+             write!(f, \"{{}}\", self.clone().to_string())\n    \
+             }}\n}}\n"
+        ));
+    }
+    result
 }
 
 #[cfg(test)]
