@@ -143,6 +143,9 @@ This works because Elevate generates **specialized code per type** - there's zer
 
 ## Design Philosophy
 
+> [!IMPORTANT]
+> We're considering moving toward a single `type` keyword to define both structs and enums, replacing the current `class Foo(Struct)` / `class Foo(Enum)` syntax.
+
 Quiche's syntax and semantics are **stable** and designed to closely resemble Python. If you know Python, you can read Quiche.
 
 There are some intentional differences:
@@ -156,7 +159,11 @@ There are some intentional differences:
 
 Quiche is more **functional** than Python - influenced by Rust's algebraic types, pattern matching, and immutability. There's no `class` inheritance, no `super()`, no `__init__`. Instead you get structs with methods, enums with pattern matching, and traits for shared behavior.
 
-> **Roadmap**: We're moving toward a single `type` keyword to define both structs and enums, replacing the current `class Foo(Struct)` / `class Foo(Enum)` syntax. The compiler will infer the right Rust type from the shape of the definition.
+### Roadmap
+We're considering moving toward a single `type` keyword to define both structs and enums, replacing the current `class Foo(Struct)` / `class Foo(Enum)` syntax. The compiler will infer the right Rust type from the shape of the definition.
+
+This is inspired directly from languages like OCaml/F# and is expected to bring even more simplicity to the syntax. Perfect for simple scripts and tasks, making it great as a high-peformance alternative to Rust syntax, that can be embedded in the same codebase (and have interop with Rust natively)!
+
 
 ## How It Works
 
