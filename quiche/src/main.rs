@@ -2,6 +2,60 @@ use std::env;
 use std::fs;
 use std::process::{self, Command};
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Flag Definitions — single source of truth for CLI parsing AND help text
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[allow(dead_code)]
+struct FlagDef {
+    flag: &'static str,
+    description: &'static str,
+    aliases: &'static [&'static str],
+}
+
+/// Experiment flags enabled by default in Quiche.
+const DEFAULT_EXPERIMENTS: &[FlagDef] = &[
+    FlagDef {
+        flag: "--exp-move-mut-args",
+        description: "Mutable argument ownership transfer",
+        aliases: &["--exp-mov-mut-args"],
+    },
+    FlagDef {
+        flag: "--exp-infer-local-bidi",
+        description: "Bidirectional local type inference",
+        aliases: &[],
+    },
+    FlagDef {
+        flag: "--exp-infer-literal-bidi",
+        description: "Bidirectional literal type inference",
+        aliases: &[],
+    },
+    FlagDef {
+        flag: "--exp-effect-rows",
+        description: "Internal effect row types",
+        aliases: &[],
+    },
+    FlagDef {
+        flag: "--exp-numeric-coercion",
+        description: "Automatic numeric type coercion",
+        aliases: &[],
+    },
+];
+
+/// Experiment flags that are opt-in (not enabled by default).
+const OPTIN_EXPERIMENTS: &[FlagDef] = &[FlagDef {
+    flag: "--exp-infer-principal-fallback",
+    description: "Principal type fallback inference",
+    aliases: &[],
+}];
+
+/// Non-experiment compiler options.
+const COMPILER_OPTIONS: &[FlagDef] = &[FlagDef {
+    flag: "--fail-on-hot-clone",
+    description: "Error instead of warn on implicit clones",
+    aliases: &[],
+}];
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -15,15 +69,18 @@ fn main() {
     let emit_rust = has_flag(&args, "--emit-rust");
     let emit_elevate = has_flag(&args, "--emit-elevate");
 
-    // Start with defaults (4 core experiments enabled)
+    // Start with defaults (core experiments enabled)
     let mut options = quiche::default_options();
 
     // Allow CLI overrides for individual experiment flags
-    if has_flag(&args, "--exp-move-mut-args") || has_flag(&args, "--exp-mov-mut-args") {
+    if has_any_flag(&args, "--exp-move-mut-args", &["--exp-mov-mut-args"]) {
         options.experiments.move_mut_args = true;
     }
     if has_flag(&args, "--exp-infer-local-bidi") {
         options.experiments.infer_local_bidi = true;
+    }
+    if has_flag(&args, "--exp-infer-literal-bidi") {
+        options.experiments.infer_literal_bidi = true;
     }
     if has_flag(&args, "--exp-effect-rows") {
         options.experiments.effect_rows_internal = true;
@@ -62,6 +119,7 @@ fn main() {
     let active: Vec<&str> = [
         (options.experiments.move_mut_args, "move_mut_args"),
         (options.experiments.infer_local_bidi, "infer_local_bidi"),
+        (options.experiments.infer_literal_bidi, "infer_literal_bidi"),
         (options.experiments.effect_rows_internal, "effect_rows"),
         (
             options.experiments.infer_principal_fallback,
@@ -152,37 +210,52 @@ fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+fn has_any_flag(args: &[String], flag: &str, aliases: &[&str]) -> bool {
+    args.iter()
+        .any(|a| a == flag || aliases.iter().any(|alias| a == alias))
+}
+
 fn print_usage() {
     eprintln!(
-        "\
-quiche - Python-flavoured Rust compiler
+        "quiche - Python-flavoured Rust compiler\n\
+         \n\
+         USAGE:\n\
+         \x20   quiche <file.q> [OPTIONS]\n\
+         \n\
+         By default, quiche compiles and runs the script.\n\
+         Core experiment flags are enabled by default.\n\
+         \n\
+         OPTIONS:\n\
+         \x20   --emit-rust              Emit generated Rust code to stdout\n\
+         \x20   --emit-elevate           Emit parsed Elevate AST to stdout\n\
+         \x20   -h, --help               Show this help message"
+    );
 
-USAGE:
-    quiche <file.q> [OPTIONS]
+    if !DEFAULT_EXPERIMENTS.is_empty() {
+        eprintln!("\nEXPERIMENT FLAGS (enabled by default):");
+        for def in DEFAULT_EXPERIMENTS {
+            eprintln!("    {:<35}{}", def.flag, def.description);
+        }
+    }
 
-By default, quiche compiles and runs the script.
-Core experiment flags are enabled by default.
+    if !OPTIN_EXPERIMENTS.is_empty() {
+        eprintln!("\nEXPERIMENT FLAGS (opt-in):");
+        for def in OPTIN_EXPERIMENTS {
+            eprintln!("    {:<35}{}", def.flag, def.description);
+        }
+    }
 
-OPTIONS:
-    --emit-rust              Emit generated Rust code to stdout
-    --emit-elevate           Emit parsed Elevate AST to stdout
-    -h, --help               Show this help message
+    if !COMPILER_OPTIONS.is_empty() {
+        eprintln!("\nCOMPILER OPTIONS:");
+        for def in COMPILER_OPTIONS {
+            eprintln!("    {:<35}{}", def.flag, def.description);
+        }
+    }
 
-EXPERIMENT FLAGS (enabled by default):
-    --exp-move-mut-args           Mutable argument ownership transfer
-    --exp-infer-local-bidi        Bidirectional local type inference
-    --exp-effect-rows             Internal effect row types
-    --exp-numeric-coercion        Automatic numeric type coercion
-
-EXPERIMENT FLAGS (opt-in):
-    --exp-infer-principal-fallback  Principal type fallback inference
-
-COMPILER OPTIONS:
-    --fail-on-hot-clone           Error instead of warn on implicit clones
-
-EXAMPLES:
-    quiche hello.q                          # compile + run
-    quiche hello.q --emit-rust              # show generated Rust
-    quiche hello.q --emit-elevate           # show parsed AST"
+    eprintln!(
+        "\nEXAMPLES:\n\
+         \x20   quiche hello.q                          # compile + run\n\
+         \x20   quiche hello.q --emit-rust              # show generated Rust\n\
+         \x20   quiche hello.q --emit-elevate           # show parsed AST"
     );
 }
