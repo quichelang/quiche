@@ -58,11 +58,8 @@ pub struct Parser<'a> {
     peeked: Option<Token>,
     /// Maps struct names to their ordered field names (for positional construction)
     struct_fields: HashMap<String, Vec<String>>,
-    /// Maps function/method names to their ordered parameter names (for kwarg reordering)
-    /// Methods are keyed as "TypeName::method_name", top-level functions as "name"
+    /// Maps function names to their ordered parameter names (for kwarg reordering)
     fn_params: HashMap<String, Vec<String>>,
-    /// Current class name being parsed (for registering method params)
-    current_class: Option<String>,
 }
 
 impl<'a> Parser<'a> {
@@ -79,7 +76,6 @@ impl<'a> Parser<'a> {
             peeked: None,
             struct_fields: HashMap::new(),
             fn_params: HashMap::new(),
-            current_class: None,
         })
     }
 
@@ -280,14 +276,7 @@ impl<'a> Parser<'a> {
             .filter(|p| p.name != "self")
             .map(|p| p.name.clone())
             .collect();
-        if let Some(ref class_name) = self.current_class {
-            // Method: register as "ClassName::method_name"
-            let key = format!("{}::{}", class_name, name);
-            self.fn_params.insert(key, param_names);
-        } else {
-            // Top-level function
-            self.fn_params.insert(name.clone(), param_names);
-        }
+        self.fn_params.insert(name.clone(), param_names);
 
         // Return type
         let return_type = if self.eat(&TokenKind::Arrow)? {
@@ -1329,7 +1318,7 @@ impl<'a> Parser<'a> {
                         field_names
                             .iter()
                             .zip(call_args.into_iter())
-                            .map(|(name, arg)| {
+                            .map(|(name, arg): (&String, CallArg)| {
                                 let value = match arg {
                                     CallArg::Positional(expr) => expr,
                                     CallArg::Keyword(_, expr) => expr,
@@ -2204,7 +2193,6 @@ mod tests {
             other => panic!("Expected RustBlock, got {:?}", other),
         }
     }
-
 
     // ─── Static Method Calls ─────────────────────────────────────────────────
 

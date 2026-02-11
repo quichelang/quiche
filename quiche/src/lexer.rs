@@ -14,7 +14,6 @@ use regex::Regex;
 pub enum Keyword {
     // Definitions
     Def,
-    Class,
     Type,
     // Control flow
     If,
@@ -63,7 +62,6 @@ impl Keyword {
     pub fn from_str(s: &str) -> Option<Keyword> {
         match s {
             "def" => Some(Keyword::Def),
-            "class" => Some(Keyword::Class),
             "type" => Some(Keyword::Type),
             "if" => Some(Keyword::If),
             "elif" => Some(Keyword::Elif),
