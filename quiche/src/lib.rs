@@ -14,11 +14,7 @@ pub fn default_options() -> CompileOptions {
     CompileOptions {
         experiments: ExperimentFlags {
             move_mut_args: true,
-            infer_local_bidi: true,
-            effect_rows: true,
-            effect_rows_internal: true,
-            infer_principal_fallback: true,
-            numeric_coercion: true,
+            type_system: true,
             ..Default::default()
         },
         ..Default::default()
@@ -137,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_parse_struct() {
-        let source = "class Point(Struct):\n    x: int\n    y: int\n";
+        let source = "type Point:\n    x: int\n    y: int\n";
         let module = parse(source).unwrap();
         match &module.items[0] {
             Item::Struct(s) => {
@@ -152,7 +148,7 @@ mod tests {
 
     #[test]
     fn test_struct_with_type_params() {
-        let source = "class Point[T](Struct):\n    x: T\n    y: int\n";
+        let source = "type Point[T]:\n    x: T\n    y: int\n";
         let module = parse(source).unwrap();
         match &module.items[0] {
             Item::Struct(s) => {
@@ -162,56 +158,6 @@ mod tests {
                 assert_eq!(s.fields[0].ty.path, vec!["T"]);
             }
             other => panic!("Expected Struct, got {:?}", other),
-        }
-    }
-
-    // ─── Enums ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_parse_enum() {
-        let source =
-            "class Color(Enum):\n    Red = ()\n    Green = (int,)\n    Blue = (int, int)\n";
-        let module = parse(source).unwrap();
-        match &module.items[0] {
-            Item::Enum(e) => {
-                assert_eq!(e.name, "Color");
-                assert_eq!(e.variants.len(), 3);
-                assert_eq!(e.variants[0].name, "Red");
-                assert!(e.variants[0].payload.is_empty());
-                assert_eq!(e.variants[1].name, "Green");
-                assert_eq!(e.variants[1].payload.len(), 1);
-                assert_eq!(e.variants[2].name, "Blue");
-                assert_eq!(e.variants[2].payload.len(), 2);
-            }
-            other => panic!("Expected Enum, got {:?}", other),
-        }
-    }
-
-    // ─── Traits ──────────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_parse_trait() {
-        let source = "class Drawable(Trait):\n    def draw(self):\n        pass\n";
-        let module = parse(source).unwrap();
-        match &module.items[0] {
-            Item::Trait(t) => {
-                assert_eq!(t.name, "Drawable");
-            }
-            other => panic!("Expected Trait, got {:?}", other),
-        }
-    }
-
-    // ─── Impl Blocks ─────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_parse_impl() {
-        let source = "@impl(Drawable)\nclass Point:\n    def draw(self): pass\n";
-        let module = parse(source).unwrap();
-        match &module.items[0] {
-            Item::Impl(i) => {
-                assert_eq!(i.target, "Point");
-            }
-            other => panic!("Expected Impl, got {:?}", other),
         }
     }
 
@@ -301,7 +247,14 @@ mod tests {
         let module = parse("from os import path").unwrap();
         match &module.items[0] {
             Item::RustUse(u) => {
-                assert_eq!(u.path, vec!["os", "path"]);
+                // UseTree::Path { segment: "os", next: UseTree::Name("path") }
+                match &u.tree {
+                    UseTree::Path { segment, next } => {
+                        assert_eq!(segment, "os");
+                        assert!(matches!(next.as_ref(), UseTree::Name(n) if n == "path"));
+                    }
+                    other => panic!("Expected UseTree::Path, got {:?}", other),
+                }
             }
             other => panic!("Expected RustUse, got {:?}", other),
         }
@@ -402,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_compile_struct() {
-        let source = "class Point(Struct):\n    x: i32\n    y: i32\n";
+        let source = "type Point:\n    x: i32\n    y: i32\n";
         let rust = crate::compile(source).unwrap();
         assert!(rust.contains("struct Point"));
         assert!(rust.contains("x: i32"));
@@ -420,7 +373,7 @@ mod tests {
     #[test]
     fn test_struct_positional_two_fields() {
         let rust = compile_ok(
-            "class Point(Struct):\n    x: i32\n    y: i32\n\ndef main():\n    p: Point = Point(1, 2)\n",
+            "type Point:\n    x: i32\n    y: i32\n\ndef main():\n    p: Point = Point(1, 2)\n",
         );
         assert!(
             rust.contains("Point {"),
@@ -431,7 +384,7 @@ mod tests {
     #[test]
     fn test_struct_positional_single_field() {
         let rust = compile_ok(
-            "class Wrapper(Struct):\n    val: i32\n\ndef main():\n    w: Wrapper = Wrapper(42)\n",
+            "type Wrapper:\n    val: i32\n\ndef main():\n    w: Wrapper = Wrapper(42)\n",
         );
         assert!(
             rust.contains("Wrapper {"),
@@ -442,7 +395,7 @@ mod tests {
     #[test]
     fn test_struct_positional_three_fields() {
         let rust = compile_ok(
-            "class Vec3(Struct):\n    x: i32\n    y: i32\n    z: i32\n\ndef main():\n    v: Vec3 = Vec3(1, 2, 3)\n",
+            "type Vec3:\n    x: i32\n    y: i32\n    z: i32\n\ndef main():\n    v: Vec3 = Vec3(1, 2, 3)\n",
         );
         assert!(
             rust.contains("Vec3 {"),
@@ -453,7 +406,7 @@ mod tests {
     #[test]
     fn test_struct_positional_mixed_types() {
         let rust = compile_ok(
-            "class Person(Struct):\n    name: String\n    age: i32\n\ndef main():\n    p: Person = Person(\"Alice\".to_string(), 30)\n",
+            "type Person:\n    name: String\n    age: i32\n\ndef main():\n    p: Person = Person(\"Alice\".to_string(), 30)\n",
         );
         assert!(
             rust.contains("Person {"),
@@ -466,7 +419,7 @@ mod tests {
     #[test]
     fn test_struct_keyword_two_fields() {
         let rust = compile_ok(
-            "class Point(Struct):\n    x: i32\n    y: i32\n\ndef main():\n    p: Point = Point(x=5, y=10)\n",
+            "type Point:\n    x: i32\n    y: i32\n\ndef main():\n    p: Point = Point(x=5, y=10)\n",
         );
         assert!(
             rust.contains("Point {"),
@@ -478,7 +431,7 @@ mod tests {
     fn test_struct_keyword_reversed_order() {
         // kwargs in reverse order should still assign correctly
         let rust = compile_ok(
-            "class Point(Struct):\n    x: i32\n    y: i32\n\ndef main():\n    p: Point = Point(y=10, x=5)\n",
+            "type Point:\n    x: i32\n    y: i32\n\ndef main():\n    p: Point = Point(y=10, x=5)\n",
         );
         assert!(
             rust.contains("Point {"),
@@ -496,7 +449,7 @@ mod tests {
     #[test]
     fn test_struct_keyword_three_fields() {
         let rust = compile_ok(
-            "class Color(Struct):\n    r: i32\n    g: i32\n    b: i32\n\ndef main():\n    c: Color = Color(r=255, g=128, b=0)\n",
+            "type Color:\n    r: i32\n    g: i32\n    b: i32\n\ndef main():\n    c: Color = Color(r=255, g=128, b=0)\n",
         );
         assert!(
             rust.contains("Color {"),
@@ -508,7 +461,7 @@ mod tests {
     fn test_struct_keyword_three_fields_shuffled() {
         // All kwargs in arbitrary order
         let rust = compile_ok(
-            "class Color(Struct):\n    r: i32\n    g: i32\n    b: i32\n\ndef main():\n    c: Color = Color(b=0, r=255, g=128)\n",
+            "type Color:\n    r: i32\n    g: i32\n    b: i32\n\ndef main():\n    c: Color = Color(b=0, r=255, g=128)\n",
         );
         assert!(
             rust.contains("Color {"),
@@ -519,94 +472,11 @@ mod tests {
     #[test]
     fn test_struct_keyword_single_field() {
         let rust = compile_ok(
-            "class Wrapper(Struct):\n    val: i32\n\ndef main():\n    w: Wrapper = Wrapper(val=42)\n",
+            "type Wrapper:\n    val: i32\n\ndef main():\n    w: Wrapper = Wrapper(val=42)\n",
         );
         assert!(
             rust.contains("Wrapper {"),
             "Expected struct literal, got:\n{rust}"
-        );
-    }
-
-    // --- @impl regression ---
-
-    #[test]
-    fn test_struct_construction_after_impl() {
-        // Regression: @impl blocks must not overwrite struct field metadata
-        let source = "\
-class Point(Struct):\n    x: i32\n    y: i32\n\n\
-class Printable(Trait):\n    def display(self) -> String: pass\n\n\
-@impl(Printable)\nclass Point:\n    def display(self) -> String:\n        return \"Point\"\n\n\
-def main():\n    p: Point = Point(5, 5)\n";
-        let rust = compile_ok(source);
-        assert!(
-            rust.contains("Point { x:"),
-            "Expected struct literal after @impl block, got:\n{rust}"
-        );
-    }
-
-    #[test]
-    fn test_struct_keyword_after_impl() {
-        let source = "\
-class Point(Struct):\n    x: i32\n    y: i32\n\n\
-class Printable(Trait):\n    def display(self) -> String: pass\n\n\
-@impl(Printable)\nclass Point:\n    def display(self) -> String:\n        return \"Point\"\n\n\
-def main():\n    p: Point = Point(x=5, y=5)\n";
-        let rust = compile_ok(source);
-        assert!(
-            rust.contains("Point { x:"),
-            "Expected keyword struct literal after @impl, got:\n{rust}"
-        );
-    }
-
-    #[test]
-    fn test_struct_keyword_reversed_after_impl() {
-        let source = "\
-class Point(Struct):\n    x: i32\n    y: i32\n\n\
-class Printable(Trait):\n    def display(self) -> String: pass\n\n\
-@impl(Printable)\nclass Point:\n    def display(self) -> String:\n        return \"Point\"\n\n\
-def main():\n    p: Point = Point(y=10, x=5)\n";
-        let rust = compile_ok(source);
-        assert!(
-            rust.contains("Point {"),
-            "Expected struct literal after @impl, got:\n{rust}"
-        );
-    }
-
-    // --- Method calls with kwargs ---
-
-    #[test]
-    fn test_method_kwargs_parse() {
-        // Point.new(x=5, y=5) should parse without errors
-        let source = "\
-class Point(Struct):\n    x: i32\n    y: i32\n\n\
-    def new(x: i32, y: i32) -> Point:\n        return Point(x, y)\n\n\
-def main():\n    p: Point = Point.new(x=5, y=5)\n";
-        let module = parse(source).unwrap();
-        assert!(!module.items.is_empty());
-    }
-
-    #[test]
-    fn test_method_kwargs_reordered() {
-        // Point.new(y=6, x=5) — kwargs should be reordered to match param order
-        let source = "\
-class Point(Struct):\n    x: i32\n    y: i32\n\n\
-    def new(x: i32, y: i32) -> Point:\n        return Point(x, y)\n\n\
-def main():\n    p: Point = Point.new(y=6, x=5)\n";
-        let rust = compile_ok(source);
-        // The compiled output should call new(5, 6) — x first, then y
-        assert!(rust.contains("new"), "Expected method call, got:\n{rust}");
-    }
-
-    #[test]
-    fn test_method_kwargs_three_params() {
-        let source = "\
-class Vec3(Struct):\n    x: i32\n    y: i32\n    z: i32\n\n\
-    def create(x: i32, y: i32, z: i32) -> Vec3:\n        return Vec3(x, y, z)\n\n\
-def main():\n    v: Vec3 = Vec3.create(z=3, x=1, y=2)\n";
-        let rust = compile_ok(source);
-        assert!(
-            rust.contains("create"),
-            "Expected method call, got:\n{rust}"
         );
     }
 
@@ -642,8 +512,8 @@ def main():\n    x: i32 = sum3(c=30, a=10, b=20)\n";
     fn test_multiple_structs_kwargs() {
         // Two different structs — kwargs should not cross-pollinate
         let source = "\
-class Point(Struct):\n    x: i32\n    y: i32\n\n\
-class Size(Struct):\n    width: i32\n    height: i32\n\n\
+type Point:\n    x: i32\n    y: i32\n\n\
+type Size:\n    width: i32\n    height: i32\n\n\
 def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, width=100)\n";
         let rust = compile_ok(source);
         assert!(
@@ -653,6 +523,261 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
         assert!(
             rust.contains("Size {"),
             "Expected Size struct literal, got:\n{rust}"
+        );
+    }
+
+    // ─── type keyword ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_type_struct() {
+        let source = "type Point:\n    x: i32\n    y: i32\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Struct(s) => {
+                assert_eq!(s.name, "Point");
+                assert_eq!(s.fields.len(), 2);
+                assert_eq!(s.fields[0].name, "x");
+                assert_eq!(s.fields[1].name, "y");
+            }
+            other => panic!("Expected Struct, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_enum_with_payloads() {
+        let source = "type Color = | Red | Green(i32) | Blue(i32, i32)\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "Color");
+                assert_eq!(e.variants.len(), 3);
+                assert_eq!(e.variants[0].name, "Red");
+                assert!(matches!(e.variants[0].fields, EnumVariantFields::Unit));
+                assert_eq!(e.variants[1].name, "Green");
+                assert!(
+                    matches!(&e.variants[1].fields, EnumVariantFields::Tuple(t) if t.len() == 1)
+                );
+                assert_eq!(e.variants[2].name, "Blue");
+                assert!(
+                    matches!(&e.variants[2].fields, EnumVariantFields::Tuple(t) if t.len() == 2)
+                );
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_enum_bare_variants() {
+        let source = "type Direction = | North | South | East | West\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "Direction");
+                assert_eq!(e.variants.len(), 4);
+                assert_eq!(e.variants[0].name, "North");
+                assert!(matches!(e.variants[0].fields, EnumVariantFields::Unit));
+                assert_eq!(e.variants[3].name, "West");
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_enum_multiline() {
+        let source = "type Number =\n    | I64(i64)\n    | F64(f64)\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "Number");
+                assert_eq!(e.variants.len(), 2);
+                assert_eq!(e.variants[0].name, "I64");
+                assert!(
+                    matches!(&e.variants[0].fields, EnumVariantFields::Tuple(t) if t[0].path == vec!["i64"])
+                );
+                assert_eq!(e.variants[1].name, "F64");
+                assert!(
+                    matches!(&e.variants[1].fields, EnumVariantFields::Tuple(t) if t[0].path == vec!["f64"])
+                );
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_generic_enum() {
+        let source = "type MyResult[T, E] = | Ok(T) | Err(E)\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "MyResult");
+                assert_eq!(e.type_params.len(), 2);
+                assert_eq!(e.type_params[0].name, "T");
+                assert_eq!(e.type_params[1].name, "E");
+                assert_eq!(e.variants.len(), 2);
+                assert_eq!(e.variants[0].name, "Ok");
+                assert_eq!(e.variants[1].name, "Err");
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_compile_struct() {
+        let source = "type Point:\n    x: i32\n    y: i32\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("pub struct Point"),
+            "Expected struct in output, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_type_compile_enum() {
+        let source = "type Number = | I64(i64) | F64(f64)\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("pub enum Number"),
+            "Expected enum in output, got:\n{rust}"
+        );
+        assert!(
+            rust.contains("I64(i64)"),
+            "Expected I64 variant, got:\n{rust}"
+        );
+        assert!(
+            rust.contains("F64(f64)"),
+            "Expected F64 variant, got:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_type_enum_arity_disambiguation() {
+        let source = "type Shape = | Point | Point(f64) | Point(f64, f64)\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "Shape");
+                assert_eq!(e.variants.len(), 3);
+                assert_eq!(e.variants[0].name, "Point__a0");
+                assert!(matches!(e.variants[0].fields, EnumVariantFields::Unit));
+                assert_eq!(e.variants[1].name, "Point__a1");
+                assert!(
+                    matches!(&e.variants[1].fields, EnumVariantFields::Tuple(t) if t.len() == 1)
+                );
+                assert_eq!(e.variants[2].name, "Point__a2");
+                assert!(
+                    matches!(&e.variants[2].fields, EnumVariantFields::Tuple(t) if t.len() == 2)
+                );
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_enum_mixed_unique_and_duplicate_names() {
+        let source = "type Geo = | Circle(f64) | Circle(f64, f64) | Square(f64)\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.variants.len(), 3);
+                assert_eq!(e.variants[0].name, "Circle__a1"); // disambiguated
+                assert_eq!(e.variants[1].name, "Circle__a2"); // disambiguated
+                assert_eq!(e.variants[2].name, "Square"); // unique, untouched
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_enum_named_fields() {
+        let source = "type Shape = | Point | Rect(width: f64, height: f64)\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "Shape");
+                assert_eq!(e.variants.len(), 2);
+                assert_eq!(e.variants[0].name, "Point");
+                assert!(matches!(e.variants[0].fields, EnumVariantFields::Unit));
+                assert_eq!(e.variants[1].name, "Rect");
+                match &e.variants[1].fields {
+                    EnumVariantFields::Named(fields) => {
+                        assert_eq!(fields.len(), 2);
+                        assert_eq!(fields[0].name, "width");
+                        assert_eq!(fields[1].name, "height");
+                    }
+                    other => panic!("Expected Named fields, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_inline_union() {
+        let source = "type Number = i64 | f64\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "Number");
+                assert_eq!(e.variants.len(), 2);
+                assert_eq!(e.variants[0].name, "I64");
+                assert!(
+                    matches!(&e.variants[0].fields, EnumVariantFields::Tuple(t) if t[0].path == vec!["i64"])
+                );
+                assert_eq!(e.variants[1].name, "F64");
+                assert!(
+                    matches!(&e.variants[1].fields, EnumVariantFields::Tuple(t) if t[0].path == vec!["f64"])
+                );
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_inline_union_three_types() {
+        let source = "type Value = i64 | f64 | String\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "Value");
+                assert_eq!(e.variants.len(), 3);
+                assert_eq!(e.variants[0].name, "I64");
+                assert_eq!(e.variants[1].name, "F64");
+                assert_eq!(e.variants[2].name, "String");
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_enum_inline_no_leading_pipe() {
+        let source = "type Dir = North | South | East | West\n";
+        let module = parse(source).unwrap();
+        match &module.items[0] {
+            Item::Enum(e) => {
+                assert_eq!(e.name, "Dir");
+                assert_eq!(e.variants.len(), 4);
+                assert_eq!(e.variants[0].name, "North");
+                assert_eq!(e.variants[3].name, "West");
+            }
+            other => panic!("Expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_compile_union() {
+        let source = "type Number = i64 | f64\n";
+        let rust = compile_ok(source);
+        assert!(
+            rust.contains("pub enum Number"),
+            "Expected enum in output, got:\n{rust}"
+        );
+        assert!(
+            rust.contains("I64(i64)"),
+            "Expected I64 variant, got:\n{rust}"
+        );
+        assert!(
+            rust.contains("F64(f64)"),
+            "Expected F64 variant, got:\n{rust}"
         );
     }
 }

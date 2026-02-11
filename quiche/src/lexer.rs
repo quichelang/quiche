@@ -15,6 +15,7 @@ pub enum Keyword {
     // Definitions
     Def,
     Class,
+    Type,
     // Control flow
     If,
     Elif,
@@ -63,6 +64,7 @@ impl Keyword {
         match s {
             "def" => Some(Keyword::Def),
             "class" => Some(Keyword::Class),
+            "type" => Some(Keyword::Type),
             "if" => Some(Keyword::If),
             "elif" => Some(Keyword::Elif),
             "else" => Some(Keyword::Else),

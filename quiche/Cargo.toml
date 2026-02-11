@@ -7,7 +7,7 @@ edition = "2024"
 workspace = true
 
 [dependencies]
-elevate = { git = "https://github.com/quichelang/elevate.git", tag = "v0.5.5" }
+elevate = { git = "https://github.com/quichelang/elevate.git", tag = "v0.6.0" }
 thiserror = "2.0"
 regex = "1"
 

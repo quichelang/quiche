@@ -21,33 +21,14 @@ const DEFAULT_EXPERIMENTS: &[FlagDef] = &[
         aliases: &["--exp-mov-mut-args"],
     },
     FlagDef {
-        flag: "--exp-infer-local-bidi",
-        description: "Bidirectional local type inference",
-        aliases: &[],
-    },
-    FlagDef {
-        flag: "--exp-infer-literal-bidi",
-        description: "Bidirectional literal type inference",
-        aliases: &[],
-    },
-    FlagDef {
-        flag: "--exp-effect-rows",
-        description: "Internal effect row types",
-        aliases: &[],
-    },
-    FlagDef {
-        flag: "--exp-numeric-coercion",
-        description: "Automatic numeric type coercion",
+        flag: "--exp-type-system",
+        description: "Enhanced type system with inference",
         aliases: &[],
     },
 ];
 
 /// Experiment flags that are opt-in (not enabled by default).
-const OPTIN_EXPERIMENTS: &[FlagDef] = &[FlagDef {
-    flag: "--exp-infer-principal-fallback",
-    description: "Principal type fallback inference",
-    aliases: &[],
-}];
+const OPTIN_EXPERIMENTS: &[FlagDef] = &[];
 
 /// Non-experiment compiler options.
 const COMPILER_OPTIONS: &[FlagDef] = &[FlagDef {
@@ -76,20 +57,8 @@ fn main() {
     if has_any_flag(&args, "--exp-move-mut-args", &["--exp-mov-mut-args"]) {
         options.experiments.move_mut_args = true;
     }
-    if has_flag(&args, "--exp-infer-local-bidi") {
-        options.experiments.infer_local_bidi = true;
-    }
-    if has_flag(&args, "--exp-infer-literal-bidi") {
-        options.experiments.infer_literal_bidi = true;
-    }
-    if has_flag(&args, "--exp-effect-rows") {
-        options.experiments.effect_rows_internal = true;
-    }
-    if has_flag(&args, "--exp-numeric-coercion") {
-        options.experiments.numeric_coercion = true;
-    }
-    if has_flag(&args, "--exp-infer-principal-fallback") {
-        options.experiments.infer_principal_fallback = true;
+    if has_flag(&args, "--exp-type-system") {
+        options.experiments.type_system = true;
     }
     if has_flag(&args, "--fail-on-hot-clone") {
         options.fail_on_hot_clone = true;
@@ -118,14 +87,7 @@ fn main() {
     // Show active experiments
     let active: Vec<&str> = [
         (options.experiments.move_mut_args, "move_mut_args"),
-        (options.experiments.infer_local_bidi, "infer_local_bidi"),
-        (options.experiments.infer_literal_bidi, "infer_literal_bidi"),
-        (options.experiments.effect_rows_internal, "effect_rows"),
-        (
-            options.experiments.infer_principal_fallback,
-            "infer_principal_fallback",
-        ),
-        (options.experiments.numeric_coercion, "numeric_coercion"),
+        (options.experiments.type_system, "type_system"),
     ]
     .iter()
     .filter(|(on, _)| *on)

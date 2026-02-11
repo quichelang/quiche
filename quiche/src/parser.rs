@@ -187,14 +187,11 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> Result<Vec<e::Item>, ParseError> {
-        // Handle decorators
-        let decorators = self.parse_decorators()?;
-
         match self.kind() {
             TokenKind::Keyword(Keyword::Def) => {
                 Ok(vec![e::Item::Function(self.parse_function_def()?)])
             }
-            TokenKind::Keyword(Keyword::Class) => self.parse_class_def(decorators),
+            TokenKind::Keyword(Keyword::Type) => self.parse_type_def(),
             TokenKind::Keyword(Keyword::From) => Ok(self.parse_from_import()?),
             TokenKind::Keyword(Keyword::Import) => {
                 self.parse_bare_import()?;
@@ -208,37 +205,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_decorators(&mut self) -> Result<Vec<(String, Option<String>)>, ParseError> {
-        let mut decs = Vec::new();
-        while self.check(&TokenKind::At) {
-            self.advance()?;
-            let name = self.expect_ident()?;
-            // Capture first argument from @decorator(Arg)
-            if self.check(&TokenKind::LParen) {
-                self.advance()?;
-                let arg = if let TokenKind::Ident(_) = self.kind() {
-                    let a = self.expect_ident()?;
-                    Some(a)
-                } else {
-                    None
-                };
-                // Skip remaining arguments if any
-                while !self.check(&TokenKind::RParen) && !self.check(&TokenKind::Eof) {
-                    self.advance()?;
-                }
-                self.expect(&TokenKind::RParen)?;
-                decs.push((name, arg));
-            } else {
-                decs.push((name, None));
-            }
-            self.skip_newlines()?;
-        }
-        Ok(decs)
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Imports: from X.Y import Z → RustUse { tree: UseTree }
+    // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Imports: from X.Y import Z → RustUse { path: ["X", "Y", "Z"] }
-    // ─────────────────────────────────────────────────────────────────────────
+    fn path_to_use_tree(path: Vec<String>) -> e::UseTree {
+        let mut iter = path.into_iter().rev();
+        let leaf = e::UseTree::Name(iter.next().unwrap());
+        iter.fold(leaf, |next, segment| e::UseTree::Path {
+            segment,
+            next: Box::new(next),
+        })
+    }
 
     fn parse_from_import(&mut self) -> Result<Vec<e::Item>, ParseError> {
         self.expect_kw(Keyword::From)?;
@@ -260,7 +238,8 @@ impl<'a> Parser<'a> {
                 self.advance()?;
                 self.expect_ident()?;
             }
-            items.push(e::Item::RustUse(e::RustUse { path }));
+            let tree = Self::path_to_use_tree(path);
+            items.push(e::Item::RustUse(e::RustUse { tree, span: None }));
 
             if !self.eat(&TokenKind::Comma)? {
                 break;
@@ -440,260 +419,230 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse a single variant: `Name`, `Name(T1, T2)`, or `Name(x: T1, y: T2)`.
+    fn parse_variant(&mut self) -> Result<e::EnumVariant, ParseError> {
+        let name = self.expect_ident()?;
+
+        if !self.eat(&TokenKind::LParen)? {
+            return Ok(e::EnumVariant {
+                name,
+                fields: e::EnumVariantFields::Unit,
+            });
+        }
+
+        // Empty parens: Name() → unit variant
+        if self.eat(&TokenKind::RParen)? {
+            return Ok(e::EnumVariant {
+                name,
+                fields: e::EnumVariantFields::Unit,
+            });
+        }
+
+        // Peek ahead to distinguish named fields (ident : type) vs tuple (type).
+        let is_named = matches!(self.kind(), TokenKind::Ident(_))
+            && matches!(self.peek()?.kind, TokenKind::Colon);
+
+        if is_named {
+            let mut fields = Vec::new();
+            loop {
+                let field_name = self.expect_ident()?;
+                self.expect(&TokenKind::Colon)?;
+                let ty = self.parse_type()?;
+                fields.push(e::Field {
+                    name: field_name,
+                    ty,
+                });
+                if !self.eat(&TokenKind::Comma)? {
+                    break;
+                }
+            }
+            self.expect(&TokenKind::RParen)?;
+            Ok(e::EnumVariant {
+                name,
+                fields: e::EnumVariantFields::Named(fields),
+            })
+        } else {
+            let mut types = Vec::new();
+            loop {
+                types.push(self.parse_type()?);
+                if !self.eat(&TokenKind::Comma)? {
+                    break;
+                }
+            }
+            self.expect(&TokenKind::RParen)?;
+            Ok(e::EnumVariant {
+                name,
+                fields: e::EnumVariantFields::Tuple(types),
+            })
+        }
+    }
+
+    /// Parse a `|`-separated variant list. Supports:
+    ///
+    ///   Inline:    `A | B(i32) | C`          (pipe as separator)
+    ///   Inline:    `| A | B(i32) | C`        (optional leading pipe)
+    ///   Multiline: `\n    | A\n    | B\n    | C`
+    fn parse_variant_list(&mut self) -> Result<Vec<e::EnumVariant>, ParseError> {
+        let mut variants = Vec::new();
+
+        // Skip newlines and optional indent (multiline form)
+        self.skip_newlines()?;
+        let in_block = self.eat(&TokenKind::Indent)?;
+
+        // Eat optional leading pipe, then parse first variant
+        self.eat(&TokenKind::Pipe)?;
+        variants.push(self.parse_variant()?);
+        self.skip_newlines()?;
+
+        // Continue with remaining | Variant pairs
+        while self.eat(&TokenKind::Pipe)? {
+            variants.push(self.parse_variant()?);
+            self.skip_newlines()?;
+        }
+
+        if in_block && self.check(&TokenKind::Dedent) {
+            self.advance()?;
+        }
+
+        Ok(Self::disambiguate_variants(variants))
+    }
+
+    /// If any variants share the same name, append the payload arity as a
+    /// suffix to each duplicate. Unique names are left untouched.
+    fn disambiguate_variants(variants: Vec<e::EnumVariant>) -> Vec<e::EnumVariant> {
+        // Count occurrences of each name
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for v in &variants {
+            *counts.entry(v.name.clone()).or_insert(0) += 1;
+        }
+
+        // Only rename if a name appears more than once
+        variants
+            .into_iter()
+            .map(|mut v| {
+                if counts.get(&v.name).copied().unwrap_or(0) > 1 {
+                    let arity = match &v.fields {
+                        e::EnumVariantFields::Unit => 0,
+                        e::EnumVariantFields::Tuple(types) => types.len(),
+                        e::EnumVariantFields::Named(fields) => fields.len(),
+                    };
+                    v.name = format!("{}__a{}", v.name, arity);
+                }
+                v
+            })
+            .collect()
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
-    // Class → Struct / Enum / Trait / Impl
+    // type Keyword → Struct / Enum / Union
     // ─────────────────────────────────────────────────────────────────────────
 
-    fn parse_class_def(
-        &mut self,
-        decorators: Vec<(String, Option<String>)>,
-    ) -> Result<Vec<e::Item>, ParseError> {
-        let class_start = self.current.start;
-        self.expect_kw(Keyword::Class)?;
+    /// Parse a `type` definition:
+    ///
+    ///   Struct: `type Point:\n    x: i32\n    y: i32`
+    ///   Enum:   `type Color = | Red | Green | Blue(i32)`
+    fn parse_type_def(&mut self) -> Result<Vec<e::Item>, ParseError> {
+        let type_start = self.current.start;
+        self.expect_kw(Keyword::Type)?;
         let name = self.expect_ident()?;
         let type_params = self.parse_type_params()?;
 
-        // Base class: class Foo(Struct): / class Foo(Enum): / class Foo(Trait):
-        let base = if self.eat(&TokenKind::LParen)? {
-            let base = self.expect_ident()?;
-            self.expect(&TokenKind::RParen)?;
-            Some(base)
-        } else {
-            None
-        };
+        if self.eat(&TokenKind::Eq)? {
+            // Union shorthand: `type Number = i64 | f64`
+            // If first token is a lowercase identifier, treat as union types
+            let is_union = match self.kind() {
+                TokenKind::Ident(id) => id.starts_with(char::is_lowercase),
+                _ => false,
+            };
 
-        self.expect(&TokenKind::Colon)?;
-
-        // @impl decorator → methods only
-        let impl_dec = decorators.iter().find(|(d, _)| d == "impl");
-        if let Some((_, trait_arg)) = impl_dec {
-            let trait_target = trait_arg.as_ref().map(|t| e::Type {
-                path: vec![t.clone()],
-                args: vec![],
-                trait_bounds: vec![],
-            });
-            let (_fields, methods) = self.parse_class_body(&name)?;
-            return Ok(vec![e::Item::Impl(e::ImplBlock {
-                type_params: type_params.clone(),
-                target: name,
-                target_args: type_params
-                    .iter()
-                    .map(|p| e::Type {
-                        path: vec![p.name.clone()],
-                        args: vec![],
-                        trait_bounds: vec![],
-                    })
-                    .collect(),
-                trait_target,
-                methods,
-                span: self.span_from(class_start),
-            })]);
-        }
-
-        match base.as_deref() {
-            Some("Struct") => {
-                let (fields, methods) = self.parse_class_body(&name)?;
-                let mut items = vec![e::Item::Struct(e::StructDef {
-                    visibility: e::Visibility::Public,
-                    name: name.clone(),
-                    type_params: type_params.clone(),
-                    fields,
-                    span: self.span_from(class_start),
-                })];
-                if !methods.is_empty() {
-                    items.push(e::Item::Impl(e::ImplBlock {
-                        type_params: type_params.clone(),
-                        target: name,
-                        target_args: type_params
-                            .iter()
-                            .map(|p| e::Type {
-                                path: vec![p.name.clone()],
-                                args: vec![],
-                                trait_bounds: vec![],
-                            })
-                            .collect(),
-                        trait_target: None,
-                        methods,
-                        span: self.span_from(class_start),
-                    }));
+            if is_union {
+                let mut union_types = vec![self.parse_type()?];
+                while self.eat(&TokenKind::Pipe)? {
+                    union_types.push(self.parse_type()?);
                 }
-                Ok(items)
-            }
-            Some("Enum") | Some("Type") => {
-                let body = self.parse_block()?;
-                let variants = self.extract_variants(body);
-                Ok(vec![e::Item::Enum(e::EnumDef {
+                let variants = union_types
+                    .into_iter()
+                    .map(|ty| {
+                        let variant_name = Self::type_to_variant_name(&ty);
+                        e::EnumVariant {
+                            name: variant_name,
+                            fields: e::EnumVariantFields::Tuple(vec![ty]),
+                        }
+                    })
+                    .collect();
+                return Ok(vec![e::Item::Enum(e::EnumDef {
                     visibility: e::Visibility::Public,
                     name,
                     type_params,
                     variants,
-                    span: self.span_from(class_start),
-                })])
+                    span: self.span_from(type_start),
+                })]);
             }
-            Some("Trait") => {
-                let (_fields, methods) = self.parse_class_body(&name)?;
-                let method_sigs = methods
-                    .into_iter()
-                    .map(|m| e::TraitMethodSig {
-                        name: m.name,
-                        type_params: m.type_params,
-                        params: m.params,
-                        return_type: m.return_type,
-                        effect_row: m.effect_row,
-                        span: self.span_from(class_start),
+
+            // Enum variant list: `type Color = Red | Green | Blue(i32)`
+            let variants = self.parse_variant_list()?;
+            return Ok(vec![e::Item::Enum(e::EnumDef {
+                visibility: e::Visibility::Public,
+                name,
+                type_params,
+                variants,
+                span: self.span_from(type_start),
+            })]);
+        }
+
+        // ── Struct form: `type Name:\n    field: Type` ───────────────
+        self.expect(&TokenKind::Colon)?;
+        let body = self.parse_block()?;
+
+        let fields: Vec<e::Field> = body
+            .statements
+            .iter()
+            .filter_map(|s| {
+                if let e::Stmt::Const(c) = s {
+                    c.ty.as_ref().map(|ty| e::Field {
+                        name: c.name.clone(),
+                        ty: ty.clone(),
                     })
-                    .collect();
-                Ok(vec![e::Item::Trait(e::TraitDef {
-                    visibility: e::Visibility::Public,
-                    name,
-                    supertraits: vec![],
-                    methods: method_sigs,
-                    span: self.span_from(class_start),
-                })])
-            }
-            _ => {
-                // Plain class → struct + impl
-                let (fields, methods) = self.parse_class_body(&name)?;
-                let mut items = vec![e::Item::Struct(e::StructDef {
-                    visibility: e::Visibility::Public,
-                    name: name.clone(),
-                    type_params: type_params.clone(),
-                    fields,
-                    span: self.span_from(class_start),
-                })];
-                if !methods.is_empty() {
-                    items.push(e::Item::Impl(e::ImplBlock {
-                        type_params: type_params.clone(),
-                        target: name,
-                        target_args: type_params
-                            .iter()
-                            .map(|p| e::Type {
-                                path: vec![p.name.clone()],
-                                args: vec![],
-                                trait_bounds: vec![],
-                            })
-                            .collect(),
-                        trait_target: None,
-                        methods,
-                        span: self.span_from(class_start),
-                    }));
+                } else {
+                    None
                 }
-                Ok(items)
-            }
-        }
+            })
+            .collect();
+
+        // Register field names for positional struct construction
+        self.struct_fields.insert(
+            name.clone(),
+            fields.iter().map(|f| f.name.clone()).collect(),
+        );
+
+        Ok(vec![e::Item::Struct(e::StructDef {
+            visibility: e::Visibility::Public,
+            name,
+            type_params,
+            fields,
+            span: self.span_from(type_start),
+        })])
     }
 
-    /// Parse a class body, extracting fields and methods directly.
-    /// This avoids parse_stmt which discards `def` in statement position.
-    /// Registers field names in `struct_fields` before parsing methods,
-    /// so that `TypeName(args...)` inside method bodies can be converted to StructLiteral.
-    fn parse_class_body(
-        &mut self,
-        struct_name: &str,
-    ) -> Result<(Vec<e::Field>, Vec<e::FunctionDef>), ParseError> {
-        let prev_class = self.current_class.take();
-        self.current_class = Some(struct_name.to_string());
-
-        let mut fields = Vec::new();
-        let mut methods = Vec::new();
-        // Collect all tokens from the indented body into field vs method buckets.
-        // Fields come before methods in Quiche class bodies.
-
-        self.skip_newlines()?;
-        self.expect(&TokenKind::Indent)?;
-
-        // Phase 1: Parse fields (everything before the first `def`)
-        while !self.check(&TokenKind::Dedent) && !self.check(&TokenKind::Eof) {
-            self.skip_newlines()?;
-            if self.check(&TokenKind::Dedent) || self.check(&TokenKind::Eof) {
-                break;
-            }
-            if self.check(&TokenKind::Keyword(Keyword::Def)) {
-                break; // Switch to method parsing phase
-            }
-            if self.check(&TokenKind::Keyword(Keyword::Pass)) {
-                self.advance()?;
-            } else {
-                // Field declaration: name: Type [= default]
-                let stmt = self.parse_stmt()?;
-                if let e::Stmt::Const(c) = stmt {
-                    if let Some(ty) = c.ty {
-                        fields.push(e::Field { name: c.name, ty });
-                    }
-                }
-            }
-            self.skip_newlines()?;
+    /// Convert a Type to a PascalCase variant name for union enum generation.
+    /// Examples: `i64` → `I64`, `String` → `String`, `Vec[i32]` → `VecI32`
+    fn type_to_variant_name(ty: &e::Type) -> String {
+        let base = ty.path.last().unwrap_or(&String::new()).clone();
+        let mut name = String::new();
+        // Capitalize first letter
+        let mut chars = base.chars();
+        if let Some(first) = chars.next() {
+            name.push(first.to_ascii_uppercase());
+            name.extend(chars);
         }
-
-        // Register field names so method bodies can use positional struct construction.
-        // Only when fields are present — @impl blocks have no fields and must not
-        // overwrite the original struct's field list.
-        if !fields.is_empty() {
-            self.struct_fields.insert(
-                struct_name.to_string(),
-                fields.iter().map(|f| f.name.clone()).collect(),
-            );
+        // Append generic args
+        for arg in &ty.args {
+            let arg_name = Self::type_to_variant_name(arg);
+            name.push_str(&arg_name);
         }
-
-        // Phase 2: Parse methods
-        while !self.check(&TokenKind::Dedent) && !self.check(&TokenKind::Eof) {
-            self.skip_newlines()?;
-            if self.check(&TokenKind::Dedent) || self.check(&TokenKind::Eof) {
-                break;
-            }
-            if self.check(&TokenKind::Keyword(Keyword::Def)) {
-                methods.push(self.parse_function_def()?);
-            } else if self.check(&TokenKind::Keyword(Keyword::Pass)) {
-                self.advance()?;
-            } else {
-                // Skip unexpected tokens in class body
-                self.advance()?;
-            }
-            self.skip_newlines()?;
-        }
-
-        if self.check(&TokenKind::Dedent) {
-            self.advance()?;
-        }
-
-        self.current_class = prev_class;
-        Ok((fields, methods))
+        name
     }
 
-    fn extract_variants(&self, body: e::Block) -> Vec<e::EnumVariant> {
-        let mut variants = Vec::new();
-        for stmt in body.statements {
-            if let e::Stmt::Assign {
-                target: e::AssignTarget::Path(name),
-                value,
-                ..
-            } = stmt
-            {
-                let payload = match value {
-                    e::Expr::Tuple(elems) => elems
-                        .into_iter()
-                        .filter_map(|e| {
-                            if let e::Expr::Path(p) = e {
-                                Some(e::Type {
-                                    path: p,
-                                    args: vec![],
-                                    trait_bounds: vec![],
-                                })
-                            } else {
-                                None
-                            }
-                        })
-                        .collect(),
-                    _ => vec![],
-                };
-                variants.push(e::EnumVariant { name, payload });
-            }
-        }
-        variants
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Block (indented body)
     // ─────────────────────────────────────────────────────────────────────────
 
     fn parse_block(&mut self) -> Result<e::Block, ParseError> {
@@ -2256,72 +2205,6 @@ mod tests {
         }
     }
 
-    // ─── Struct + Impl Block Emission ────────────────────────────────────────
-
-    #[test]
-    fn test_struct_with_methods_emits_impl_block() {
-        let source = "\
-class Point(Struct):
-    x: i64
-    y: i64
-
-    def new(x: i64, y: i64) -> Point:
-        return Point(x, y)
-
-    def sum(self) -> i64:
-        return self.x + self.y
-";
-        let module = parse(source).unwrap();
-        // Should emit TWO items: Struct + Impl
-        assert!(
-            module.items.len() >= 2,
-            "Expected at least 2 items (Struct + Impl), got {}",
-            module.items.len()
-        );
-        assert!(
-            matches!(&module.items[0], Item::Struct(s) if s.name == "Point"),
-            "First item should be Struct(Point)"
-        );
-        match &module.items[1] {
-            Item::Impl(impl_block) => {
-                assert_eq!(impl_block.target, "Point");
-                assert_eq!(impl_block.methods.len(), 2);
-                assert_eq!(impl_block.methods[0].name, "new");
-                assert_eq!(impl_block.methods[1].name, "sum");
-            }
-            other => panic!("Expected Impl block, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_struct_fields_extracted() {
-        let source = "\
-class Pair(Struct):
-    first: i64
-    second: String
-";
-        let module = parse(source).unwrap();
-        match &module.items[0] {
-            Item::Struct(s) => {
-                assert_eq!(s.fields.len(), 2);
-                assert_eq!(s.fields[0].name, "first");
-                assert_eq!(s.fields[1].name, "second");
-            }
-            other => panic!("Expected Struct, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_struct_no_methods_no_impl() {
-        let source = "\
-class Simple(Struct):
-    value: i64
-";
-        let module = parse(source).unwrap();
-        // No methods → only Struct, no Impl
-        assert_eq!(module.items.len(), 1);
-        assert!(matches!(&module.items[0], Item::Struct(_)));
-    }
 
     // ─── Static Method Calls ─────────────────────────────────────────────────
 
@@ -2379,45 +2262,4 @@ class Simple(Struct):
     }
 
     // ─── Enum Definitions ────────────────────────────────────────────────────
-
-    #[test]
-    fn test_enum_variants() {
-        let source = "\
-class Color(Enum):
-    Red = ()
-    Green = (i32,)
-";
-        let module = parse(source).unwrap();
-        match &module.items[0] {
-            Item::Enum(e) => {
-                assert_eq!(e.name, "Color");
-                assert_eq!(e.variants.len(), 2);
-                assert_eq!(e.variants[0].name, "Red");
-                assert_eq!(e.variants[1].name, "Green");
-            }
-            other => panic!("Expected Enum, got {:?}", other),
-        }
-    }
-
-    // ─── @impl Decorator ─────────────────────────────────────────────────────
-
-    #[test]
-    fn test_impl_decorator_emits_impl_only() {
-        let source = "\
-@impl
-class MyType:
-    def hello(self) -> String:
-        return \"hi\"
-";
-        let module = parse(source).unwrap();
-        assert_eq!(module.items.len(), 1);
-        match &module.items[0] {
-            Item::Impl(impl_block) => {
-                assert_eq!(impl_block.target, "MyType");
-                assert_eq!(impl_block.methods.len(), 1);
-                assert_eq!(impl_block.methods[0].name, "hello");
-            }
-            other => panic!("Expected Impl, got {:?}", other),
-        }
-    }
 }
