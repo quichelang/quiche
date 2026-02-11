@@ -1,7 +1,0 @@
-[package]
-name = "metaquiche-shared"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-# No external dependencies - zero-dep i18n via template system

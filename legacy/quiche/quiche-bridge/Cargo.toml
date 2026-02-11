@@ -1,8 +1,0 @@
-[package]
-name = "quiche-bridge"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-metaquiche-parser = { path = "../../metaquiche/metaquiche-parser" }
-elevate = { path = "../../../elevate" }
