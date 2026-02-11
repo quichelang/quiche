@@ -22,8 +22,8 @@ dependencies = [
 
 [[package]]
 name = "elevate"
-version = "0.6.0"
-source = "git+https://github.com/quichelang/elevate.git?tag=v0.6.0#90b8f34313ab6191135bd79cb71e3ef8bb9f9451"
+version = "0.8.8"
+source = "git+https://github.com/quichelang/elevate.git?tag=v0.8.8#303f4eeb3283ac04f0f180bd6835b729033bc04f"
 dependencies = [
  "rustdex",
 ]
@@ -99,7 +99,7 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 [[package]]
 name = "rustdex"
 version = "0.1.0"
-source = "git+https://github.com/quichelang/rustdex.git?rev=6bac9c653709849cb7aa833140ab866ced3d71e3#6bac9c653709849cb7aa833140ab866ced3d71e3"
+source = "git+https://github.com/quichelang/rustdex.git?rev=9e35693#9e35693065a221f6c706ade7db006e8462854122"
 dependencies = [
  "bincode",
  "rustdoc-types",

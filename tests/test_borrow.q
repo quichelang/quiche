@@ -1,26 +1,25 @@
 
 # Test for auto-cloning of function arguments (ownership-blindness)
 
-class Box:
+type Box:
     value: String
-    
-    @immut
-    def get_val(self) -> String:
-        return self.value.clone()
+
+def get_val(b: Box) -> String:
+    return b.value
 
 def take_ownership(b: Box):
-    println("Took ownership of: " + b.get_val())
+    print("Took ownership of: " + get_val(b))
 
 def main():
     b = Box(value="Secret")
-    
-    # First use: Takes ownership. Should be auto-cloned because 'b' is used later.
+
+    # First use: auto-cloned because 'b' is used later.
     take_ownership(b)
-    
-    # Second use: Takes ownership. Should be auto-cloned because 'b' is used later.
+
+    # Second use: auto-cloned because 'b' is used later.
     take_ownership(b)
-    
-    # Last use: Takes ownership. Should be moved (no clone).
+
+    # Last use: moved (no clone).
     take_ownership(b)
-    
-    println("Done")
+
+    print("Done")

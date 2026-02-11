@@ -26,6 +26,14 @@ pub fn parse(source: &str) -> Result<elevate::ast::Module, String> {
     parser::parse(source).map_err(|e| format!("{e}"))
 }
 
+/// Parse Quiche source, compile through Elevate, and emit Elevate source code.
+/// This produces valid `.ers` syntax from the typed IR — useful for bug reports.
+pub fn emit_elevate(source: &str, options: &CompileOptions) -> Result<String, String> {
+    let module = parser::parse(source).map_err(|e| format!("{e}"))?;
+    let output = elevate::compile_ast_with_options(&module, options).map_err(|e| format!("{e}"))?;
+    Ok(elevate::emit_elevate::emit_typed_module(&output.typed))
+}
+
 /// Parse Quiche source and compile to Rust via Elevate.
 pub fn compile(source: &str) -> Result<String, String> {
     compile_with_options(source, &CompileOptions::default())
@@ -35,7 +43,9 @@ pub fn compile(source: &str) -> Result<String, String> {
 pub fn compile_with_options(source: &str, options: &CompileOptions) -> Result<String, String> {
     let module = parser::parse(source).map_err(|e| format!("{e}"))?;
     let output = elevate::compile_ast_with_options(&module, options).map_err(|e| format!("{e}"))?;
-    Ok(inject_display_impls(&output.rust_code))
+    Ok(inject_auto_imports(&inject_display_impls(
+        &output.rust_code,
+    )))
 }
 
 /// Compile a .q file with source-mapped diagnostics.
@@ -57,7 +67,9 @@ pub fn compile_file(
         }
         format!("{err}")
     })?;
-    Ok(inject_display_impls(&output.rust_code))
+    Ok(inject_auto_imports(&inject_display_impls(
+        &output.rust_code,
+    )))
 }
 
 /// Post-process generated Rust: auto-generate `impl Display` for structs
@@ -97,6 +109,55 @@ fn inject_display_impls(rust_code: &str) -> String {
         ));
     }
     result
+}
+
+/// Auto-inject `use std::collections::*` imports when the generated Rust
+/// references collection types that aren't in the prelude.
+fn inject_auto_imports(rust_code: &str) -> String {
+    // First, fix HashMap::from(vec![...]) → HashMap::from([...])
+    let rust_code = fix_hashmap_from_vec(rust_code);
+
+    let mut imports = Vec::new();
+
+    if rust_code.contains("HashMap") {
+        imports.push("HashMap");
+    }
+    if rust_code.contains("HashSet") {
+        imports.push("HashSet");
+    }
+    if rust_code.contains("BTreeMap") {
+        imports.push("BTreeMap");
+    }
+    if rust_code.contains("BTreeSet") {
+        imports.push("BTreeSet");
+    }
+
+    if imports.is_empty() {
+        return rust_code;
+    }
+
+    let import_line = format!("use std::collections::{{{}}};\n", imports.join(", "));
+
+    // Insert after the last #![allow(...)] line
+    if let Some(pos) = rust_code.rfind("#![allow(") {
+        if let Some(end) = rust_code[pos..].find('\n') {
+            let insert_at = pos + end + 1;
+            let mut result = String::with_capacity(rust_code.len() + import_line.len());
+            result.push_str(&rust_code[..insert_at]);
+            result.push_str(&import_line);
+            result.push_str(&rust_code[insert_at..]);
+            return result;
+        }
+    }
+
+    // Fallback: prepend
+    format!("{import_line}{rust_code}")
+}
+
+/// Fix `HashMap::from(vec![...])` → `HashMap::from([...])`.
+/// Elevate wraps dict literals in vec![] but HashMap::from needs a fixed array.
+fn fix_hashmap_from_vec(rust_code: &str) -> String {
+    rust_code.replace("HashMap::from(vec![", "HashMap::from([")
 }
 
 #[cfg(test)]

@@ -989,14 +989,22 @@ impl<'a> Parser<'a> {
                                 return Ok(e::Stmt::RustBlock(code.clone()));
                             }
                         }
-                        // print(a, b, c) → println!("{} {} {}", a, b, c)
+                        // print(a, b, c) → println!("{} {:?} {:?}", a, b, c)
+                        // String literals use {} (no quotes), everything else uses {:?} (Debug)
                         "print" | "eprint" => {
                             let macro_name = if name == "print" {
                                 "println"
                             } else {
                                 "eprintln"
                             };
-                            let fmt = (0..args.len()).map(|_| "{}").collect::<Vec<_>>().join(" ");
+                            let fmt = args
+                                .iter()
+                                .map(|a| match a {
+                                    e::Expr::String(_) => "{}",
+                                    _ => "{:?}",
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" ");
                             let mut macro_args = vec![e::Expr::String(fmt)];
                             macro_args.extend(args.iter().cloned());
                             return Ok(e::Stmt::Expr(e::Expr::MacroCall {
@@ -1116,7 +1124,31 @@ impl<'a> Parser<'a> {
     // ─────────────────────────────────────────────────────────────────────────
 
     fn parse_expr(&mut self) -> Result<e::Expr, ParseError> {
-        self.parse_or_expr()
+        let body = self.parse_or_expr()?;
+        // Python-style ternary: body if condition else orelse
+        // Desugars to: match condition { true => body, _ => orelse }
+        if self.check_kw(Keyword::If) {
+            self.advance()?;
+            let condition = self.parse_or_expr()?;
+            self.expect_kw(Keyword::Else)?;
+            let orelse = self.parse_expr()?; // right-associative: a if c1 else b if c2 else d
+            return Ok(e::Expr::Match {
+                scrutinee: Box::new(condition),
+                arms: vec![
+                    e::MatchArm {
+                        pattern: e::Pattern::Bool(true),
+                        guard: None,
+                        value: body,
+                    },
+                    e::MatchArm {
+                        pattern: e::Pattern::Wildcard,
+                        guard: None,
+                        value: orelse,
+                    },
+                ],
+            });
+        }
+        Ok(body)
     }
 
     fn parse_or_expr(&mut self) -> Result<e::Expr, ParseError> {
@@ -1592,37 +1624,55 @@ impl<'a> Parser<'a> {
             }
             TokenKind::FString { content, .. } => {
                 self.advance()?;
-                // f-string → emit as format!() with field access extracted to positional args.
-                // Rust stable doesn't support {self.name} in format strings,
-                // so we convert: f"{self.name} is {self.age}"
-                //            to: format!("{} is {}", self.name, self.age)
+                // f-string → emit as format!() with ALL expressions as positional args.
+                // Rust's format!() only accepts identifiers inside {}, not expressions,
+                // so we always extract to positional args:
+                //   f"{name} is {age * 2}" → format!("{} is {}", name, age * 2)
+                //   f"literal {{braces}}"  → format!("literal {{braces}}")
                 let mut format_str = String::new();
                 let mut args: Vec<e::Expr> = Vec::new();
                 let mut chars = content.chars().peekable();
                 while let Some(c) = chars.next() {
                     if c == '{' {
+                        // Check for escaped brace: {{ → literal {
+                        if chars.peek() == Some(&'{') {
+                            chars.next();
+                            format_str.push_str("{{");
+                            continue;
+                        }
                         // Collect the expression inside { ... }
                         let mut expr_str = String::new();
+                        let mut brace_depth = 1;
                         while let Some(&nc) = chars.peek() {
-                            if nc == '}' {
+                            if nc == '{' {
+                                brace_depth += 1;
+                                expr_str.push(nc);
                                 chars.next();
-                                break;
+                            } else if nc == '}' {
+                                brace_depth -= 1;
+                                if brace_depth == 0 {
+                                    chars.next();
+                                    break;
+                                }
+                                expr_str.push(nc);
+                                chars.next();
+                            } else {
+                                expr_str.push(nc);
+                                chars.next();
                             }
-                            expr_str.push(nc);
-                            chars.next();
                         }
-                        if expr_str.contains('.') || expr_str.contains('(') {
-                            // Field access or call — extract as positional arg
-                            format_str.push_str("{}");
-                            // Parse the expression: turn "self.name" → Expr::Field { base: Path(["self"]), field: "name" }
-                            let mut sub = Parser::new(&expr_str)?;
-                            let parsed_expr = sub.parse_expr()?;
-                            args.push(parsed_expr);
+                        // ALL expressions become positional args (safe for Rust format!)
+                        format_str.push_str("{}");
+                        let mut sub = Parser::new(&expr_str)?;
+                        let parsed_expr = sub.parse_expr()?;
+                        args.push(parsed_expr);
+                    } else if c == '}' {
+                        // Check for escaped close brace: }} → literal }
+                        if chars.peek() == Some(&'}') {
+                            chars.next();
+                            format_str.push_str("}}");
                         } else {
-                            // Simple variable — keep inline (Rust supports {varname})
-                            format_str.push('{');
-                            format_str.push_str(&expr_str);
-                            format_str.push('}');
+                            format_str.push(c);
                         }
                     } else {
                         format_str.push(c);
@@ -2175,7 +2225,7 @@ mod tests {
             Stmt::Expr(Expr::MacroCall { path, args }) => {
                 assert_eq!(path, &["println"]);
                 assert_eq!(args.len(), 4); // format string + 3 args
-                assert!(matches!(&args[0], Expr::String(s) if s == "{} {} {}"));
+                assert!(matches!(&args[0], Expr::String(s) if s == "{:?} {:?} {:?}"));
             }
             other => panic!("Expected MacroCall, got {:?}", other),
         }

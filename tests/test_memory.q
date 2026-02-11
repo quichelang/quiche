@@ -7,28 +7,28 @@
 # DATA STRUCTURES FOR TESTING
 # =============================================================================
 
-class Point:
+type Point:
     x: i32
     y: i32
 
-class Rect:
+type Rect:
     top_left: Point
     bottom_right: Point
 
-class Node:
+type Node:
     value: i32
     name: String
 
-class TreeNode:
+type TreeNode:
     value: i32
     left: Option[Box[TreeNode]]
     right: Option[Box[TreeNode]]
 
-class Container:
+type Container:
     items: Vec[i32]
     name: String
 
-class DeepNested:
+type DeepNested:
     container: Container
     point: Point
 

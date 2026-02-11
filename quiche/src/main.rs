@@ -49,6 +49,7 @@ fn main() {
     let filename = &args[1];
     let emit_rust = has_flag(&args, "--emit-rust");
     let emit_elevate = has_flag(&args, "--emit-elevate");
+    let dump_ast = has_flag(&args, "--emit-ast");
 
     // Start with defaults (core experiments enabled)
     let mut options = quiche::default_options();
@@ -72,12 +73,24 @@ fn main() {
         }
     };
 
-    if emit_elevate {
-        // Show the parsed Elevate AST
+    if dump_ast {
+        // Debug dump of the parsed Elevate AST (includes metadata/spans)
         match quiche::parse(&source) {
             Ok(module) => println!("{:#?}", module),
             Err(e) => {
                 eprintln!("Parse error:\n{}", e);
+                process::exit(1);
+            }
+        }
+        return;
+    }
+
+    if emit_elevate {
+        // Emit valid Elevate source from the typed IR
+        match quiche::emit_elevate(&source, &options) {
+            Ok(elevate_src) => print!("{}", elevate_src),
+            Err(e) => {
+                eprintln!("Error:\n{}", e);
                 process::exit(1);
             }
         }
@@ -189,7 +202,8 @@ fn print_usage() {
          \n\
          OPTIONS:\n\
          \x20   --emit-rust              Emit generated Rust code to stdout\n\
-         \x20   --emit-elevate           Emit parsed Elevate AST to stdout\n\
+         \x20   --emit-elevate           Emit Elevate (.ers) source to stdout\n\
+         \x20   --emit-ast               Dump raw AST with metadata (debug)\n\
          \x20   -h, --help               Show this help message"
     );
 
