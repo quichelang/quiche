@@ -3,3 +3,4 @@ bin/
 stage0
 stage1
 stage2
+__quiche_run

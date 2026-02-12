@@ -25,25 +25,24 @@ Quiche uses a **Type-First** design. Unlike Python, types are static and map dir
 -   Type: `Map[String, i32]`.
 -   Compilation: `std::collections::HashMap::from([...])`.
 
-## Structs & Traits
+## Structs & Enums
 
 ### Structs
-Structs are defined as Python classes inheriting from `Struct`. Rust derives are applied as metadata decorators.
+Structs are defined using the `type` keyword with field declarations.
 
 ```python
-@derive("Debug", "Clone")
-class Button(Struct):
+type Button:
     label: String
 ```
 
 ### Enums
-Enums are defined as classes inheriting from `Enum`. Variants use assignment syntax with tuples.
+Enums are defined using the `type` keyword with variant assignments.
 
 ```python
-class Status(Enum):
-    Pending = ()          # Unit variant → Status::Pending
-    Active = ()           # Unit variant → Status::Active
-    WithData = (String,)  # Tuple variant → Status::WithData(String)
+type Status:
+    Pending = ()          # Unit variant -> Status::Pending
+    Active = ()           # Unit variant -> Status::Active
+    WithData = (String,)  # Tuple variant -> Status::WithData(String)
 ```
 
 Compiles to:
@@ -57,25 +56,6 @@ pub enum Status {
 
 > **Important:** Bare identifiers like `Pending` without `= ()` are NOT valid enum syntax.
 
-### Traits
-Traits are defined as classes inheriting from `Trait`.
-
-```python
-class Drawable(Trait):
-    def render(self, x: i32, y: i32) -> None: ...
-```
-
-### Trait Implementation
-Implementations use the `@implement` decorator on a placeholder class (usually `class _`).
-
-```python
-@implement(Drawable, for_=Button)
-class _:
-    def render(self, x: i32, y: i32) -> None:
-        # Implementation
-        pass
-```
-
 ## Generics
 
 Quiche uses **Python 3.12 style** type parameters - square brackets after the name.
@@ -83,7 +63,7 @@ Quiche uses **Python 3.12 style** type parameters - square brackets after the na
 ### Generic Structs
 
 ```python
-class Point[T](Struct):
+type Point[T]:
     x: T
     y: T
 ```

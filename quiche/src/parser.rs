@@ -690,6 +690,7 @@ impl<'a> Parser<'a> {
                 let _func = self.parse_function_def()?;
                 Ok(e::Stmt::Expr(e::Expr::Tuple(vec![])))
             }
+            TokenKind::Keyword(Keyword::Assert) => self.parse_assert(),
             _ => self.parse_expr_or_assign(),
         }
     }
@@ -704,6 +705,28 @@ impl<'a> Parser<'a> {
         } else {
             Ok(e::Stmt::Return(Some(self.parse_expr()?)))
         }
+    }
+
+    /// `assert expr` → `assert!(expr)`
+    /// `assert expr, "msg"` → `assert!(expr, "{}", msg)`
+    fn parse_assert(&mut self) -> Result<e::Stmt, ParseError> {
+        self.expect_kw(Keyword::Assert)?;
+        let condition = self.parse_expr()?;
+
+        let mut args = vec![condition];
+
+        // Check for optional message: `assert expr, "message"`
+        if matches!(self.kind(), TokenKind::Comma) {
+            self.advance()?; // consume comma
+            let msg = self.parse_expr()?;
+            args.push(e::Expr::String("{}".to_string()));
+            args.push(msg);
+        }
+
+        Ok(e::Stmt::Expr(e::Expr::MacroCall {
+            path: vec!["assert".to_string()],
+            args,
+        }))
     }
 
     fn parse_if_or_elif(&mut self) -> Result<e::Stmt, ParseError> {
@@ -840,6 +863,13 @@ impl<'a> Parser<'a> {
             TokenKind::Keyword(Keyword::False) => {
                 self.advance()?;
                 Ok(e::Pattern::Bool(false))
+            }
+            TokenKind::Keyword(Keyword::None) => {
+                self.advance()?;
+                Ok(e::Pattern::Variant {
+                    path: vec!["None".to_string()],
+                    payload: None,
+                })
             }
             TokenKind::Int(n) => {
                 let v = n;
@@ -1001,6 +1031,12 @@ impl<'a> Parser<'a> {
                                 .iter()
                                 .map(|a| match a {
                                     e::Expr::String(_) => "{}",
+                                    // f-strings become format!() calls — always produce String
+                                    e::Expr::MacroCall { path, .. }
+                                        if path.len() == 1 && path[0] == "format" =>
+                                    {
+                                        "{}"
+                                    }
                                     _ => "{:?}",
                                 })
                                 .collect::<Vec<_>>()
@@ -1710,6 +1746,33 @@ impl<'a> Parser<'a> {
                     }
                 }
                 self.expect(&TokenKind::Pipe)?; // consume closing |
+                let body_expr = self.parse_expr()?;
+                Ok(e::Expr::Closure {
+                    params,
+                    return_type: None,
+                    body: e::Block {
+                        statements: vec![e::Stmt::TailExpr(body_expr)],
+                    },
+                })
+            }
+            // Python-style lambda: `lambda x, y: expr`
+            TokenKind::Keyword(Keyword::Lambda) => {
+                self.advance()?; // consume 'lambda'
+                let mut params = Vec::new();
+                // Parse params until we hit ':'
+                while !self.check(&TokenKind::Colon) {
+                    let name = self.expect_ident()?;
+                    let ty = e::Type {
+                        path: vec!["_".into()],
+                        args: vec![],
+                        trait_bounds: vec![],
+                    };
+                    params.push(e::Param { name, ty });
+                    if !self.eat(&TokenKind::Comma)? {
+                        break;
+                    }
+                }
+                self.expect(&TokenKind::Colon)?; // consume ':'
                 let body_expr = self.parse_expr()?;
                 Ok(e::Expr::Closure {
                     params,

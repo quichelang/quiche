@@ -22,8 +22,8 @@ dependencies = [
 
 [[package]]
 name = "elevate"
-version = "0.8.8"
-source = "git+https://github.com/quichelang/elevate.git?tag=v0.8.8#303f4eeb3283ac04f0f180bd6835b729033bc04f"
+version = "0.8.9"
+source = "git+https://github.com/quichelang/elevate.git?tag=v0.9.0#c92205377433f74e1670b0b9aa96d3fe04576080"
 dependencies = [
  "rustdex",
 ]
@@ -51,7 +51,7 @@ dependencies = [
 
 [[package]]
 name = "quiche"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "elevate",
  "regex",

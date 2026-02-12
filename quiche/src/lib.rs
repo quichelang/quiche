@@ -13,7 +13,7 @@ pub use elevate::{CompileOptions, CompilerOutput, ExperimentFlags};
 pub fn default_options() -> CompileOptions {
     CompileOptions {
         experiments: ExperimentFlags {
-            move_mut_args: true,
+            move_mut_args: false,
             type_system: true,
             ..Default::default()
         },

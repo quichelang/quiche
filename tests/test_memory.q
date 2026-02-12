@@ -8,24 +8,24 @@
 # =============================================================================
 
 type Point:
-    x: i32
-    y: i32
+    x: i64
+    y: i64
 
 type Rect:
     top_left: Point
     bottom_right: Point
 
 type Node:
-    value: i32
+    value: i64
     name: String
 
 type TreeNode:
-    value: i32
+    value: i64
     left: Option[Box[TreeNode]]
     right: Option[Box[TreeNode]]
 
 type Container:
-    items: Vec[i32]
+    items: Vec[i64]
     name: String
 
 type DeepNested:
@@ -104,7 +104,7 @@ def test_struct_to_function():
     assert result.x == 4
     assert result.y == 6
 
-def get_rect_area(r: Rect) -> i32:
+def get_rect_area(r: Rect) -> i64:
     w = r.bottom_right.x - r.top_left.x
     h = r.bottom_right.y - r.top_left.y
     return w * h
@@ -117,7 +117,7 @@ def test_nested_struct_to_function():
     area = get_rect_area(r)
     assert area == 50
 
-def extract_x(p: Point) -> i32:
+def extract_x(p: Point) -> i64:
     return p.x
 
 def test_struct_field_extraction():
@@ -129,13 +129,13 @@ def test_struct_field_extraction():
 # MULTI-LEVEL FUNCTION CALLS
 # =============================================================================
 
-def level3(val: i32) -> i32:
+def level3(val: i64) -> i64:
     return val * 2
 
-def level2(val: i32) -> i32:
+def level2(val: i64) -> i64:
     return level3(val) + 1
 
-def level1(val: i32) -> i32:
+def level1(val: i64) -> i64:
     return level2(val) * 3
 
 def test_multi_level_calls():
@@ -162,7 +162,7 @@ def test_struct_multi_level_passing():
 # VECTOR OPERATIONS
 # =============================================================================
 
-def sum_vec(items: Vec[i32]) -> i32:
+def sum_vec(items: Vec[i64]) -> i64:
     total = 0
     for item in items:
         total = total + item
@@ -173,8 +173,8 @@ def test_vec_to_function():
     result = sum_vec(v)
     assert result == 15
 
-def double_each(items: Vec[i32]) -> Vec[i32]:
-    result: Vec[i32] = []
+def double_each(items: Vec[i64]) -> Vec[i64]:
+    result: Vec[i64] = []
     for item in items:
         result.push(item * 2)
     return result
@@ -188,7 +188,7 @@ def test_vec_return():
     assert doubled[2] == 6
 
 def test_vec_push_pop():
-    v: Vec[i32] = []
+    v: Vec[i64] = []
     v.push(10)
     v.push(20)
     v.push(30)
@@ -226,7 +226,7 @@ def test_deep_nested_creation():
     assert dn.point.x == 5
 
 def modify_deep_nested_items(dn: DeepNested) -> DeepNested:
-    new_items: Vec[i32] = []
+    new_items: Vec[i64] = []
     for item in dn.container.items:
         new_items.push(item + 1)
     return DeepNested(
@@ -245,7 +245,7 @@ def test_deep_nested_modification():
 # OPTION HANDLING
 # =============================================================================
 
-def find_in_vec(items: Vec[i32], target: i32) -> Option[i32]:
+def find_in_vec(items: Vec[i64], target: i64) -> Option[i64]:
     for item in items:
         if item == target:
             return Some(item)
@@ -269,7 +269,7 @@ def test_option_none():
         case None:
             pass  # Expected
 
-def safe_div(a: i32, b: i32) -> Option[i32]:
+def safe_div(a: i64, b: i64) -> Option[i64]:
     if b == 0:
         return None
     return Some(a / b)
@@ -295,19 +295,19 @@ def test_option_chain():
 
 def test_fold_sum():
     v = [1, 2, 3, 4, 5]
-    result = v.iter().fold(0, lambda acc, x: acc + x)
+    result = v.iter().fold(0, |acc, x| acc + x)
     assert result == 15
 
 def test_map_operation():
     v = [1, 2, 3]
-    doubled = v.iter().map(lambda x: x * 2).collect()
+    doubled = v.iter().map(|x| x * 2).collect()
     assert doubled[0] == 2
     assert doubled[1] == 4
     assert doubled[2] == 6
 
 def test_filter_operation():
     v = [1, 2, 3, 4, 5, 6]
-    evens = v.iter().filter(lambda x: x % 2 == 0).collect()
+    evens = v.iter().filter(|x| x % 2 == 0).collect()
     assert evens.len() == 3
     assert evens[0] == 2
     assert evens[1] == 4
@@ -345,7 +345,7 @@ def test_string_accumulation():
 # COMPLEX RETURN PATTERNS
 # =============================================================================
 
-def create_many_points(count: i32) -> Vec[Point]:
+def create_many_points(count: i64) -> Vec[Point]:
     result: Vec[Point] = []
     i = 0
     while i < count:
@@ -382,7 +382,7 @@ def test_vec_struct_transformation():
 # =============================================================================
 
 def test_empty_vec():
-    v: Vec[i32] = []
+    v: Vec[i64] = []
     assert v.len() == 0
     assert v.is_empty()
 
@@ -392,7 +392,7 @@ def test_single_element_vec():
     assert v[0] == 42
 
 def test_large_vec():
-    v: Vec[i32] = []
+    v: Vec[i64] = []
     i = 0
     while i < 1000:
         v.push(i)
@@ -411,19 +411,19 @@ def test_many_small_structs():
     assert points[0].x == 0
     assert points[99].x == 99
 
-def deeply_nested_call_1(x: i32) -> i32:
+def deeply_nested_call_1(x: i64) -> i64:
     return deeply_nested_call_2(x + 1)
 
-def deeply_nested_call_2(x: i32) -> i32:
+def deeply_nested_call_2(x: i64) -> i64:
     return deeply_nested_call_3(x + 1)
 
-def deeply_nested_call_3(x: i32) -> i32:
+def deeply_nested_call_3(x: i64) -> i64:
     return deeply_nested_call_4(x + 1)
 
-def deeply_nested_call_4(x: i32) -> i32:
+def deeply_nested_call_4(x: i64) -> i64:
     return deeply_nested_call_5(x + 1)
 
-def deeply_nested_call_5(x: i32) -> i32:
+def deeply_nested_call_5(x: i64) -> i64:
     return x + 1
 
 def test_deeply_nested_calls():
@@ -435,7 +435,7 @@ def test_deeply_nested_calls():
 # STRUCT MUTATIONS (create modified copies)
 # =============================================================================
 
-def move_point(p: Point, dx: i32, dy: i32) -> Point:
+def move_point(p: Point, dx: i64, dy: i64) -> Point:
     return Point(x=p.x + dx, y=p.y + dy)
 
 def test_struct_functional_update():
@@ -444,7 +444,7 @@ def test_struct_functional_update():
     assert p2.x == 15
     assert p2.y == 15
 
-def expand_rect(r: Rect, amount: i32) -> Rect:
+def expand_rect(r: Rect, amount: i64) -> Rect:
     return Rect(
         top_left=Point(x=r.top_left.x - amount, y=r.top_left.y - amount),
         bottom_right=Point(x=r.bottom_right.x + amount, y=r.bottom_right.y + amount)
@@ -465,7 +465,7 @@ def test_nested_struct_update():
 # RECURSIVE PATTERNS (if supported)
 # =============================================================================
 
-def factorial(n: i32) -> i32:
+def factorial(n: i64) -> i64:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
@@ -475,7 +475,7 @@ def test_recursion():
     assert factorial(1) == 1
     assert factorial(5) == 120
 
-def fibonacci(n: i32) -> i32:
+def fibonacci(n: i64) -> i64:
     if n <= 1:
         return n
     return fibonacci(n - 1) + fibonacci(n - 2)
@@ -522,7 +522,7 @@ def test_ownership_chain():
     assert p4.y == 8
 
 def build_container() -> Container:
-    items: Vec[i32] = []
+    items: Vec[i64] = []
     items.push(1)
     items.push(2)
     items.push(3)
@@ -536,7 +536,7 @@ def test_container_builder():
 def test_chained_container_ops():
     c1 = build_container()
     # Create a new container with modified items
-    new_items: Vec[i32] = []
+    new_items: Vec[i64] = []
     for item in c1.items:
         new_items.push(item * 10)
     c2 = Container(items=new_items, name="modified")

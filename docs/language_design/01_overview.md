@@ -11,7 +11,7 @@ Quiche is a language that offers the **ergonomics of Python** with the **perform
     -   Constraints are added to support performance without the cognitive load of full Rust.
 
 2.  **Python Syntax, Rust Semantics**:
-    -   We use Python's syntax (`def`, `class`, `if`, `match`) because it is readable and familiar.
+    -   We use Python's syntax (`def`, `type`, `if`, `match`) because it is readable and familiar.
     -   We enforce Rust's semantics (static typing, move semantics, exhaustiveness).
 
 3.  **Native Compilation**:
@@ -29,7 +29,6 @@ Quiche is a language that offers the **ergonomics of Python** with the **perform
 | **Variables** | `x = 10` | `let x = 10;` |
 | **Mutation** | `x = 11` (Reassign) / `x := 12` (Shadow) | `x = 11;` / `let x = 12;` |
 | **Functions** | `def foo(x: i32) -> i32:` | `fn foo(x: i32) -> i32` |
-| **Structs** | `class Point(Struct):` | `struct Point` |
-| **Enums** | `class Color(Enum):` | `enum Color` |
+| **Structs** | `type Point:` | `struct Point` |
+| **Enums** | `type Color:` (with variants) | `enum Color` |
 | **Matching** | `match x:` | `match x` |
-| **Macros** | `@macro` | `#[proc_macro]` |

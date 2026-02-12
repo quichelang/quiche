@@ -56,7 +56,7 @@ fn main() {
 
     // Allow CLI overrides for individual experiment flags
     if has_any_flag(&args, "--exp-move-mut-args", &["--exp-mov-mut-args"]) {
-        options.experiments.move_mut_args = true;
+        options.experiments.move_mut_args = false;
     }
     if has_flag(&args, "--exp-type-system") {
         options.experiments.type_system = true;

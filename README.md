@@ -5,12 +5,12 @@
 Quiche is a language that looks and feels like Python but compiles to **100% safe Rust** - no `unsafe`, no runtime panics, no garbage collector. You get the clean syntax you love with the raw performance and safety guarantees you need.
 
 ```python
-class Student(Struct):
+type Student:
     name: String
-    age: u8
+    age: i64
 
-    def bio(self) -> String:
-        return f"{self.name} is {self.age} years old"
+def bio(s: Student) -> String:
+    return f"{s.name} is {s.age} years old"
 
 def main():
     students = [
@@ -18,7 +18,7 @@ def main():
         Student(name="Bob", age=22)
     ]
     for s in students:
-        print(s.bio())
+        print(bio(s))
 ```
 
 **That's it.** No lifetimes. No borrows. No `Arc<Mutex<T>>`. No fighting the compiler. Just write what you mean.
@@ -51,8 +51,11 @@ quiche hello.q
 # See the generated Rust
 quiche hello.q --emit-rust
 
-# Inspect the parsed AST
+# View the Elevate IR as source
 quiche hello.q --emit-elevate
+
+# Dump the raw AST with metadata (debug)
+quiche hello.q --emit-ast
 ```
 
 ## What It Can Do
@@ -67,35 +70,30 @@ def greet(name: String):
     print(f"Hello, {name}!")
 ```
 
-### Structs - classes that just work
+### Structs - types that just work
 
 ```python
-class Point(Struct):
-    x: i32
-    y: i32
+type Point:
+    x: i64
+    y: i64
 
-    def distance(self, other: Point) -> f64:
-        dx: f64 = (self.x - other.x) as f64
-        dy: f64 = (self.y - other.y) as f64
-        return (dx * dx + dy * dy).sqrt()
+def distance(self: Point, other: Point) -> f64:
+    dx: f64 = (self.x - other.x) as f64
+    dy: f64 = (self.y - other.y) as f64
+    return (dx * dx + dy * dy).sqrt()
 ```
 
 ### Enums - algebraic types, Python-style
 
 ```python
-class Shape(Enum):
+type Shape:
     Circle = (f64,)          # radius
     Rect = (f64, f64)        # width, height
 
-class Printable(Trait):
-    def describe(self) -> String: pass
-
-@impl(Printable)
-class Shape:
-    def describe(self) -> String:
-        match self:
-            case Circle(r): return f"Circle r={r}"
-            case Rect(w, h): return f"Rect {w}x{h}"
+def describe(s: Shape) -> String:
+    match s:
+        case Circle(r): return f"Circle r={r}"
+        case Rect(w, h): return f"Rect {w}x{h}"
 ```
 
 ### Collections - Python syntax, Rust speed
@@ -118,51 +116,42 @@ from std.io import BufReader
 This is where Quiche shines. You can write generic functions that work on **any type with the right shape** - no interfaces, no trait bounds, no ceremony:
 
 ```python
-class Dog(Struct):
+type Dog:
     name: String
-    def speak(self) -> String:
-        return f"{self.name} says Woof!"
 
-class Cat(Struct):
+def speak_dog(d: Dog) -> String:
+    return f"{d.name} says Woof!"
+
+type Cat:
     name: String
-    def speak(self) -> String:
-        return f"{self.name} says Meow!"
 
-# No interface needed - if it has .speak(), it works
-def announce[T](animal: T) -> String:
-    return animal.speak()
+def speak_cat(c: Cat) -> String:
+    return f"{c.name} says Meow!"
+
+# Generic functions with trait bounds
+def check_eq[T: PartialEq](a: T, b: T) -> bool:
+    return a == b
 
 def main():
-    print(announce(Dog(name="Rex")))       # "Rex says Woof!"
-    print(announce(Cat(name="Whiskers")))  # "Whiskers says Meow!"
+    print(speak_dog(Dog(name="Rex")))
+    print(speak_cat(Cat(name="Whiskers")))
+    print(check_eq(1, 1))
 ```
 
-In Python, this is duck typing - "if it quacks like a duck." In Quiche, the compiler **proves** it at compile time. Each call site is checked: does `Dog` have `.speak() -> String`? Does `Cat`? If yes, it compiles. If not, you get a clear error pointing to the exact line - not a runtime `AttributeError`.
-
-This works because Elevate generates **specialized code per type** - there's zero runtime overhead. You get the flexibility of Python with the safety of Rust.
+Elevate generates **specialized code per type** - there's zero runtime overhead. You get the flexibility of Python with the safety of Rust.
 
 ## Design Philosophy
 
-> [!IMPORTANT]
-> We're considering moving toward a single `type` keyword to define both structs and enums, replacing the current `class Foo(Struct)` / `class Foo(Enum)` syntax.
-
-Quiche's syntax and semantics are **stable** and designed to closely resemble Python. If you know Python, you can read Quiche.
-
-There are some intentional differences:
+Quiche uses a single `type` keyword for both structs and enums - the compiler infers the right Rust type from the shape of the definition. This is inspired by OCaml/F# and keeps the syntax minimal.
 
 | Python | Quiche | Why |
 |--------|--------|-----|
-| Classes with inheritance | **Structs, enums, traits** | Composition over inheritance. No OOP class hierarchy. |
+| Classes with inheritance | **`type` keyword (structs + enums)** | Composition over inheritance. No OOP class hierarchy. |
 | Dynamic typing | **Static type inference** | Types are inferred where possible, annotated where needed. |
 | Duck typing (runtime) | **Row polymorphism (compile-time)** | Same flexibility, but the compiler catches errors before you run. |
 | Mutable by default | **Immutable by default** | Safer defaults. Quiche adds `mut` only where needed. |
 
-Quiche is more **functional** than Python - influenced by Rust's algebraic types, pattern matching, and immutability. There's no `class` inheritance, no `super()`, no `__init__`. Instead you get structs with methods, enums with pattern matching, and traits for shared behavior.
-
-### Roadmap
-We're considering moving toward a single `type` keyword to define both structs and enums, replacing the current `class Foo(Struct)` / `class Foo(Enum)` syntax. The compiler will infer the right Rust type from the shape of the definition.
-
-This is inspired directly from languages like OCaml/F# and is expected to bring even more simplicity to the syntax. Perfect for simple scripts and tasks, making it great as a high-peformance alternative to Rust syntax, that can be embedded in the same codebase (and have interop with Rust natively)!
+Quiche is more **functional** than Python - influenced by Rust's algebraic types, pattern matching, and immutability. There's no `class` inheritance, no `super()`, no `__init__`. Instead you get structs with functions, enums with pattern matching, and generics with trait bounds.
 
 
 ## How It Works
@@ -183,9 +172,8 @@ The generated Rust is readable and correct - no `unsafe` blocks, no `unwrap()`, 
 Quiche uses the Elevate compiler backend, which has several experimental features you can try:
 
 ```bash
-quiche hello.q --exp-infer-local-bidi        # Bidirectional type inference
-quiche hello.q --exp-numeric-coercion        # Auto numeric type coercion
 quiche hello.q --exp-move-mut-args           # Mutable ownership transfer
+quiche hello.q --exp-type-system             # Advanced type system features
 quiche hello.q --fail-on-hot-clone           # Error on implicit clones
 ```
 
@@ -195,18 +183,20 @@ Run `quiche --help` for the full list.
 
 | Feature | Status |
 |---------|--------|
-| Functions, structs, enums, traits | ✅ |
-| Generics & structural polymorphism | ✅ |
-| Row polymorphism (duck typing) | ✅ |
+| Functions, structs, enums | ✅ |
+| `type` keyword (structs + enums) | ✅ |
+| Generics with trait bounds | ✅ |
 | Pattern matching | ✅ |
-| List comprehensions | ✅ |
+| Closures (`\|x\| expr`) | ✅ |
 | F-strings | ✅ |
-| Closures / lambdas | ✅ |
 | Auto-borrowing & auto-cloning | ✅ |
 | If/elif/else, for, while, match | ✅ |
+| Assert statements | ✅ |
 | Imports from Rust stdlib | ✅ |
 | Type inference | ✅ |
 | Source-mapped diagnostics | ✅ |
+| `--emit-elevate` (Elevate source) | ✅ |
+| `--emit-ast` (debug AST dump) | ✅ |
 | Editor plugins | 🔜 TBD |
 | Crate-level compilation | 🔜 Next |
 | Package manager integration | 🔜 Planned |
