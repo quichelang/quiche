@@ -5,7 +5,7 @@ type _PrivateHelper:
     _tag: String
 
 def new_private_helper(v: i32) -> _PrivateHelper:
-    return _PrivateHelper(value=v, _tag="helper")
+    return _PrivateHelper(value=v, _tag="helper".to_string())
 
 def get_helper_value(h: _PrivateHelper) -> i32:
     return h.value
@@ -17,7 +17,7 @@ type Container:
     _cache: String
 
 def new_container(name: String, internal: i32) -> Container:
-    return Container(name=name, _internal=internal, _cache="")
+    return Container(name=name, _internal=internal, _cache="".to_string())
 
 def compute_container(c: Container) -> i32:
     return c._internal * 2
@@ -33,14 +33,14 @@ def test_private_struct():
 
 def test_private_fields():
     print("Running test_private_fields...")
-    c = new_container("test", 10)
-    assert_eq(c.name, "test")
+    c = new_container("test".to_string(), 10)
+    assert_eq(c.name, "test".to_string())
     assert_eq(get_internal(c), 10)
     print("PASS: test_private_fields")
 
 def test_computed():
     print("Running test_computed...")
-    c = new_container("test", 5)
+    c = new_container("test".to_string(), 5)
     assert_eq(compute_container(c), 10)
     print("PASS: test_computed")
 
@@ -50,7 +50,7 @@ type PointPV:
     _label: String
 
 def new_point(x: i32, y: i32) -> PointPV:
-    return PointPV(x=x, y=y, _label="")
+    return PointPV(x=x, y=y, _label="".to_string())
 
 def labeled_point(x: i32, y: i32, label: String) -> PointPV:
     return PointPV(x=x, y=y, _label=label)
@@ -64,8 +64,8 @@ def test_struct_private_fields():
     assert_eq(p.x, 1)
     assert_eq(p.y, 2)
 
-    p2 = labeled_point(3, 4, "origin")
-    assert_eq(get_label(p2), "origin")
+    p2 = labeled_point(3, 4, "origin".to_string())
+    assert_eq(get_label(p2), "origin".to_string())
     print("PASS: test_struct_private_fields")
 
 def main():

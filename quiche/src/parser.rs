@@ -1330,6 +1330,14 @@ impl<'a> Parser<'a> {
                         }
                     }
                 }
+                // Quiche value semantics: .iter() → .into_iter()
+                // so iterator chains yield T instead of &T, avoiding
+                // double-reference issues in filter/any/all closures.
+                let field = if field == "iter" {
+                    "into_iter".into()
+                } else {
+                    field
+                };
                 expr = e::Expr::Field {
                     base: Box::new(expr),
                     field,

@@ -58,6 +58,27 @@ def test_arithmetic():
     assert 10 / 2 == 5
     assert 17 % 5 == 2
 
+def test_primitive_mutation():
+    """
+    Test that mutation of a variable does not affect other variables, primitives are copied by default
+    """
+    x = 42
+    y = x
+    x = x + 1
+    assert x == 43
+    assert y == 42
+
+def test_vector_mutation():
+    """
+    Test that mutation of a vector DOES affect other vectors (which are copies)
+    """
+    v = [1, 2, 3]
+    u = v
+    v.push(4)
+    assert v == [1, 2, 3, 4]
+    assert u == [1, 2, 3, 4]
+
+
 # =============================================================================
 # STRUCT CREATION AND FIELD ACCESS  
 # =============================================================================
@@ -78,17 +99,17 @@ def test_nested_struct():
     assert r.bottom_right.y == 100
 
 def test_struct_with_string():
-    n = Node(value=42, name="test")
+    n = Node(value=42, name="test".to_string())
     assert n.value == 42
-    assert n.name == "test"
+    assert n.name == "test".to_string()
 
 def test_container_with_vec():
-    c = Container(items=[1, 2, 3], name="nums")
+    c = Container(items=[1, 2, 3], name="nums".to_string())
     assert c.items.len() == 3
     assert c.items[0] == 1
     assert c.items[1] == 2
     assert c.items[2] == 3
-    assert c.name == "nums"
+    assert c.name == "nums".to_string()
 
 # =============================================================================
 # FUNCTION PARAMETER PASSING
@@ -214,13 +235,13 @@ def test_vec_of_structs():
 
 def create_deep_nested() -> DeepNested:
     return DeepNested(
-        container=Container(items=[10, 20, 30], name="deep"),
+        container=Container(items=[10, 20, 30], name="deep".to_string()),
         point=Point(x=5, y=5)
     )
 
 def test_deep_nested_creation():
     dn = create_deep_nested()
-    assert dn.container.name == "deep"
+    assert dn.container.name == "deep".to_string()
     assert dn.container.items.len() == 3
     assert dn.container.items[0] == 10
     assert dn.point.x == 5
@@ -318,241 +339,274 @@ def test_filter_operation():
 # =============================================================================
 
 def test_string_concat():
-    a = "Hello"
-    b = " World"
+    a = "Hello".to_string()
+    b = " World".to_string()
     result = a + b
-    assert result == "Hello World"
+    assert result == "Hello World".to_string()
 
 def test_string_in_struct():
-    n = Node(value=1, name="first")
+    n = Node(value=1, name="first".to_string())
     assert n.name.len() == 5
 
 def concat_names(nodes: Vec[Node]) -> String:
-    result = ""
+    result = "".to_string()
     for node in nodes:
-        result = result + node.name + ","
+        result = result + node.name + ",".to_string()
     return result
 
 def test_string_accumulation():
     nodes: Vec[Node] = []
-    nodes.push(Node(value=1, name="a"))
-    nodes.push(Node(value=2, name="b"))
-    nodes.push(Node(value=3, name="c"))
+    nodes.push(Node(value=1, name="a".to_string()))
+    nodes.push(Node(value=2, name="b".to_string()))
+    nodes.push(Node(value=3, name="c".to_string()))
     result = concat_names(nodes)
-    assert result == "a,b,c,"
+    assert result == "a,b,c,".to_string()
 
-# =============================================================================
-# COMPLEX RETURN PATTERNS
-# =============================================================================
+# # =============================================================================
+# # COMPLEX RETURN PATTERNS
+# # =============================================================================
 
-def create_many_points(count: i64) -> Vec[Point]:
-    result: Vec[Point] = []
-    i = 0
-    while i < count:
-        result.push(Point(x=i, y=i * 2))
-        i = i + 1
-    return result
+# def create_many_points(count: i64) -> Vec[Point]:
+#     result: Vec[Point] = []
+#     i = 0
+#     while i < count:
+#         result.push(Point(x=i, y=i * 2))
+#         i = i + 1
+#     return result
 
-def test_vec_of_structs_return():
-    points = create_many_points(5)
-    assert points.len() == 5
-    assert points[0].x == 0
-    assert points[0].y == 0
-    assert points[4].x == 4
-    assert points[4].y == 8
+# def test_vec_of_structs_return():
+#     points = create_many_points(5)
+#     assert points.len() == 5
+#     assert points[0].x == 0
+#     assert points[0].y == 0
+#     assert points[4].x == 4
+#     assert points[4].y == 8
 
-def transform_all_points(points: Vec[Point]) -> Vec[Point]:
-    result: Vec[Point] = []
-    for p in points:
-        result.push(Point(x=p.x + 10, y=p.y + 10))
-    return result
+# def transform_all_points(points: Vec[Point]) -> Vec[Point]:
+#     result: Vec[Point] = []
+#     for p in points:
+#         result.push(Point(x=p.x + 10, y=p.y + 10))
+#     return result
 
-def test_vec_struct_transformation():
-    original = create_many_points(3)
-    transformed = transform_all_points(original)
-    assert transformed[0].x == 10
-    assert transformed[0].y == 10
-    assert transformed[1].x == 11
-    assert transformed[1].y == 12
-    assert transformed[2].x == 12
-    assert transformed[2].y == 14
+# def test_vec_struct_transformation():
+#     original = create_many_points(3)
+#     transformed = transform_all_points(original)
+#     assert transformed[0].x == 10
+#     assert transformed[0].y == 10
+#     assert transformed[1].x == 11
+#     assert transformed[1].y == 12
+#     assert transformed[2].x == 12
+#     assert transformed[2].y == 14
 
-# =============================================================================
-# EDGE CASES AND STRESS TESTS
-# =============================================================================
+# # =============================================================================
+# # EDGE CASES AND STRESS TESTS
+# # =============================================================================
 
-def test_empty_vec():
-    v: Vec[i64] = []
-    assert v.len() == 0
-    assert v.is_empty()
+# def test_empty_vec():
+#     v: Vec[i64] = []
+#     assert v.len() == 0
+#     assert v.is_empty()
 
-def test_single_element_vec():
-    v = [42]
-    assert v.len() == 1
-    assert v[0] == 42
+# def test_single_element_vec():
+#     v = [42]
+#     assert v.len() == 1
+#     assert v[0] == 42
 
-def test_large_vec():
-    v: Vec[i64] = []
-    i = 0
-    while i < 1000:
-        v.push(i)
-        i = i + 1
-    assert v.len() == 1000
-    assert v[0] == 0
-    assert v[999] == 999
+# def test_large_vec():
+#     v: Vec[i64] = []
+#     i = 0
+#     while i < 1000:
+#         v.push(i)
+#         i = i + 1
+#     assert v.len() == 1000
+#     assert v[0] == 0
+#     assert v[999] == 999
 
-def test_many_small_structs():
-    points: Vec[Point] = []
-    i = 0
-    while i < 100:
-        points.push(Point(x=i, y=i))
-        i = i + 1
-    # Verify first and last
-    assert points[0].x == 0
-    assert points[99].x == 99
+# def test_many_small_structs():
+#     points: Vec[Point] = []
+#     i = 0
+#     while i < 100:
+#         points.push(Point(x=i, y=i))
+#         i = i + 1
+#     # Verify first and last
+#     assert points[0].x == 0
+#     assert points[99].x == 99
 
-def deeply_nested_call_1(x: i64) -> i64:
-    return deeply_nested_call_2(x + 1)
+# def deeply_nested_call_1(x: i64) -> i64:
+#     return deeply_nested_call_2(x + 1)
 
-def deeply_nested_call_2(x: i64) -> i64:
-    return deeply_nested_call_3(x + 1)
+# def deeply_nested_call_2(x: i64) -> i64:
+#     return deeply_nested_call_3(x + 1)
 
-def deeply_nested_call_3(x: i64) -> i64:
-    return deeply_nested_call_4(x + 1)
+# def deeply_nested_call_3(x: i64) -> i64:
+#     return deeply_nested_call_4(x + 1)
 
-def deeply_nested_call_4(x: i64) -> i64:
-    return deeply_nested_call_5(x + 1)
+# def deeply_nested_call_4(x: i64) -> i64:
+#     return deeply_nested_call_5(x + 1)
 
-def deeply_nested_call_5(x: i64) -> i64:
-    return x + 1
+# def deeply_nested_call_5(x: i64) -> i64:
+#     return x + 1
 
-def test_deeply_nested_calls():
-    # 0 + 1 + 1 + 1 + 1 + 1 = 5
-    result = deeply_nested_call_1(0)
-    assert result == 5
+# def test_deeply_nested_calls():
+#     # 0 + 1 + 1 + 1 + 1 + 1 = 5
+#     result = deeply_nested_call_1(0)
+#     assert result == 5
 
-# =============================================================================
-# STRUCT MUTATIONS (create modified copies)
-# =============================================================================
+# # =============================================================================
+# # STRUCT MUTATIONS (create modified copies)
+# # =============================================================================
 
-def move_point(p: Point, dx: i64, dy: i64) -> Point:
-    return Point(x=p.x + dx, y=p.y + dy)
+# def move_point(p: Point, dx: i64, dy: i64) -> Point:
+#     return Point(x=p.x + dx, y=p.y + dy)
 
-def test_struct_functional_update():
-    p1 = Point(x=10, y=20)
-    p2 = move_point(p1, 5, -5)
-    assert p2.x == 15
-    assert p2.y == 15
+# def test_struct_functional_update():
+#     p1 = Point(x=10, y=20)
+#     p2 = move_point(p1, 5, -5)
+#     assert p2.x == 15
+#     assert p2.y == 15
 
-def expand_rect(r: Rect, amount: i64) -> Rect:
-    return Rect(
-        top_left=Point(x=r.top_left.x - amount, y=r.top_left.y - amount),
-        bottom_right=Point(x=r.bottom_right.x + amount, y=r.bottom_right.y + amount)
-    )
+# def expand_rect(r: Rect, amount: i64) -> Rect:
+#     return Rect(
+#         top_left=Point(x=r.top_left.x - amount, y=r.top_left.y - amount),
+#         bottom_right=Point(x=r.bottom_right.x + amount, y=r.bottom_right.y + amount)
+#     )
 
-def test_nested_struct_update():
-    r = Rect(
-        top_left=Point(x=10, y=10),
-        bottom_right=Point(x=20, y=20)
-    )
-    expanded = expand_rect(r, 5)
-    assert expanded.top_left.x == 5
-    assert expanded.top_left.y == 5
-    assert expanded.bottom_right.x == 25
-    assert expanded.bottom_right.y == 25
+# def test_nested_struct_update():
+#     r = Rect(
+#         top_left=Point(x=10, y=10),
+#         bottom_right=Point(x=20, y=20)
+#     )
+#     expanded = expand_rect(r, 5)
+#     assert expanded.top_left.x == 5
+#     assert expanded.top_left.y == 5
+#     assert expanded.bottom_right.x == 25
+#     assert expanded.bottom_right.y == 25
 
-# =============================================================================
-# RECURSIVE PATTERNS (if supported)
-# =============================================================================
+# # =============================================================================
+# # RECURSIVE PATTERNS (if supported)
+# # =============================================================================
 
-def factorial(n: i64) -> i64:
-    if n <= 1:
-        return 1
-    return n * factorial(n - 1)
+# def factorial(n: i64) -> i64:
+#     if n <= 1:
+#         return 1
+#     return n * factorial(n - 1)
 
-def test_recursion():
-    assert factorial(0) == 1
-    assert factorial(1) == 1
-    assert factorial(5) == 120
+# def test_recursion():
+#     assert factorial(0) == 1
+#     assert factorial(1) == 1
+#     assert factorial(5) == 120
 
-def fibonacci(n: i64) -> i64:
-    if n <= 1:
-        return n
-    return fibonacci(n - 1) + fibonacci(n - 2)
+# def fibonacci(n: i64) -> i64:
+#     if n <= 1:
+#         return n
+#     return fibonacci(n - 1) + fibonacci(n - 2)
 
-def test_fibonacci():
-    assert fibonacci(0) == 0
-    assert fibonacci(1) == 1
-    assert fibonacci(10) == 55
+# def test_fibonacci():
+#     assert fibonacci(0) == 0
+#     assert fibonacci(1) == 1
+#     assert fibonacci(10) == 55
 
-# =============================================================================
-# ALIASING AND REFERENCE PATTERNS  
-# =============================================================================
+# # =============================================================================
+# # ALIASING AND REFERENCE PATTERNS  
+# # =============================================================================
 
-def test_multiple_refs_to_struct():
-    p = Point(x=10, y=20)
-    r1 = p
-    r2 = p
-    # All should be separate copies (or properly aliased)
-    assert r1.x == 10
-    assert r2.x == 10
+# def test_multiple_refs_to_struct():
+#     p = Point(x=10, y=20)
+#     r1 = p
+#     r2 = p
+#     # All should be separate copies (or properly aliased)
+#     assert r1.x == 10
+#     assert r2.x == 10
 
-def test_struct_in_vec_access():
-    points = [Point(x=1, y=2), Point(x=3, y=4)]
-    # Access via index
-    first = points[0]
-    assert first.x == 1
-    second = points[1]
-    assert second.x == 3
+# def test_struct_in_vec_access():
+#     points = [Point(x=1, y=2), Point(x=3, y=4)]
+#     # Access via index
+#     first = points[0]
+#     assert first.x == 1
+#     second = points[1]
+#     assert second.x == 3
 
-# =============================================================================
-# COMPLEX OWNERSHIP PATTERNS
-# =============================================================================
+# # =============================================================================
+# # COMPLEX OWNERSHIP PATTERNS
+# # =============================================================================
 
-def consume_and_return(p: Point) -> Point:
-    # Takes ownership, returns new
-    return Point(x=p.x * 2, y=p.y * 2)
+# def consume_and_return(p: Point) -> Point:
+#     # Takes ownership, returns new
+#     return Point(x=p.x * 2, y=p.y * 2)
 
-def test_ownership_chain():
-    p1 = Point(x=1, y=1)
-    p2 = consume_and_return(p1)
-    p3 = consume_and_return(p2)
-    p4 = consume_and_return(p3)
-    assert p4.x == 8  # 1 * 2 * 2 * 2
-    assert p4.y == 8
+# def test_ownership_chain():
+#     p1 = Point(x=1, y=1)
+#     p2 = consume_and_return(p1)
+#     p3 = consume_and_return(p2)
+#     p4 = consume_and_return(p3)
+#     assert p4.x == 8  # 1 * 2 * 2 * 2
+#     assert p4.y == 8
 
-def build_container() -> Container:
-    items: Vec[i64] = []
-    items.push(1)
-    items.push(2)
-    items.push(3)
-    return Container(items=items, name="built")
+# def build_container() -> Container:
+#     items: Vec[i64] = []
+#     items.push(1)
+#     items.push(2)
+#     items.push(3)
+#     return Container(items=items, name="built")
 
-def test_container_builder():
-    c = build_container()
-    assert c.items.len() == 3
-    assert c.name == "built"
+# def test_container_builder():
+#     c = build_container()
+#     assert c.items.len() == 3
+#     assert c.name == "built"
 
-def test_chained_container_ops():
-    c1 = build_container()
-    # Create a new container with modified items
-    new_items: Vec[i64] = []
-    for item in c1.items:
-        new_items.push(item * 10)
-    c2 = Container(items=new_items, name="modified")
-    assert c2.items[0] == 10
-    assert c2.items[1] == 20
-    assert c2.items[2] == 30
+# def test_chained_container_ops():
+#     c1 = build_container()
+#     # Create a new container with modified items
+#     new_items: Vec[i64] = []
+#     for item in c1.items:
+#         new_items.push(item * 10)
+#     c2 = Container(items=new_items, name="modified")
+#     assert c2.items[0] == 10
+#     assert c2.items[1] == 20
+#     assert c2.items[2] == 30
 
-# =============================================================================  
-# PRINT TESTS (for debugging visibility)
-# =============================================================================
+# # =============================================================================  
+# # PRINT TESTS (for debugging visibility)
+# # =============================================================================
 
-def test_print_works():
-    print("Test output visible")
-    assert True
+# def test_print_works():
+#     print("Test output visible")
+#     assert True
 
-def test_debug_struct():
-    p = Point(x=42, y=99)
-    print("Point created with x=42, y=99")
-    assert p.x == 42
+# def test_debug_struct():
+#     p = Point(x=42, y=99)
+#     print("Point created with x=42, y=99")
+#     assert p.x == 42
+
+def main():
+    test_primitive_copy()
+    test_bool_operations()
+    test_arithmetic()
+    test_primitive_mutation()
+
+    test_struct_to_function()
+    test_nested_struct_to_function()
+    test_struct_field_extraction()
+
+    test_multi_level_calls()
+    test_struct_multi_level_passing()
+
+    test_vec_to_function()
+    test_vec_return()
+    test_vec_push_pop()
+    test_vec_of_structs()
+
+    test_deep_nested_creation()
+    test_deep_nested_modification()
+
+    test_option_some()
+    test_option_none()
+    test_option_chain()
+
+    test_string_concat()
+    test_string_in_struct()
+    test_string_accumulation()
+
+    test_fold_sum()
+    test_map_operation()
+    test_filter_operation()

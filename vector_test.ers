@@ -1,0 +1,82 @@
+pub struct Point {
+    x: i64,
+    y: i64,
+}
+
+
+pub struct Rect {
+    top_left: Point,
+    bottom_right: Point,
+}
+
+
+pub struct Node {
+    value: i64,
+    name: String,
+}
+
+
+pub struct TreeNode {
+    value: i64,
+    left: Option<Box<TreeNode>>,
+    right: Option<Box<TreeNode>>,
+}
+
+
+pub struct Container {
+    items: Vec<i64>,
+    name: String,
+}
+
+
+pub struct DeepNested {
+    container: Container,
+    point: Point,
+}
+
+
+pub fn test_primitive_copy() {
+    let x: i64 = 42;
+    let y: i64 = x;
+    assert!(x == 42, "{}", "original should remain");
+    assert!(y == 42, "{}", "copy should match");
+}
+
+
+pub fn test_bool_operations() {
+    let a: bool = true;
+    let b: bool = false;
+    assert!(a == true);
+    assert!(b == false);
+    assert!(a != b);
+    assert!((a && b) == false);
+    assert!((a || b) == true);
+}
+
+
+pub fn test_arithmetic() {
+    assert!(1 + 2 == 3);
+    assert!(10 - 3 == 7);
+    assert!(4 * 5 == 20);
+    assert!(10 / 2 == 5);
+    assert!(17 % 5 == 2);
+}
+
+
+pub fn test_primitive_mutation() {
+    let x: i64 = 42;
+    let y: i64 = x;
+    x = x + 1;
+    assert!(x == 43);
+    assert!(y == 42);
+}
+
+
+pub fn test_vector_mutation() {
+    let v: Vec<i64> = [1, 2, 3];
+    let u: Vec<i64> = v;
+    v.push(4);
+    assert!(v == [1, 2, 3, 4]);
+    assert!(u == [1, 2, 3, 4]);
+}
+
