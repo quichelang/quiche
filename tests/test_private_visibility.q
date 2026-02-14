@@ -28,20 +28,20 @@ def get_internal(c: Container) -> i32:
 def test_private_struct():
     print("Running test_private_struct...")
     helper = new_private_helper(42)
-    assert_eq(get_helper_value(helper), 42)
+    assert get_helper_value(helper) == 42
     print("PASS: test_private_struct")
 
 def test_private_fields():
     print("Running test_private_fields...")
     c = new_container("test".to_string(), 10)
-    assert_eq(c.name, "test".to_string())
-    assert_eq(get_internal(c), 10)
+    assert c.name == "test".to_string()
+    assert get_internal(c) == 10
     print("PASS: test_private_fields")
 
 def test_computed():
     print("Running test_computed...")
     c = new_container("test".to_string(), 5)
-    assert_eq(compute_container(c), 10)
+    assert compute_container(c) == 10
     print("PASS: test_computed")
 
 type PointPV:
@@ -61,11 +61,11 @@ def get_label(p: PointPV) -> String:
 def test_struct_private_fields():
     print("Running test_struct_private_fields...")
     p = new_point(1, 2)
-    assert_eq(p.x, 1)
-    assert_eq(p.y, 2)
+    assert p.x == 1
+    assert p.y == 2
 
     p2 = labeled_point(3, 4, "origin".to_string())
-    assert_eq(get_label(p2), "origin".to_string())
+    assert get_label(p2) == "origin".to_string()
     print("PASS: test_struct_private_fields")
 
 def main():

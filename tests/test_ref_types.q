@@ -10,7 +10,7 @@ def sum_list(items: Vec[i64]) -> i64:
 def test_ref_types():
     numbers = [1, 2, 3]
     total = sum_list(numbers)
-    assert_eq(total, 6)
+    assert total == 6
 
     print("test_ref_types: PASSED")
 

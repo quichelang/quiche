@@ -4,10 +4,10 @@ def test_arithmetic():
     print("Running test_arithmetic...")
     x = 10
     y = 5
-    assert_eq(x + y, 15)
-    assert_eq(x - y, 5)
-    assert_eq(x * y, 50)
-    assert_eq(x / y, 2)
+    assert x + y == 15
+    assert x - y == 5
+    assert x * y == 50
+    assert x / y == 2
 
 def test_factorial():
     print("Running test_factorial...")
@@ -16,7 +16,7 @@ def test_factorial():
     while i <= 5:
         res = res * i
         i = i + 1
-    assert_eq(res, 120)
+    assert res == 120
 
 def test_loops():
     print("Running test_loops...")
@@ -26,14 +26,14 @@ def test_loops():
     while k < 10:
         k = k + 1
         sum = sum + k
-    assert_eq(sum, 55)
+    assert sum == 55
 
     # For loop (Iterating Vec)
     items = [10, 20, 30]
     total = 0
     for item in items:
         total = total + item
-    assert_eq(total, 60)
+    assert total == 60
 
 def test_ternary():
     print("Running test_ternary...")
@@ -45,14 +45,14 @@ def test_ternary():
         max_val = a
     else:
         max_val = b
-    assert_eq(max_val, 10)
+    assert max_val == 10
 
     min_val = 0
     if a < b:
         min_val = a
     else:
         min_val = b
-    assert_eq(min_val, 5)
+    assert min_val == 5
 
 def main():
     print("=== Control Flow Suite ===")

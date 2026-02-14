@@ -23,22 +23,22 @@ def count_matching(items: Vec[i64], target: i64) -> i64:
 def test_cow_iterator_sum():
     numbers = [1, 2, 3, 4, 5]
     result = sum_items(numbers)
-    assert_eq(result, 15)
+    assert result == 15
     print("test_cow_iterator_sum: PASSED")
 
 def test_cow_iterator_transform():
     numbers = [10, 20, 30]
     doubled = double_values(numbers)
-    assert_eq(doubled.len(), 3)
-    assert_eq(doubled[0], 20)
-    assert_eq(doubled[1], 40)
-    assert_eq(doubled[2], 60)
+    assert doubled.len() == 3
+    assert doubled[0] == 20
+    assert doubled[1] == 40
+    assert doubled[2] == 60
     print("test_cow_iterator_transform: PASSED")
 
 def test_cow_iterator_count():
     numbers = [1, 2, 2, 3, 2, 4]
     count = count_matching(numbers, 2)
-    assert_eq(count, 3)
+    assert count == 3
     print("test_cow_iterator_count: PASSED")
 
 def test_nested_cow_iteration():
@@ -50,7 +50,7 @@ def test_nested_cow_iteration():
     total = outer_sum * inner_sum
 
     # (1+2+3) * (10+20) = 6 * 30 = 180
-    assert_eq(total, 180)
+    assert total == 180
     print("test_nested_cow_iteration: PASSED")
 
 def main():

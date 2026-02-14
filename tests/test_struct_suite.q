@@ -19,8 +19,8 @@ def test_enums():
 def test_structs():
     print("Running test_structs...")
     u = User(id=1, name="Alice".to_string())
-    assert_eq(u.id, 1)
-    assert_eq(u.name, "Alice".to_string())
+    assert u.id == 1
+    assert u.name == "Alice".to_string()
 
 def main():
     print("=== Struct Suite ===")

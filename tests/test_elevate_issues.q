@@ -116,8 +116,8 @@ def double_values(nums: Vec[i64]):
 def test_issue_10a_mutate_then_read():
     numbers = [1, 2, 3]
     push_item(numbers, 42)
-    assert_eq(numbers.len(), 4)
-    assert_eq(sum_vec(numbers), 48)
+    assert numbers.len() == 4
+    assert sum_vec(numbers) == 48
 
 # --- 10b: Multiple mutating functions on same variable ---
 def test_issue_10b_multi_mutate():
@@ -126,28 +126,28 @@ def test_issue_10b_multi_mutate():
     push_item(data, 50)
     pop_last(data)
     # Should be [10, 20, 30, 40]
-    assert_eq(data.len(), 4)
-    assert_eq(sum_vec(data), 100)
+    assert data.len() == 4
+    assert sum_vec(data) == 100
 
 # --- 10c: Mutate, read, mutate again (interleaved) ---
 def test_issue_10c_interleaved():
     items = [1, 2, 3]
     push_item(items, 4)
     mid_sum = sum_vec(items)  # read: should see 1+2+3+4=10
-    assert_eq(mid_sum, 10)
+    assert mid_sum == 10
     push_item(items, 5)
-    assert_eq(items.len(), 5)
-    assert_eq(sum_vec(items), 15)
+    assert items.len() == 5
+    assert sum_vec(items) == 15
 
 # --- 10d: Extend one vec from another ---
 def test_issue_10d_extend():
     base = [1, 2]
     extra = [3, 4, 5]
     extend_with(base, extra)
-    assert_eq(base.len(), 5)
-    assert_eq(sum_vec(base), 15)
+    assert base.len() == 5
+    assert sum_vec(base) == 15
     # extra should be unchanged
-    assert_eq(extra.len(), 3)
+    assert extra.len() == 3
 
 # --- 10e: Mutate inside a loop, read after ---
 def test_issue_10e_loop_accumulate():
@@ -157,8 +157,8 @@ def test_issue_10e_loop_accumulate():
         push_item(result, i * i)
         i = i + 1
     # Should be [0, 1, 4, 9, 16]
-    assert_eq(result.len(), 5)
-    assert_eq(sum_vec(result), 30)
+    assert result.len() == 5
+    assert sum_vec(result) == 30
 
 def keep_even(nums: Vec[i64]):
     # Filter in-place by rebuilding
@@ -176,8 +176,8 @@ def test_issue_10f_inplace_transform():
     vals = [1, 2, 3, 4]
     double_values(vals)
     # Should be [2, 4, 6, 8]
-    assert_eq(sum_vec(vals), 20)
-    assert_eq(vals.len(), 4)
+    assert sum_vec(vals) == 20
+    assert vals.len() == 4
 
 # --- 10g: Pipeline — mutate, filter, mutate again ---
 # Exercises: multiple mutation functions chained on the same variable
@@ -187,12 +187,12 @@ def test_issue_10g_pipeline():
     # data should be [2, 4, 6, 8, 10, 12]
     keep_even(data)
     # all are even after doubling, so same length
-    assert_eq(data.len(), 6)
-    assert_eq(sum_vec(data), 42)
+    assert data.len() == 6
+    assert sum_vec(data) == 42
     # now push more
     push_item(data, 100)
-    assert_eq(data.len(), 7)
-    assert_eq(sum_vec(data), 142)
+    assert data.len() == 7
+    assert sum_vec(data) == 142
 
 # --- 10h: Two writers, one reader — shared state ---
 def add_front(nums: Vec[i64], val: i64):
@@ -204,19 +204,19 @@ def test_issue_10h_two_writers():
     push_item(shared, 1)      # writer 1
     add_front(shared, 2)      # writer 2
     push_item(shared, 3)      # writer 1 again
-    assert_eq(shared.len(), 4)
+    assert shared.len() == 4
     total = sum_vec(shared)    # reader
-    assert_eq(total, 6)
+    assert total == 6
 
 # --- 10i: Clear then rebuild ---
 def test_issue_10i_clear_rebuild():
     data = [1, 2, 3]
     clear_all(data)
-    assert_eq(data.len(), 0)
+    assert data.len() == 0
     push_item(data, 10)
     push_item(data, 20)
-    assert_eq(data.len(), 2)
-    assert_eq(sum_vec(data), 30)
+    assert data.len() == 2
+    assert sum_vec(data) == 30
 
 # ── Issue 16: Generic functions missing trait bounds ──────────────────────
 # Compiles to Rust but rustc fails: == not applicable to type T
