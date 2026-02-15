@@ -1015,8 +1015,25 @@ impl<'a> Parser<'a> {
                     match name {
                         // rust("code") escape hatch — emit verbatim Rust
                         "rust" if args.len() == 1 => {
-                            if let e::Expr::String(ref code) = args[0] {
-                                return Ok(e::Stmt::RustBlock(code.clone()));
+                            // Unwrap str() wrapping if present (smart strings wrap all literals)
+                            let inner = match &args[0] {
+                                e::Expr::String(code) => Some(code.clone()),
+                                e::Expr::Call {
+                                    callee,
+                                    args: inner_args,
+                                } if matches!(**callee, e::Expr::Path(ref p) if p.len() == 1 && p[0] == "str")
+                                    && inner_args.len() == 1 =>
+                                {
+                                    if let e::Expr::String(code) = &inner_args[0] {
+                                        Some(code.clone())
+                                    } else {
+                                        None
+                                    }
+                                }
+                                _ => None,
+                            };
+                            if let Some(code) = inner {
+                                return Ok(e::Stmt::RustBlock(code));
                             }
                         }
                         // print(a, b, c) → println!("{} {:?} {:?}", a, b, c)
@@ -1027,20 +1044,7 @@ impl<'a> Parser<'a> {
                             } else {
                                 "eprintln"
                             };
-                            let fmt = args
-                                .iter()
-                                .map(|a| match a {
-                                    e::Expr::String(_) => "{}",
-                                    // f-strings become format!() calls — always produce String
-                                    e::Expr::MacroCall { path, .. }
-                                        if path.len() == 1 && path[0] == "format" =>
-                                    {
-                                        "{}"
-                                    }
-                                    _ => "{:?}",
-                                })
-                                .collect::<Vec<_>>()
-                                .join(" ");
+                            let fmt = args.iter().map(|_| "{}").collect::<Vec<_>>().join(" ");
                             let mut macro_args = vec![e::Expr::String(fmt)];
                             macro_args.extend(args.iter().cloned());
                             return Ok(e::Stmt::Expr(e::Expr::MacroCall {
@@ -1589,7 +1593,11 @@ impl<'a> Parser<'a> {
             }
             TokenKind::String(s) => {
                 self.advance()?;
-                Ok(e::Expr::String(s))
+                // Wrap in str() constructor for Smart String (Arc<str>)
+                Ok(e::Expr::Call {
+                    callee: Box::new(e::Expr::Path(vec!["str".into()])),
+                    args: vec![e::Expr::String(s)],
+                })
             }
             TokenKind::Keyword(Keyword::True) => {
                 self.advance()?;
@@ -1724,9 +1732,14 @@ impl<'a> Parser<'a> {
                 }
                 let mut macro_args = vec![e::Expr::String(format_str)];
                 macro_args.extend(args);
-                Ok(e::Expr::MacroCall {
+                let macro_call = e::Expr::MacroCall {
                     path: vec!["format".into()],
                     args: macro_args,
+                };
+                // Wrap in str() to produce Str instead of String
+                Ok(e::Expr::Call {
+                    callee: Box::new(e::Expr::Path(vec!["str".into()])),
+                    args: vec![macro_call],
                 })
             }
             TokenKind::LBrace => {
@@ -2168,9 +2181,32 @@ impl<'a> Parser<'a> {
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Smart String prelude items injected into every module.
+/// Uses `Item::RustBlock` to emit the `Str` type alias and constructor
+/// directly as raw Rust, bypassing Elevate's type system entirely.
+fn smart_string_prelude() -> Vec<e::Item> {
+    vec![
+        // Type alias: pub type Str = std::sync::Arc<str>;
+        e::Item::RustBlock(
+            "#[allow(non_camel_case_types)]\npub type Str = std::sync::Arc<str>;".into(),
+        ),
+        // Constructor function: pub fn str<T: Display>(x: T) -> Str
+        e::Item::RustBlock(
+            "pub fn str<T: std::fmt::Display>(x: T) -> Str { std::sync::Arc::from(x.to_string().as_str()) }".into(),
+        ),
+    ]
+}
+
 pub fn parse(source: &str) -> Result<e::Module, ParseError> {
     let mut parser = Parser::new(source)?;
-    parser.parse_module()
+    let mut module = parser.parse_module()?;
+
+    // Inject smart string prelude at the top
+    let mut new_items = smart_string_prelude();
+    new_items.extend(module.items);
+    module.items = new_items;
+
+    Ok(module)
 }
 
 #[cfg(test)]
@@ -2181,7 +2217,9 @@ mod tests {
 
     fn parse_body(source: &str) -> Vec<Stmt> {
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        // Skip smart string prelude items (2 RustBlocks)
+        let user_items = &module.items[2..];
+        match &user_items[0] {
             Item::Function(f) => f.body.statements.clone(),
             other => panic!("Expected Function, got {:?}", other),
         }
@@ -2296,7 +2334,7 @@ mod tests {
             Stmt::Expr(Expr::MacroCall { path, args }) => {
                 assert_eq!(path, &["println"]);
                 assert_eq!(args.len(), 4); // format string + 3 args
-                assert!(matches!(&args[0], Expr::String(s) if s == "{:?} {:?} {:?}"));
+                assert!(matches!(&args[0], Expr::String(s) if s == "{} {} {}"));
             }
             other => panic!("Expected MacroCall, got {:?}", other),
         }

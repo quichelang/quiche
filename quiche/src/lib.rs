@@ -166,20 +166,28 @@ mod tests {
     use crate::parser::parse;
     use elevate::ast::*;
 
+    /// Number of Item::RustBlock items injected by the smart string prelude.
+    const PRELUDE_COUNT: usize = 2;
+
+    /// Extract only user-defined items (skip the smart string prelude).
+    fn user_items(module: &Module) -> &[Item] {
+        &module.items[PRELUDE_COUNT..]
+    }
+
     // ─── Functions ───────────────────────────────────────────────────────────
 
     #[test]
     fn test_parse_simple_expression() {
         let module = parse("x + 1").unwrap();
-        assert_eq!(module.items.len(), 0); // top-level expr is skipped as item
+        assert_eq!(user_items(&module).len(), 0); // top-level expr is skipped as item
     }
 
     #[test]
     fn test_parse_function_def() {
         let source = "def foo(x: int) -> int:\n    return x + 1\n";
         let module = parse(source).unwrap();
-        assert_eq!(module.items.len(), 1);
-        match &module.items[0] {
+        assert_eq!(user_items(&module).len(), 1);
+        match &user_items(&module)[0] {
             Item::Function(f) => {
                 assert_eq!(f.name, "foo");
                 assert_eq!(f.params.len(), 1);
@@ -196,7 +204,7 @@ mod tests {
     fn test_parse_struct() {
         let source = "type Point:\n    x: int\n    y: int\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Struct(s) => {
                 assert_eq!(s.name, "Point");
                 assert_eq!(s.fields.len(), 2);
@@ -211,7 +219,7 @@ mod tests {
     fn test_struct_with_type_params() {
         let source = "type Point[T]:\n    x: T\n    y: int\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Struct(s) => {
                 assert_eq!(s.name, "Point");
                 assert_eq!(s.fields.len(), 2);
@@ -228,7 +236,7 @@ mod tests {
     fn test_parse_if() {
         let source = "def test():\n    if x:\n        y = 1\n    else:\n        y = 2\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Function(f) => match &f.body.statements[0] {
                 Stmt::If {
                     then_block,
@@ -248,7 +256,7 @@ mod tests {
     fn test_parse_if_elif_else() {
         let source = "def test():\n    if a > 0:\n        x = 1\n    elif b > 0:\n        x = 2\n    elif c > 0:\n        x = 3\n    else:\n        x = 4\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Function(f) => {
                 match &f.body.statements[0] {
                     Stmt::If {
@@ -289,7 +297,7 @@ mod tests {
     fn test_parse_for() {
         let source = "def test():\n    for i in range(10):\n        print(i)\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Function(f) => match &f.body.statements[0] {
                 Stmt::For { binding, .. } => match binding {
                     DestructurePattern::Name(n) => assert_eq!(n, "i"),
@@ -306,7 +314,7 @@ mod tests {
     #[test]
     fn test_parse_from_import() {
         let module = parse("from os import path").unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::RustUse(u) => {
                 // UseTree::Path { segment: "os", next: UseTree::Name("path") }
                 match &u.tree {
@@ -327,7 +335,7 @@ mod tests {
     fn test_parse_match() {
         let source = "def test():\n    match result:\n        case Ok(v):\n            return v\n        case Err(e):\n            print(e)\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Function(f) => match &f.body.statements[0] {
                 Stmt::Expr(Expr::Match { arms, .. }) => {
                     assert_eq!(arms.len(), 2);
@@ -344,7 +352,7 @@ mod tests {
     fn test_parse_multiline_function_call() {
         let source = "def test():\n    result = foo(\n        1,\n        2,\n        3\n    )\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Function(f) => {
                 // Should parse without error — multiline call inside brackets
                 assert!(!f.body.statements.is_empty());
@@ -359,7 +367,7 @@ mod tests {
     fn test_parse_multiline_docstring_then_if() {
         let source = "def test(self):\n    \"\"\"Multi\n    line\n    doc\"\"\"\n    if x > 0:\n        pass\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Function(f) => {
                 // Should have docstring + if in body
                 assert!(
@@ -378,7 +386,7 @@ mod tests {
     fn test_parse_boolean_operators() {
         let source = "def test():\n    return a and b or not c\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Function(f) => match &f.body.statements[0] {
                 Stmt::Return(Some(Expr::Binary {
                     op: BinaryOp::Or, ..
@@ -395,7 +403,7 @@ mod tests {
     fn test_parse_fstring() {
         let source = "def test():\n    name = \"World\"\n    greeting = f\"Hello, {name}!\"\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Function(f) => {
                 // Should parse without errors — f-string becomes MacroCall
                 assert!(f.body.statements.len() >= 2);
@@ -467,7 +475,7 @@ mod tests {
     #[test]
     fn test_struct_positional_mixed_types() {
         let rust = compile_ok(
-            "type Person:\n    name: String\n    age: i32\n\ndef main():\n    p: Person = Person(\"Alice\".to_string(), 30)\n",
+            "type Person:\n    name: String\n    age: i32\n\ndef main():\n    p: Person = Person(\"Alice\", 30)\n",
         );
         assert!(
             rust.contains("Person {"),
@@ -593,7 +601,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_struct() {
         let source = "type Point:\n    x: i32\n    y: i32\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Struct(s) => {
                 assert_eq!(s.name, "Point");
                 assert_eq!(s.fields.len(), 2);
@@ -608,7 +616,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_enum_with_payloads() {
         let source = "type Color = | Red | Green(i32) | Blue(i32, i32)\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.name, "Color");
                 assert_eq!(e.variants.len(), 3);
@@ -631,7 +639,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_enum_bare_variants() {
         let source = "type Direction = | North | South | East | West\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.name, "Direction");
                 assert_eq!(e.variants.len(), 4);
@@ -647,7 +655,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_enum_multiline() {
         let source = "type Number =\n    | I64(i64)\n    | F64(f64)\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.name, "Number");
                 assert_eq!(e.variants.len(), 2);
@@ -668,7 +676,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_generic_enum() {
         let source = "type MyResult[T, E] = | Ok(T) | Err(E)\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.name, "MyResult");
                 assert_eq!(e.type_params.len(), 2);
@@ -714,7 +722,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_enum_arity_disambiguation() {
         let source = "type Shape = | Point | Point(f64) | Point(f64, f64)\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.name, "Shape");
                 assert_eq!(e.variants.len(), 3);
@@ -737,7 +745,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_enum_mixed_unique_and_duplicate_names() {
         let source = "type Geo = | Circle(f64) | Circle(f64, f64) | Square(f64)\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.variants.len(), 3);
                 assert_eq!(e.variants[0].name, "Circle__a1"); // disambiguated
@@ -752,7 +760,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_enum_named_fields() {
         let source = "type Shape = | Point | Rect(width: f64, height: f64)\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.name, "Shape");
                 assert_eq!(e.variants.len(), 2);
@@ -776,7 +784,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_inline_union() {
         let source = "type Number = i64 | f64\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.name, "Number");
                 assert_eq!(e.variants.len(), 2);
@@ -797,7 +805,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_inline_union_three_types() {
         let source = "type Value = i64 | f64 | String\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.name, "Value");
                 assert_eq!(e.variants.len(), 3);
@@ -813,7 +821,7 @@ def main():\n    p: Point = Point(y=2, x=1)\n    s: Size = Size(height=200, widt
     fn test_type_enum_inline_no_leading_pipe() {
         let source = "type Dir = North | South | East | West\n";
         let module = parse(source).unwrap();
-        match &module.items[0] {
+        match &user_items(&module)[0] {
             Item::Enum(e) => {
                 assert_eq!(e.name, "Dir");
                 assert_eq!(e.variants.len(), 4);

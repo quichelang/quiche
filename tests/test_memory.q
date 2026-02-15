@@ -17,7 +17,7 @@ type Rect:
 
 type Node:
     value: i64
-    name: String
+    name: str
 
 type TreeNode:
     value: i64
@@ -26,7 +26,7 @@ type TreeNode:
 
 type Container:
     items: Vec[i64]
-    name: String
+    name: str
 
 type DeepNested:
     container: Container
@@ -99,17 +99,17 @@ def test_nested_struct():
     assert r.bottom_right.y == 100
 
 def test_struct_with_string():
-    n = Node(value=42, name="test".to_string())
+    n = Node(value=42, name="test")
     assert n.value == 42
-    assert n.name == "test".to_string()
+    assert n.name == "test"
 
 def test_container_with_vec():
-    c = Container(items=[1, 2, 3], name="nums".to_string())
+    c = Container(items=[1, 2, 3], name="nums")
     assert c.items.len() == 3
     assert c.items[0] == 1
     assert c.items[1] == 2
     assert c.items[2] == 3
-    assert c.name == "nums".to_string()
+    assert c.name == "nums"
 
 # =============================================================================
 # FUNCTION PARAMETER PASSING
