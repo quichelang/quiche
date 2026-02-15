@@ -30,6 +30,18 @@ impl PartialEq for Str {
     }
 }
 
+impl PartialOrd for Str {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Str {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (*self.0).cmp(&*other.0)
+    }
+}
+
 impl PartialEq<&str> for Str {
     fn eq(&self, other: &&str) -> bool {
         &*self.0 == *other
