@@ -9,6 +9,7 @@ def main():
 
     # Test subscript access (returns Option<i64> via .get(&key).copied())
     val = scores["Alice"]
-    print(val)
+    assert(val == Some(100))
+    assert(scores["Bob"] == Some(85))
 
     print("Dict tests passed!")

@@ -1,19 +1,26 @@
 # Functional & Lambda Tests
-# Note: lambda is not yet fully supported in .q syntax
 
 def test_basic_lambda():
-    # Lambda syntax not yet supported in .q parser
-    print("Skipping test_basic_lambda: Lambda not supported in .q")
+    double = |x: i64| x * 2
+    assert(double(5) == 10)
+    assert(double(0) == 0)
+    print("test_basic_lambda passed")
 
 def test_lambda_assignment():
-    print("Skipping test_lambda_assignment: Rust inference limitations with assignable closures.")
+    negate = |x: i64| 0 - x
+    result = negate(42)
+    assert(result == -42)
+    print("test_lambda_assignment passed")
 
-def test_higher_order():
-    print("Skipping test_higher_order: Rust inference limitations.")
+def test_map_with_lambda():
+    nums = [1, 2, 3, 4, 5]
+    doubled = nums.into_iter().map(|x: i64| x * 2).collect()
+    assert(doubled == [2, 4, 6, 8, 10])
+    print("test_map_with_lambda passed")
 
 def main():
     print("=== Functional Suite ===")
     test_basic_lambda()
     test_lambda_assignment()
-    test_higher_order()
+    test_map_with_lambda()
     print("=== Done ===")
