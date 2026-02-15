@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "quiche",
+    "lib",
 ]
 resolver = "2"
 
