@@ -1,13 +1,13 @@
 # Quiche Language Design: Control Flow
 
 ## Enums
-Quiche uses Python classes inheriting from `Enum` to define Algebraic Data Types (ADTs).
+Quiche uses the `type` keyword with variant assignments to define Algebraic Data Types (ADTs).
 
 ```python
-class Shape(Enum):
-    Circle(radius: f64)
-    Rectangle(width: f64, height: f64)
-    Point  # Unit variant
+type Shape:
+    Circle = (f64,)
+    Rectangle = (f64, f64)
+    Point = ()
 ```
 
 ## Pattern Matching

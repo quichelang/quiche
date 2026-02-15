@@ -1,39 +1,33 @@
 # Design Philosophy
 
-## Language Stack
+## What Is Quiche?
+
+Quiche is a language with **Python's syntax** and **Rust's performance**. It compiles `.q` source files to native binaries via Rust — no VM, no garbage collector.
+
+## Pipeline
 
 ```
-Rust → MetaQuiche → Quiche
+.q source → Parser → Elevate IR → Type Inference → Rust codegen → rustc → binary
 ```
 
-### MetaQuiche
+The compiler uses the [Elevate](https://github.com/nicholasgasior/elevate) backend for type inference, ownership analysis, and Rust code generation. The parser and frontend are written in Rust; the language itself is purely `.q` files.
 
-A lower-level dialect for implementing core language features:
+## Core Principles
 
-- Can interface with Rust code directly
-- Supports most Rust primitives: Traits, Structs, Enums, Generics
-- Compile-time safety with no reliance on runtime checks
-- "Panics" are compile-time errors
-- Python-compatible syntax
-- Fast compilation
+1. **Python syntax, Rust semantics** — `def`, `type`, `match`, indentation. Static typing, move semantics, exhaustiveness.
 
-### Quiche
+2. **Less verbose Rust** — support 80% of use-cases with 20% less flexibility. Meaningful defaults (strings are `Str`, lists are `List[T]`).
 
-A higher-level dialect for implementing application features:
+3. **No holes** — no dynamic features (`getattr`, `eval`). Everything is compile-time checked.
 
-- Can interface with MetaQuiche code
-- Supports a subset of MetaQuiche features
-- Builds on top of MetaQuiche's safety guarantees
-- Automatic memory management and borrowing rules
-- Python compatibility layer (lists, dicts, stdlib functions, builtins, etc.)
-- Ability to write Python libraries
+4. **Auto-borrowing** — the compiler inserts borrows and clones automatically. No `&`, `&mut`, or lifetime annotations.
+
+5. **Native compilation** — compiles to idiomatic Rust. Zero runtime overhead.
 
 ## Why Quiche?
 
-I wanted an expressive, embeddable language with native Rust interop—something with compile-time safety and speed comparable to Rust itself.
+Rust is brilliant but asks a lot: lifetimes, borrow checker, ownership annotations. For many programs — CLI tools, data pipelines, business logic — this is overkill.
 
-I tried templating languages, dynamically loaded Rust modules, and macro DSLs. Each had drawbacks. Macros came closest but add a debugging layer that's hard to work with.
+Python gets ergonomics right but is slow and dynamically typed.
 
-What started as a macro project kept growing. Adding proper checks meant writing a linter. I missed Python's rapid prototyping. Then I remembered Ruff was written in Rust. Could I use its parser? That gave me freedom to create a language with Python syntax but native Rust types.
-
-After many iterations, we've rewritten almost everything. The language no longer depends on Ruff. Currently 16 dependencies, easily reducible further.
+**Quiche gives you both**: Python's readability with Rust's safety and performance. The compiler handles the hard parts so you write the happy path.

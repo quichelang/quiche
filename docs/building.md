@@ -2,91 +2,44 @@
 
 ## Prerequisites
 
-- Rust (nightly recommended)
-- Python 3 (for verification script)
+- Rust (stable or nightly)
 
 ## Quick Build
 
 ```bash
-make          # Bootstrap verify + build Quiche compiler
+cargo build -p quiche          # Build the Quiche compiler
+cargo build -p quiche --release # Optimized build
 ```
-
-## Build Stages
-
-The compiler bootstraps through three stages:
-
-```
-Stage 0 (Rust)  →  Stage 1 (MetaQuiche)  →  Stage 2 (Self-compiled)
-     ↓                    ↓                        ↓
- quiche-host         compiles to            byte-identical
-                    native binary            to Stage 1
-```
-
-```bash
-make stage1    # Build with host compiler (Rust → MetaQuiche)
-make stage2    # Build with stage1 (MetaQuiche → Self)
-make verify    # Verify stage1 == stage2 output
-```
-
-## Quiche Compiler Build
-
-`quiche-compiler` is the user-facing compiler for `.q` source files.
-
-```bash
-make quiche         # Build Quiche compiler (depends on stage2 bootstrap compiler)
-make quiche-release # Optimized Quiche compiler
-```
-
-## Binary Locations
-
-After building:
-
-| Path | Description |
-|------|-------------|
-| `./bin/quiche` | Quiche compiler (`.q`) |
-| `./bin/mq-quiche` | Alias to Quiche compiler |
-| `./bin/mq` | Stage 2 bootstrap compiler (`metaquiche-native`) |
-| `./bin/stage1` | Stage 1 bootstrap compiler |
-| `./bin/mq0` | Host compiler |
-
-## Release Build
-
-```bash
-make release   # Build optimized Quiche compiler
-make install   # Install Quiche compiler to ~/.cargo/bin
-```
-
-## Make Targets
-
-| Target | Description |
-|--------|-------------|
-| `make` | Verify bootstrap and build Quiche compiler (default) |
-| `make bootstrap` | Build stage2 bootstrap compiler |
-| `make stage1` | Build with host compiler |
-| `make stage2` | Build self-hosted compiler |
-| `make verify` | Verify stage1/stage2 parity |
-| `make quiche` | Build Quiche compiler |
-| `make quiche-release` | Build optimized Quiche compiler |
-| `make release` | Alias of `make quiche-release` |
-| `make install` | Install Quiche compiler (`quiche` and `mq`) |
-| `make test-bootstrap` | Run bootstrap regression test |
-| `make test-quiche` | Run Quiche `.q` smoke tests |
-| `make test` | Run bootstrap + Quiche tests |
-| `make clean` | Remove all build artifacts |
 
 ## Running Scripts
 
 ```bash
-./bin/quiche script.q
-./bin/quiche examples/scripts/sudoku.q
-./bin/mq script.qrs
+quiche script.q                # Compile and run
+quiche script.q --emit-rust    # Show generated Rust
+quiche script.q --emit-elevate # Show Elevate IR
+quiche script.q --emit-ast     # Dump parsed AST
+```
+
+## Running Tests
+
+```bash
+quiche test                    # Run all .q test files
+cargo test -p quiche           # Run Rust unit tests
+cargo test -p quiche-lib       # Run quiche-lib unit tests
 ```
 
 ## Creating Projects
 
 ```bash
-./bin/quiche new myproject
+quiche init myproject          # Scaffold a Quiche project
 cd myproject
-./bin/quiche build
-./bin/quiche run
+quiche build main.q            # Compile to Rust
 ```
+
+## Workspace Crates
+
+| Crate | Purpose |
+|-------|---------|
+| `quiche` | Compiler binary — parser, Elevate bridge, CLI |
+| `quiche-lib` (lib/) | Runtime types — `Str`, `List`, `Dict`, `QuicheType` |
+| `elevate` (git dep) | Backend — type inference, ownership, Rust codegen |

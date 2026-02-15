@@ -1,6 +1,6 @@
 # Testing in Quiche
 
-Quiche provides Python-like testing with `try/except` support (coming soon). For now, use `assert` statements.
+Quiche uses `assert` statements for testing. Test files live in `tests/` with `.q` extension.
 
 ## Quick Start
 
@@ -14,13 +14,19 @@ def test_comparison():
     x = 42
     assert x > 0, "x should be positive"
     assert x == 42, "x should be 42"
+
+def main():
+    test_addition()
+    test_comparison()
+    print("All tests passed!")
 ```
 
 ## Conventions
 
-- Test files: `test_*.q` or `*_test.q`
+- Test files: `test_*.q`
 - Test functions: start with `test_`
-- Use `assert` for assertions
+- Use `assert` for assertions — `assert expr` or `assert expr, "message"`
+- Each test file must have a `main()` that calls all test functions
 
 ## Running Tests
 
@@ -28,33 +34,8 @@ def test_comparison():
 # Run all tests
 quiche test
 
-# Run specific file
-quiche test test_math.q
-
-# Run tests matching pattern
-quiche test test_add
+# Run a specific test file
+quiche tests/test_math.q
 ```
 
-## Future: Exception-Based Testing
-
-When `try/except` is implemented, you'll be able to:
-
-```python
-# Future Quiche syntax
-def test_division_error():
-    try:
-        result = 1 / 0
-        assert False, "should have raised"
-    except ZeroDivisionError:
-        pass  # Expected
-
-def test_custom_exception():
-    try:
-        raise ValueError("test")
-    except ValueError as e:
-        assert "test" in str(e)
-```
-
-## See Also
-
-- [MetaQuiche Testing](metaquiche.md) - Lower-level result-based testing
+The `quiche test` command discovers and runs all `tests/*.q` files, reporting pass/fail for each.
