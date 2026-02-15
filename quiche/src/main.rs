@@ -56,6 +56,10 @@ fn main() {
         run_build(&args[2..]);
         return;
     }
+    if args[1] == "test" {
+        run_test(&args[2..]);
+        return;
+    }
 
     let filename = &args[1];
     let emit_rust = has_flag(&args, "--emit-rust");
@@ -220,6 +224,8 @@ fn print_usage() {
          USAGE:\n\
          \x20   quiche <file.q> [OPTIONS]\n\
          \x20   quiche init <path> [cargo init flags]\n\
+         \x20   quiche build <file.q> [-o <output.rs>]\n\
+         \x20   quiche test                             # run qtest suite\n\
          \n\
          By default, quiche compiles and runs the script.\n\
          Core experiment flags are enabled by default.\n\
@@ -256,8 +262,52 @@ fn print_usage() {
         "\nEXAMPLES:\n\
          \x20   quiche hello.q                          # compile + run\n\
          \x20   quiche hello.q --emit-rust              # show generated Rust\n\
-         \x20   quiche hello.q --emit-elevate           # show parsed AST"
+         \x20   quiche hello.q --emit-elevate           # show parsed AST\n\
+         \x20   quiche test                              # run all tests"
     );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// quiche test — run qtest suite
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn run_test(args: &[String]) {
+    // Find qtest.q relative to workspace root (look for Cargo.toml upwards)
+    let qtest_path = find_workspace_root()
+        .map(|root| root.join("lib").join("qtest.q"))
+        .unwrap_or_else(|| PathBuf::from("lib/qtest.q"));
+
+    if !qtest_path.exists() {
+        eprintln!(
+            "Error: Could not find qtest runner at {}",
+            qtest_path.display()
+        );
+        eprintln!("Make sure you're in a Quiche workspace with lib/qtest.q");
+        process::exit(1);
+    }
+
+    // Re-invoke ourselves on qtest.q, passing through any extra args
+    let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("quiche"));
+    let mut cmd = Command::new(exe);
+    cmd.arg(&qtest_path);
+    cmd.args(args);
+    let status = cmd.status().unwrap_or_else(|e| {
+        eprintln!("Error: Failed to run qtest: {}", e);
+        process::exit(1);
+    });
+    process::exit(status.code().unwrap_or(1));
+}
+
+fn find_workspace_root() -> Option<PathBuf> {
+    let mut dir = env::current_dir().ok()?;
+    loop {
+        if dir.join("Cargo.toml").exists() && dir.join("lib").join("qtest.q").exists() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

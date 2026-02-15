@@ -14,7 +14,7 @@ pub trait QuicheType: Deref {
 
     /// Borrow the inner value without consuming.
     ///
-    /// ```ignore
+    /// ```text
     /// names: List[String] = ["Alice", "Bob"]
     /// v: &Vec[String] = names.view()
     /// ```
@@ -24,7 +24,7 @@ pub trait QuicheType: Deref {
 
     /// Consume the wrapper, returning the owned inner value.
     ///
-    /// ```ignore
+    /// ```text
     /// names: List[String] = ["Alice", "Bob"]
     /// v: Vec[String] = names.inner()
     /// ```
@@ -34,7 +34,7 @@ pub trait QuicheType: Deref {
 /// Implement `QuicheType` for a newtype wrapper whose inner value is in `.0`.
 ///
 /// Usage:
-/// ```ignore
+/// ```text
 /// impl_quiche_type!(Str, Arc<str>);
 /// impl_quiche_type!(List<T>, Vec<T>);
 /// impl_quiche_type!(Dict<K: Eq + Hash, V: PartialEq>, HashMap<K, V>);
