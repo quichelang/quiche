@@ -1171,7 +1171,7 @@ impl<'a> Parser<'a> {
     // ─────────────────────────────────────────────────────────────────────────
 
     fn parse_expr(&mut self) -> Result<e::Expr, ParseError> {
-        let body = self.parse_or_expr()?;
+        let body = self.parse_pipe_expr()?;
         // Python-style ternary: body if condition else orelse
         // Desugars to: match condition { true => body, _ => orelse }
         if self.check_kw(Keyword::If) {
@@ -1196,6 +1196,46 @@ impl<'a> Parser<'a> {
             });
         }
         Ok(body)
+    }
+
+    /// Pipe operator: `lhs |> f(args)` desugars to `f(lhs, args)`.
+    /// Left-associative, lowest precedence among binary ops.
+    fn parse_pipe_expr(&mut self) -> Result<e::Expr, ParseError> {
+        let mut left = self.parse_or_expr()?;
+        while self.check(&TokenKind::PipeRight) {
+            self.advance()?;
+            let rhs = self.parse_or_expr()?;
+            left = Self::desugar_pipe(left, rhs)?;
+        }
+        Ok(left)
+    }
+
+    /// Transform `lhs |> rhs` into a function call:
+    ///   - `Call { callee, args }` → `Call { callee, args: [lhs] + args }`
+    ///   - `Path(f)` or `Field { .. }` → `Call { callee: rhs, args: [lhs] }`
+    fn desugar_pipe(lhs: e::Expr, rhs: e::Expr) -> Result<e::Expr, ParseError> {
+        match rhs {
+            e::Expr::Call { callee, mut args } => {
+                args.insert(0, lhs);
+                Ok(e::Expr::Call { callee, args })
+            }
+            e::Expr::Path(_) | e::Expr::Field { .. } => Ok(e::Expr::Call {
+                callee: Box::new(rhs),
+                args: vec![lhs],
+            }),
+            // Allow piping into macro calls too
+            e::Expr::MacroCall { path, mut args } => {
+                args.insert(0, lhs);
+                Ok(e::Expr::MacroCall { path, args })
+            }
+            _ => {
+                // For any other expression, treat as a call with lhs as arg
+                Ok(e::Expr::Call {
+                    callee: Box::new(rhs),
+                    args: vec![lhs],
+                })
+            }
+        }
     }
 
     fn parse_or_expr(&mut self) -> Result<e::Expr, ParseError> {

@@ -163,12 +163,13 @@ pub enum TokenKind {
     ColonEq,       // :=
 
     // Operators - Bitwise
-    Pipe,   // |
-    Amp,    // &
-    Caret,  // ^
-    Tilde,  // ~
-    LShift, // <<
-    RShift, // >>
+    Pipe,      // |
+    PipeRight, // |>
+    Amp,       // &
+    Caret,     // ^
+    Tilde,     // ~
+    LShift,    // <<
+    RShift,    // >>
 
     // Delimiters
     LParen,    // (
@@ -232,6 +233,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::AtEq => write!(f, "'@='"),
             TokenKind::ColonEq => write!(f, "':='"),
             TokenKind::Pipe => write!(f, "'|'"),
+            TokenKind::PipeRight => write!(f, "'|>'"),
             TokenKind::Amp => write!(f, "'&'"),
             TokenKind::Caret => write!(f, "'^'"),
             TokenKind::Tilde => write!(f, "'~'"),
@@ -775,6 +777,10 @@ impl<'a> Lexer<'a> {
         if remaining.starts_with("%=") {
             self.advance_by(2);
             return Some(TokenKind::PercentEq);
+        }
+        if remaining.starts_with("|>") {
+            self.advance_by(2);
+            return Some(TokenKind::PipeRight);
         }
         if remaining.starts_with("|=") {
             self.advance_by(2);
