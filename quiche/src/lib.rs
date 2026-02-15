@@ -166,8 +166,8 @@ mod tests {
     use crate::parser::parse;
     use elevate::ast::*;
 
-    /// Number of Item::RustBlock items injected by the smart string prelude.
-    const PRELUDE_COUNT: usize = 2;
+    /// Number of Item::RustBlock items injected by the Quiche primitive type prelude.
+    const PRELUDE_COUNT: usize = 4;
 
     /// Extract only user-defined items (skip the smart string prelude).
     fn user_items(module: &Module) -> &[Item] {

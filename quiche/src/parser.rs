@@ -376,6 +376,13 @@ impl<'a> Parser<'a> {
 
     fn parse_type(&mut self) -> Result<e::Type, ParseError> {
         let name = self.expect_ident()?;
+        // Rewrite Quiche primitive type names to newtype names
+        let name = match name.as_str() {
+            "str" => "Str".into(),
+            "list" => "List".into(),
+            "dict" => "Dict".into(),
+            _ => name,
+        };
         let mut path = vec![name];
 
         // Dotted path: std.collections.HashMap → ["std", "collections", "HashMap"]
@@ -1270,7 +1277,77 @@ impl<'a> Parser<'a> {
                 right: Box::new(right),
             };
         }
-        Ok(left)
+        // Rewrite string + chains to str(format!("{}{}", a, b))
+        Ok(Self::rewrite_string_concat(left))
+    }
+
+    /// If `expr` is a chain of `Add` ops containing any string-like operand,
+    /// flatten it into `str(format!("{}{}{}", a, b, c))`.
+    fn rewrite_string_concat(expr: e::Expr) -> e::Expr {
+        let mut operands = Vec::new();
+        if !Self::flatten_add_chain(&expr, &mut operands) {
+            return expr; // contains Sub — not a pure + chain
+        }
+        // Only rewrite actual + chains (2+ operands), not single expressions
+        if operands.len() < 2 {
+            return expr;
+        }
+        // Check if any operand looks string-like
+        if !operands.iter().any(Self::is_string_expr) {
+            return expr; // pure numeric, leave for Elevate
+        }
+        // Build format!("{}{}{}", a, b, c) wrapped in str()
+        let fmt = operands.iter().map(|_| "{}").collect::<Vec<_>>().join("");
+        let mut macro_args = vec![e::Expr::String(fmt)];
+        macro_args.extend(operands);
+        let format_call = e::Expr::MacroCall {
+            path: vec!["format".into()],
+            args: macro_args,
+        };
+        // Wrap in str() constructor
+        e::Expr::Call {
+            callee: Box::new(e::Expr::Path(vec!["str".into()])),
+            args: vec![format_call],
+        }
+    }
+
+    /// Flatten a left-associative Add chain into a vec of operands.
+    /// Returns false if any Sub is encountered (not a pure + chain).
+    fn flatten_add_chain(expr: &e::Expr, out: &mut Vec<e::Expr>) -> bool {
+        if let e::Expr::Binary { op, left, right } = expr {
+            match op {
+                e::BinaryOp::Add => {
+                    if !Self::flatten_add_chain(left, out) {
+                        return false;
+                    }
+                    out.push(*right.clone());
+                    true
+                }
+                e::BinaryOp::Sub => false,
+                _ => {
+                    out.push(expr.clone());
+                    true
+                }
+            }
+        } else {
+            out.push(expr.clone());
+            true
+        }
+    }
+
+    /// Check if an expression is string-like (str() call, string literal, or format! macro).
+    fn is_string_expr(expr: &e::Expr) -> bool {
+        match expr {
+            // Raw string literals
+            e::Expr::String(_) => true,
+            // str("literal") or str(expr)
+            e::Expr::Call { callee, .. } => {
+                matches!(**callee, e::Expr::Path(ref p) if p.len() == 1 && p[0] == "str")
+            }
+            // format!(...) — f-strings
+            e::Expr::MacroCall { path, .. } => path.len() == 1 && path[0] == "format",
+            _ => false,
+        }
     }
 
     fn parse_multiplication(&mut self) -> Result<e::Expr, ParseError> {
@@ -2181,18 +2258,127 @@ impl<'a> Parser<'a> {
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Smart String prelude items injected into every module.
-/// Uses `Item::RustBlock` to emit the `Str` type alias and constructor
-/// directly as raw Rust, bypassing Elevate's type system entirely.
-fn smart_string_prelude() -> Vec<e::Item> {
+/// Quiche primitive type prelude — injected into every module via `Item::RustBlock`.
+/// Defines `Str`, `List<T>`, `Dict<K,V>` newtypes with chainable methods.
+fn quiche_prelude() -> Vec<e::Item> {
     vec![
-        // Type alias: pub type Str = std::sync::Arc<str>;
+        // ── Str ─────────────────────────────────────────────────────────
         e::Item::RustBlock(
-            "#[allow(non_camel_case_types)]\npub type Str = std::sync::Arc<str>;".into(),
+r#"#[derive(Clone, Debug, Eq, Hash)]
+pub struct Str(pub std::sync::Arc<str>);
+impl std::ops::Deref for Str {
+    type Target = str;
+    fn deref(&self) -> &str { &self.0 }
+}
+impl std::fmt::Display for Str {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &*self.0)
+    }
+}
+impl PartialEq for Str {
+    fn eq(&self, other: &Self) -> bool { *self.0 == *other.0 }
+}
+impl PartialEq<&str> for Str {
+    fn eq(&self, other: &&str) -> bool { &*self.0 == *other }
+}
+impl From<&str> for Str {
+    fn from(s: &str) -> Self { Str(std::sync::Arc::from(s)) }
+}
+impl From<String> for Str {
+    fn from(s: String) -> Self { Str(std::sync::Arc::from(s.as_str())) }
+}
+impl std::ops::Add for Str {
+    type Output = Str;
+    fn add(self, other: Str) -> Str {
+        let mut s = self.0.to_string();
+        s.push_str(&other.0);
+        Str(std::sync::Arc::from(s.as_str()))
+    }
+}
+impl std::ops::Add<&str> for Str {
+    type Output = Str;
+    fn add(self, other: &str) -> Str {
+        let mut s = self.0.to_string();
+        s.push_str(other);
+        Str(std::sync::Arc::from(s.as_str()))
+    }
+}"#.into(),
         ),
-        // Constructor function: pub fn str<T: Display>(x: T) -> Str
+        // str() constructor
         e::Item::RustBlock(
-            "pub fn str<T: std::fmt::Display>(x: T) -> Str { std::sync::Arc::from(x.to_string().as_str()) }".into(),
+            "pub fn str<T: std::fmt::Display>(x: T) -> Str { Str(std::sync::Arc::from(x.to_string().as_str())) }".into(),
+        ),
+        // ── List<T> ─────────────────────────────────────────────────────
+        e::Item::RustBlock(
+r#"#[derive(Clone, Debug)]
+pub struct List<T>(pub Vec<T>);
+impl<T> std::ops::Deref for List<T> {
+    type Target = Vec<T>;
+    fn deref(&self) -> &Vec<T> { &self.0 }
+}
+impl<T> std::ops::DerefMut for List<T> {
+    fn deref_mut(&mut self) -> &mut Vec<T> { &mut self.0 }
+}
+impl<T: std::fmt::Debug> std::fmt::Display for List<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+impl<T: PartialEq> PartialEq for List<T> {
+    fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
+}
+impl<T> From<Vec<T>> for List<T> {
+    fn from(v: Vec<T>) -> Self { List(v) }
+}
+impl<T> List<T> {
+    pub fn new() -> Self { List(Vec::new()) }
+    pub fn push(mut self, item: T) -> Self { self.0.push(item); self }
+    pub fn map<U, F: FnMut(T) -> U>(self, f: F) -> List<U> {
+        List(self.0.into_iter().map(f).collect())
+    }
+    pub fn filter<F: FnMut(&T) -> bool>(self, f: F) -> Self {
+        List(self.0.into_iter().filter(f).collect())
+    }
+    pub fn flat_map<U, F: FnMut(T) -> List<U>>(self, mut f: F) -> List<U> {
+        List(self.0.into_iter().flat_map(|x| f(x).0).collect())
+    }
+    pub fn concat(mut self, other: Self) -> Self { self.0.extend(other.0); self }
+}
+impl<T> List<List<T>> {
+    pub fn flatten(self) -> List<T> {
+        List(self.0.into_iter().flat_map(|l| l.0).collect())
+    }
+}"#.into(),
+        ),
+        // ── Dict<K,V> ───────────────────────────────────────────────────
+        e::Item::RustBlock(
+r#"#[derive(Clone, Debug)]
+pub struct Dict<K, V>(pub std::collections::HashMap<K, V>);
+impl<K: Eq + std::hash::Hash, V> std::ops::Deref for Dict<K, V> {
+    type Target = std::collections::HashMap<K, V>;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+impl<K: Eq + std::hash::Hash, V> std::ops::DerefMut for Dict<K, V> {
+    fn deref_mut(&mut self) -> &mut std::collections::HashMap<K, V> { &mut self.0 }
+}
+impl<K: Eq + std::hash::Hash + std::fmt::Debug, V: std::fmt::Debug> std::fmt::Display for Dict<K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+impl<K: Eq + std::hash::Hash + PartialEq, V: PartialEq> PartialEq for Dict<K, V> {
+    fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
+}
+impl<K: Eq + std::hash::Hash, V> From<std::collections::HashMap<K, V>> for Dict<K, V> {
+    fn from(m: std::collections::HashMap<K, V>) -> Self { Dict(m) }
+}
+impl<K: Eq + std::hash::Hash, V> Dict<K, V> {
+    pub fn new() -> Self { Dict(std::collections::HashMap::new()) }
+    pub fn set(mut self, key: K, value: V) -> Self { self.0.insert(key, value); self }
+    pub fn has(&self, key: &K) -> bool { self.0.contains_key(key) }
+    pub fn remove_key(mut self, key: &K) -> Self { self.0.remove(key); self }
+    pub fn get_value(&self, key: &K) -> Option<&V> { self.0.get(key) }
+}"#.into(),
         ),
     ]
 }
@@ -2201,8 +2387,8 @@ pub fn parse(source: &str) -> Result<e::Module, ParseError> {
     let mut parser = Parser::new(source)?;
     let mut module = parser.parse_module()?;
 
-    // Inject smart string prelude at the top
-    let mut new_items = smart_string_prelude();
+    // Inject Quiche primitive type prelude at the top
+    let mut new_items = quiche_prelude();
     new_items.extend(module.items);
     module.items = new_items;
 
@@ -2217,8 +2403,8 @@ mod tests {
 
     fn parse_body(source: &str) -> Vec<Stmt> {
         let module = parse(source).unwrap();
-        // Skip smart string prelude items (2 RustBlocks)
-        let user_items = &module.items[2..];
+        // Skip Quiche prelude items (4 RustBlocks: Str, str(), List, Dict)
+        let user_items = &module.items[4..];
         match &user_items[0] {
             Item::Function(f) => f.body.statements.clone(),
             other => panic!("Expected Function, got {:?}", other),

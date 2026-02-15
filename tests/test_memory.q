@@ -235,13 +235,13 @@ def test_vec_of_structs():
 
 def create_deep_nested() -> DeepNested:
     return DeepNested(
-        container=Container(items=[10, 20, 30], name="deep".to_string()),
+        container=Container(items=[10, 20, 30], name="deep"),
         point=Point(x=5, y=5)
     )
 
 def test_deep_nested_creation():
     dn = create_deep_nested()
-    assert dn.container.name == "deep".to_string()
+    assert dn.container.name == "deep"
     assert dn.container.items.len() == 3
     assert dn.container.items[0] == 10
     assert dn.point.x == 5
@@ -339,28 +339,28 @@ def test_filter_operation():
 # =============================================================================
 
 def test_string_concat():
-    a = "Hello".to_string()
-    b = " World".to_string()
-    result = a + b
-    assert result == "Hello World".to_string()
+    a = "Hello"
+    b = " World"
+    result = f"{a}{b}"
+    assert result == "Hello World"
 
 def test_string_in_struct():
-    n = Node(value=1, name="first".to_string())
+    n = Node(value=1, name="first")
     assert n.name.len() == 5
 
-def concat_names(nodes: Vec[Node]) -> String:
-    result = "".to_string()
+def concat_names(nodes: Vec[Node]) -> str:
+    result = ""
     for node in nodes:
-        result = result + node.name + ",".to_string()
+        result = result + node.name + ","
     return result
 
 def test_string_accumulation():
     nodes: Vec[Node] = []
-    nodes.push(Node(value=1, name="a".to_string()))
-    nodes.push(Node(value=2, name="b".to_string()))
-    nodes.push(Node(value=3, name="c".to_string()))
+    nodes.push(Node(value=1, name="a"))
+    nodes.push(Node(value=2, name="b"))
+    nodes.push(Node(value=3, name="c"))
     result = concat_names(nodes)
-    assert result == "a,b,c,".to_string()
+    assert result == "a,b,c,"
 
 # # =============================================================================
 # # COMPLEX RETURN PATTERNS
