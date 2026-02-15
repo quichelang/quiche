@@ -60,7 +60,18 @@ impl<T> List<T> {
         List(Vec::new())
     }
 
-    // push() is inherited from Vec<T> via DerefMut
+    /// Push a value onto the list (mutating).
+    pub fn push(&mut self, value: T) {
+        self.0.push(value);
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 
     pub fn map<U, F: FnMut(T) -> U>(self, f: F) -> List<U> {
         List(self.0.into_iter().map(f).collect())
@@ -77,6 +88,12 @@ impl<T> List<T> {
     pub fn concat(mut self, other: Self) -> Self {
         self.0.extend(other.0);
         self
+    }
+}
+
+impl<T: PartialEq> List<T> {
+    pub fn contains(&self, value: &T) -> bool {
+        self.0.contains(value)
     }
 }
 
@@ -111,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    fn list_push_via_deref() {
+    fn list_push() {
         let mut l = List::new();
         l.push(1);
         l.push(2);

@@ -7,15 +7,15 @@ type Point:
 def add_points(a: Point, b: Point) -> Point:
     return Point(x=a.x + b.x, y=a.y + b.y)
 
-def point_to_str(p: Point) -> String:
-    return f"({p.x}, {p.y})".to_string()
+def point_to_str(p: Point) -> str:
+    return f"({p.x}, {p.y})"
 
 type Person:
-    name: String
+    name: str
     age: u8
 
-def greet(p: Person) -> String:
-    return f"Hello, I'm {p.name} and I'm {p.age} years old".to_string()
+def greet(p: Person) -> str:
+    return f"Hello, I'm {p.name} and I'm {p.age} years old"
 
 def is_adult(p: Person) -> bool:
     return p.age >= 18
@@ -30,8 +30,8 @@ def main():
     print(f"p1 + p2 = {point_to_str(p3)}")
 
     # Test Person struct
-    alice = Person(name="Alice".to_string(), age=25)
-    bob = Person(name="Bob".to_string(), age=16)
+    alice = Person(name="Alice", age=25)
+    bob = Person(name="Bob", age=16)
 
     print(greet(alice))
     print(greet(bob))

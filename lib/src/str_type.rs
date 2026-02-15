@@ -79,6 +79,16 @@ impl Add<&str> for Str {
 }
 
 impl Str {
+    /// Return the length in bytes.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Check if the string is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Check if the string ends with the given suffix.
     pub fn ends_with(&self, pat: Str) -> bool {
         (*self.0).ends_with(&*pat)
@@ -102,6 +112,21 @@ impl Str {
     /// Strip leading/trailing whitespace.
     pub fn trim(&self) -> Str {
         Str(Arc::from((*self.0).trim()))
+    }
+
+    /// Convert to uppercase.
+    pub fn to_uppercase(&self) -> Str {
+        Str(Arc::from((*self.0).to_uppercase().as_str()))
+    }
+
+    /// Convert to lowercase.
+    pub fn to_lowercase(&self) -> Str {
+        Str(Arc::from((*self.0).to_lowercase().as_str()))
+    }
+
+    /// Replace all occurrences of a pattern.
+    pub fn replace(&self, from: Str, to: Str) -> Str {
+        Str(Arc::from((*self.0).replace(&*from, &*to).as_str()))
     }
 }
 

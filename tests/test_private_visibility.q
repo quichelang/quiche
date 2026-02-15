@@ -2,22 +2,22 @@
 
 type _PrivateHelper:
     value: i32
-    _tag: String
+    _tag: str
 
 def new_private_helper(v: i32) -> _PrivateHelper:
-    return _PrivateHelper(value=v, _tag="helper".to_string())
+    return _PrivateHelper(value=v, _tag="helper")
 
 def get_helper_value(h: _PrivateHelper) -> i32:
     return h.value
 
 # Public struct with private and public fields
 type Container:
-    name: String
+    name: str
     _internal: i32
-    _cache: String
+    _cache: str
 
-def new_container(name: String, internal: i32) -> Container:
-    return Container(name=name, _internal=internal, _cache="".to_string())
+def new_container(name: str, internal: i32) -> Container:
+    return Container(name=name, _internal=internal, _cache="")
 
 def compute_container(c: Container) -> i32:
     return c._internal * 2
@@ -33,29 +33,29 @@ def test_private_struct():
 
 def test_private_fields():
     print("Running test_private_fields...")
-    c = new_container("test".to_string(), 10)
-    assert c.name == "test".to_string()
+    c = new_container("test", 10)
+    assert c.name == "test"
     assert get_internal(c) == 10
     print("PASS: test_private_fields")
 
 def test_computed():
     print("Running test_computed...")
-    c = new_container("test".to_string(), 5)
+    c = new_container("test", 5)
     assert compute_container(c) == 10
     print("PASS: test_computed")
 
 type PointPV:
     x: i32
     y: i32
-    _label: String
+    _label: str
 
 def new_point(x: i32, y: i32) -> PointPV:
-    return PointPV(x=x, y=y, _label="".to_string())
+    return PointPV(x=x, y=y, _label="")
 
-def labeled_point(x: i32, y: i32, label: String) -> PointPV:
+def labeled_point(x: i32, y: i32, label: str) -> PointPV:
     return PointPV(x=x, y=y, _label=label)
 
-def get_label(p: PointPV) -> String:
+def get_label(p: PointPV) -> str:
     return p._label
 
 def test_struct_private_fields():
@@ -64,8 +64,8 @@ def test_struct_private_fields():
     assert p.x == 1
     assert p.y == 2
 
-    p2 = labeled_point(3, 4, "origin".to_string())
-    assert get_label(p2) == "origin".to_string()
+    p2 = labeled_point(3, 4, "origin")
+    assert get_label(p2) == "origin"
     print("PASS: test_struct_private_fields")
 
 def main():

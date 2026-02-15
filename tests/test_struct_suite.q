@@ -4,7 +4,7 @@ type Shape = Circle(i64) | Rectangle(i64, i64) | Point
 
 type User:
     id: i64
-    name: String
+    name: str
 
 def test_enums():
     print("Running test_enums...")
@@ -18,9 +18,9 @@ def test_enums():
 
 def test_structs():
     print("Running test_structs...")
-    u = User(id=1, name="Alice".to_string())
+    u = User(id=1, name="Alice")
     assert u.id == 1
-    assert u.name == "Alice".to_string()
+    assert u.name == "Alice"
 
 def main():
     print("=== Struct Suite ===")

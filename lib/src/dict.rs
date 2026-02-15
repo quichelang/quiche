@@ -106,6 +106,14 @@ where
     pub fn get_value(&self, key: &K) -> Option<&V> {
         self.0.get(key)
     }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl<K, V> Default for Dict<K, V>

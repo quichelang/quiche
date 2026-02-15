@@ -9,21 +9,22 @@ def is_quiche_file(f: Str) -> bool:
     return f.ends_with(".q")
 
 def find_quiche_bin() -> Str:
+    # Prefer local builds (test current code, not stale install)
+    if File.exists("target/debug/quiche"):
+        return "target/debug/quiche"
+    if File.exists("target/release/quiche"):
+        return "target/release/quiche"
+    # Fall back to installed
     bin = System.find_executable("quiche")
     if bin != "":
         return bin
-    if File.exists("target/release/quiche"):
-        return "target/release/quiche"
-    if File.exists("target/debug/quiche"):
-        return "target/debug/quiche"
     return "quiche"
 
-def build_test_path(test_file: Str) -> Str:
-    return "tests" |> Path.join(test_file)
-
-def run_test(path: Str) -> Tuple[Str, i64]:
+def run_test(test_file: Str) -> Tuple[Str, Str, i64]:
     bin = find_quiche_bin()
-    return System.cmd(bin, [path])
+    path = "tests" |> Path.join(test_file)
+    output, code = System.cmd(bin, [path])
+    return (test_file, output, code)
 
 def main():
     print("")
@@ -42,13 +43,14 @@ def main():
     failed: i64 = 0
 
     for f in test_files:
-        path = build_test_path(f)
-        output, code = run_test(path)
+        name, output, code = run_test(f)
         if code == 0:
             passed = passed + 1
+            print("  [PASS]", name)
         else:
             failed = failed + 1
-            print("  [FAIL]", output)
+            print("  [FAIL]", name)
+            print("   ", output)
 
     print("")
     print("========================================")
