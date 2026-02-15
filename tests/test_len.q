@@ -3,7 +3,7 @@ def main():
     print("Vector length:", v.len())
     assert v.len() == 3
 
-    s: str = "hello"
+    s = "hello"
     print("String length:", s.len())
     assert s.len() == 5
 

@@ -1,6 +1,6 @@
 
 def test_ownership_transfer():
-    s: str = "Hello"
+    s = "Hello"
     l = s.len()
     assert l == 5
     print("Lifecycle tests passed")

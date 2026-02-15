@@ -1175,7 +1175,7 @@ impl<'a> Parser<'a> {
     // ─────────────────────────────────────────────────────────────────────────
 
     fn parse_expr(&mut self) -> Result<e::Expr, ParseError> {
-        let body = self.parse_pipe_expr()?;
+        let body = self.parse_or_expr()?;
         // Python-style ternary: body if condition else orelse
         // Desugars to: match condition { true => body, _ => orelse }
         if self.check_kw(Keyword::If) {
@@ -1203,12 +1203,12 @@ impl<'a> Parser<'a> {
     }
 
     /// Pipe operator: `lhs |> f(args)` desugars to `f(lhs, args)`.
-    /// Left-associative, lowest precedence among binary ops.
+    /// Left-associative, higher precedence than comparisons, lower than arithmetic.
     fn parse_pipe_expr(&mut self) -> Result<e::Expr, ParseError> {
-        let mut left = self.parse_or_expr()?;
+        let mut left = self.parse_addition()?;
         while self.check(&TokenKind::PipeRight) {
             self.advance()?;
-            let rhs = self.parse_or_expr()?;
+            let rhs = self.parse_addition()?;
             left = Self::desugar_pipe(left, rhs)?;
         }
         Ok(left)
@@ -1283,7 +1283,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_comparison(&mut self) -> Result<e::Expr, ParseError> {
-        let mut left = self.parse_addition()?;
+        let mut left = self.parse_pipe_expr()?;
         loop {
             let op = match self.kind() {
                 TokenKind::EqEq => e::BinaryOp::Eq,
@@ -1295,7 +1295,7 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             self.advance()?;
-            let right = self.parse_addition()?;
+            let right = self.parse_pipe_expr()?;
             left = e::Expr::Binary {
                 op,
                 left: Box::new(left),
