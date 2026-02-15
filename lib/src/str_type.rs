@@ -78,6 +78,33 @@ impl Add<&str> for Str {
     }
 }
 
+impl Str {
+    /// Check if the string ends with the given suffix.
+    pub fn ends_with(&self, pat: Str) -> bool {
+        (*self.0).ends_with(&*pat)
+    }
+
+    /// Check if the string starts_with the given prefix.
+    pub fn starts_with(&self, pat: Str) -> bool {
+        (*self.0).starts_with(&*pat)
+    }
+
+    /// Check if the string contains the given substring.
+    pub fn contains(&self, pat: Str) -> bool {
+        (*self.0).contains(&*pat)
+    }
+
+    /// Strip the suffix from the string, returning the string without it.
+    pub fn trim_end_matches(&self, pat: Str) -> Str {
+        Str(Arc::from((*self.0).trim_end_matches(&*pat)))
+    }
+
+    /// Strip leading/trailing whitespace.
+    pub fn trim(&self) -> Str {
+        Str(Arc::from((*self.0).trim()))
+    }
+}
+
 /// Construct a `Str` from any `Display` value.
 pub fn str<T: std::fmt::Display>(x: T) -> Str {
     Str(Arc::from(x.to_string().as_str()))
@@ -129,8 +156,8 @@ mod tests {
     #[test]
     fn str_deref_methods() {
         let s = str("Hello World");
-        assert!(s.contains("World"));
-        assert!(s.starts_with("Hello"));
+        assert!(s.contains(str("World")));
+        assert!(s.starts_with(str("Hello")));
         assert_eq!(s.to_uppercase(), "HELLO WORLD");
     }
 

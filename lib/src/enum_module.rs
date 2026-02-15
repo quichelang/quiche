@@ -9,8 +9,8 @@ pub struct Enum;
 
 impl Enum {
     /// Filter elements that satisfy a predicate.
-    pub fn filter<T>(list: List<T>, mut f: impl FnMut(&T) -> bool) -> List<T> {
-        List(list.0.into_iter().filter(|x| f(x)).collect())
+    pub fn filter<T: Clone>(list: List<T>, mut f: impl FnMut(T) -> bool) -> List<T> {
+        List(list.0.into_iter().filter(|x| f(x.clone())).collect())
     }
 
     /// Transform each element.
@@ -36,18 +36,18 @@ impl Enum {
     }
 
     /// Find the first element matching a predicate.
-    pub fn find<T>(list: List<T>, mut f: impl FnMut(&T) -> bool) -> Option<T> {
-        list.0.into_iter().find(|x| f(x))
+    pub fn find<T: Clone>(list: List<T>, mut f: impl FnMut(T) -> bool) -> Option<T> {
+        list.0.into_iter().find(|x| f(x.clone()))
     }
 
     /// Check if any element satisfies a predicate.
-    pub fn any<T>(list: List<T>, mut f: impl FnMut(&T) -> bool) -> bool {
-        list.0.iter().any(|x| f(x))
+    pub fn any<T: Clone>(list: List<T>, mut f: impl FnMut(T) -> bool) -> bool {
+        list.0.iter().any(|x| f(x.clone()))
     }
 
     /// Check if all elements satisfy a predicate.
-    pub fn all<T>(list: List<T>, mut f: impl FnMut(&T) -> bool) -> bool {
-        list.0.iter().all(|x| f(x))
+    pub fn all<T: Clone>(list: List<T>, mut f: impl FnMut(T) -> bool) -> bool {
+        list.0.iter().all(|x| f(x.clone()))
     }
 
     /// Count elements.
@@ -118,8 +118,8 @@ mod tests {
     #[test]
     fn enum_any_all() {
         let nums = List(vec![1i64, 2, 3]);
-        assert!(Enum::any(nums.clone(), |x| *x == 2));
-        assert!(Enum::all(nums, |x| *x > 0));
+        assert!(Enum::any(nums.clone(), |x| x == 2));
+        assert!(Enum::all(nums, |x| x > 0));
     }
 
     #[test]

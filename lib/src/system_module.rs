@@ -9,8 +9,9 @@ use std::sync::Arc;
 pub struct System;
 
 impl System {
-    /// Execute a command with arguments, returning `(stdout, exit_code)`.
+    /// Execute a command with arguments, returning `(output, exit_code)`.
     ///
+    /// Output includes both stdout and stderr merged together.
     /// Panics if the command cannot be spawned.
     pub fn cmd(command: Str, args: List<Str>) -> (Str, i64) {
         let rust_args: Vec<&str> = args.iter().map(|s| &**s).collect();
@@ -19,9 +20,29 @@ impl System {
             .output()
             .unwrap_or_else(|e| panic!("System.cmd failed for '{}': {}", &*command, e));
 
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut combined = stdout.to_string();
+        if !stderr.is_empty() {
+            if !combined.is_empty() && !combined.ends_with('\n') {
+                combined.push('\n');
+            }
+            combined.push_str(&stderr);
+        }
         let code = output.status.code().unwrap_or(-1) as i64;
-        (Str(Arc::from(stdout.as_str())), code)
+        (Str(Arc::from(combined.as_str())), code)
+    }
+
+    /// Execute a command and return only the exit code.
+    pub fn cmd_status(command: Str, args: List<Str>) -> i64 {
+        let (_, code) = Self::cmd(command, args);
+        code
+    }
+
+    /// Execute a command and return only the output (stdout + stderr).
+    pub fn cmd_output(command: Str, args: List<Str>) -> Str {
+        let (output, _) = Self::cmd(command, args);
+        output
     }
 
     /// Return command-line arguments passed to the program.

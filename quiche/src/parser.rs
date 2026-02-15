@@ -1097,9 +1097,13 @@ impl<'a> Parser<'a> {
             return None;
         };
 
-        // Must contain at least one starred element
+        // If no starred element, try plain tuple destructure: a, b = expr
         if !elems.iter().any(|e| Self::is_starred(e)) {
-            return None;
+            let mut items = Vec::new();
+            for elem in elems {
+                items.push(self.expr_to_destructure_name(elem)?);
+            }
+            return Some(e::DestructurePattern::Tuple(items));
         }
 
         let mut prefix = Vec::new();
