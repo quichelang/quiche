@@ -1175,7 +1175,7 @@ impl<'a> Parser<'a> {
     // ─────────────────────────────────────────────────────────────────────────
 
     fn parse_expr(&mut self) -> Result<e::Expr, ParseError> {
-        let body = self.parse_or_expr()?;
+        let body = self.parse_pipe_expr()?;
         // Python-style ternary: body if condition else orelse
         // Desugars to: match condition { true => body, _ => orelse }
         if self.check_kw(Keyword::If) {
@@ -1203,15 +1203,43 @@ impl<'a> Parser<'a> {
     }
 
     /// Pipe operator: `lhs |> f(args)` desugars to `f(lhs, args)`.
-    /// Left-associative, higher precedence than comparisons, lower than arithmetic.
+    /// Left-associative, lowest precedence among binary ops.
+    ///
+    /// Note: `|>` has lower precedence than `==`, so `x |> f() == 3` parses
+    /// as `x |> (f() == 3)` — which is almost never what you want.
+    /// We detect this and emit a helpful error.
     fn parse_pipe_expr(&mut self) -> Result<e::Expr, ParseError> {
-        let mut left = self.parse_addition()?;
+        let mut left = self.parse_or_expr()?;
         while self.check(&TokenKind::PipeRight) {
             self.advance()?;
-            let rhs = self.parse_addition()?;
+            let rhs = self.parse_or_expr()?;
+            // Detect `x |> f() == 3` — the RHS parsed a comparison, which
+            // means the user forgot parens around the pipe chain.
+            if Self::is_comparison(&rhs) {
+                return Err(self.error(format!(
+                    "|> has lower precedence than comparison operators (==, !=, <, >, etc.).\n\
+                     Wrap the pipe chain in parentheses: (... |> f()) == value"
+                )));
+            }
             left = Self::desugar_pipe(left, rhs)?;
         }
         Ok(left)
+    }
+
+    /// Check if an expression is a comparison binary op.
+    fn is_comparison(expr: &e::Expr) -> bool {
+        matches!(
+            expr,
+            e::Expr::Binary {
+                op: e::BinaryOp::Eq
+                    | e::BinaryOp::Ne
+                    | e::BinaryOp::Lt
+                    | e::BinaryOp::Le
+                    | e::BinaryOp::Gt
+                    | e::BinaryOp::Ge,
+                ..
+            }
+        )
     }
 
     /// Transform `lhs |> rhs` into a function call:
@@ -1283,7 +1311,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_comparison(&mut self) -> Result<e::Expr, ParseError> {
-        let mut left = self.parse_pipe_expr()?;
+        let mut left = self.parse_addition()?;
         loop {
             let op = match self.kind() {
                 TokenKind::EqEq => e::BinaryOp::Eq,
@@ -1295,7 +1323,7 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             self.advance()?;
-            let right = self.parse_pipe_expr()?;
+            let right = self.parse_addition()?;
             left = e::Expr::Binary {
                 op,
                 left: Box::new(left),
