@@ -2258,127 +2258,16 @@ impl<'a> Parser<'a> {
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Quiche primitive type prelude — injected into every module via `Item::RustBlock`.
-/// Defines `Str`, `List<T>`, `Dict<K,V>` newtypes with chainable methods.
+/// Quiche primitive type prelude — imports types from `quiche-lib` crate.
+///
+/// Two RustBlocks:
+/// 1. `use quiche_lib::*;` — actual import
+/// 2. Stub fn `str()` — so Elevate's `extract_rust_block_function_names` resolves it
 fn quiche_prelude() -> Vec<e::Item> {
     vec![
-        // ── Str ─────────────────────────────────────────────────────────
+        e::Item::RustBlock("use quiche_lib::*;".into()),
         e::Item::RustBlock(
-r#"#[derive(Clone, Debug, Eq, Hash)]
-pub struct Str(pub std::sync::Arc<str>);
-impl std::ops::Deref for Str {
-    type Target = str;
-    fn deref(&self) -> &str { &self.0 }
-}
-impl std::fmt::Display for Str {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", &*self.0)
-    }
-}
-impl PartialEq for Str {
-    fn eq(&self, other: &Self) -> bool { *self.0 == *other.0 }
-}
-impl PartialEq<&str> for Str {
-    fn eq(&self, other: &&str) -> bool { &*self.0 == *other }
-}
-impl From<&str> for Str {
-    fn from(s: &str) -> Self { Str(std::sync::Arc::from(s)) }
-}
-impl From<String> for Str {
-    fn from(s: String) -> Self { Str(std::sync::Arc::from(s.as_str())) }
-}
-impl std::ops::Add for Str {
-    type Output = Str;
-    fn add(self, other: Str) -> Str {
-        let mut s = self.0.to_string();
-        s.push_str(&other.0);
-        Str(std::sync::Arc::from(s.as_str()))
-    }
-}
-impl std::ops::Add<&str> for Str {
-    type Output = Str;
-    fn add(self, other: &str) -> Str {
-        let mut s = self.0.to_string();
-        s.push_str(other);
-        Str(std::sync::Arc::from(s.as_str()))
-    }
-}"#.into(),
-        ),
-        // str() constructor
-        e::Item::RustBlock(
-            "pub fn str<T: std::fmt::Display>(x: T) -> Str { Str(std::sync::Arc::from(x.to_string().as_str())) }".into(),
-        ),
-        // ── List<T> ─────────────────────────────────────────────────────
-        e::Item::RustBlock(
-r#"#[derive(Clone, Debug)]
-pub struct List<T>(pub Vec<T>);
-impl<T> std::ops::Deref for List<T> {
-    type Target = Vec<T>;
-    fn deref(&self) -> &Vec<T> { &self.0 }
-}
-impl<T> std::ops::DerefMut for List<T> {
-    fn deref_mut(&mut self) -> &mut Vec<T> { &mut self.0 }
-}
-impl<T: std::fmt::Debug> std::fmt::Display for List<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
-    }
-}
-impl<T: PartialEq> PartialEq for List<T> {
-    fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
-}
-impl<T> From<Vec<T>> for List<T> {
-    fn from(v: Vec<T>) -> Self { List(v) }
-}
-impl<T> List<T> {
-    pub fn new() -> Self { List(Vec::new()) }
-    pub fn push(mut self, item: T) -> Self { self.0.push(item); self }
-    pub fn map<U, F: FnMut(T) -> U>(self, f: F) -> List<U> {
-        List(self.0.into_iter().map(f).collect())
-    }
-    pub fn filter<F: FnMut(&T) -> bool>(self, f: F) -> Self {
-        List(self.0.into_iter().filter(f).collect())
-    }
-    pub fn flat_map<U, F: FnMut(T) -> List<U>>(self, mut f: F) -> List<U> {
-        List(self.0.into_iter().flat_map(|x| f(x).0).collect())
-    }
-    pub fn concat(mut self, other: Self) -> Self { self.0.extend(other.0); self }
-}
-impl<T> List<List<T>> {
-    pub fn flatten(self) -> List<T> {
-        List(self.0.into_iter().flat_map(|l| l.0).collect())
-    }
-}"#.into(),
-        ),
-        // ── Dict<K,V> ───────────────────────────────────────────────────
-        e::Item::RustBlock(
-r#"#[derive(Clone, Debug)]
-pub struct Dict<K, V>(pub std::collections::HashMap<K, V>);
-impl<K: Eq + std::hash::Hash, V> std::ops::Deref for Dict<K, V> {
-    type Target = std::collections::HashMap<K, V>;
-    fn deref(&self) -> &Self::Target { &self.0 }
-}
-impl<K: Eq + std::hash::Hash, V> std::ops::DerefMut for Dict<K, V> {
-    fn deref_mut(&mut self) -> &mut std::collections::HashMap<K, V> { &mut self.0 }
-}
-impl<K: Eq + std::hash::Hash + std::fmt::Debug, V: std::fmt::Debug> std::fmt::Display for Dict<K, V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
-    }
-}
-impl<K: Eq + std::hash::Hash + PartialEq, V: PartialEq> PartialEq for Dict<K, V> {
-    fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
-}
-impl<K: Eq + std::hash::Hash, V> From<std::collections::HashMap<K, V>> for Dict<K, V> {
-    fn from(m: std::collections::HashMap<K, V>) -> Self { Dict(m) }
-}
-impl<K: Eq + std::hash::Hash, V> Dict<K, V> {
-    pub fn new() -> Self { Dict(std::collections::HashMap::new()) }
-    pub fn set(mut self, key: K, value: V) -> Self { self.0.insert(key, value); self }
-    pub fn has(&self, key: &K) -> bool { self.0.contains_key(key) }
-    pub fn remove_key(mut self, key: &K) -> Self { self.0.remove(key); self }
-    pub fn get_value(&self, key: &K) -> Option<&V> { self.0.get(key) }
-}"#.into(),
+            "pub fn str<T: std::fmt::Display>(x: T) -> Str { quiche_lib::str(x) }".into(),
         ),
     ]
 }
@@ -2403,8 +2292,8 @@ mod tests {
 
     fn parse_body(source: &str) -> Vec<Stmt> {
         let module = parse(source).unwrap();
-        // Skip Quiche prelude items (4 RustBlocks: Str, str(), List, Dict)
-        let user_items = &module.items[4..];
+        // Skip Quiche prelude items (2 RustBlocks: use + str stub)
+        let user_items = &module.items[2..];
         match &user_items[0] {
             Item::Function(f) => f.body.statements.clone(),
             other => panic!("Expected Function, got {:?}", other),

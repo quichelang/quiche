@@ -43,8 +43,8 @@ pub fn compile(source: &str) -> Result<String, String> {
 pub fn compile_with_options(source: &str, options: &CompileOptions) -> Result<String, String> {
     let module = parser::parse(source).map_err(|e| format!("{e}"))?;
     let output = elevate::compile_ast_with_options(&module, options).map_err(|e| format!("{e}"))?;
-    Ok(inject_auto_imports(&inject_display_impls(
-        &output.rust_code,
+    Ok(inject_auto_imports(&wrap_collections(
+        &inject_display_impls(&output.rust_code),
     )))
 }
 
@@ -67,8 +67,8 @@ pub fn compile_file(
         }
         format!("{err}")
     })?;
-    Ok(inject_auto_imports(&inject_display_impls(
-        &output.rust_code,
+    Ok(inject_auto_imports(&wrap_collections(
+        &inject_display_impls(&output.rust_code),
     )))
 }
 
@@ -114,8 +114,7 @@ fn inject_display_impls(rust_code: &str) -> String {
 /// Auto-inject `use std::collections::*` imports when the generated Rust
 /// references collection types that aren't in the prelude.
 fn inject_auto_imports(rust_code: &str) -> String {
-    // First, fix HashMap::from(vec![...]) → HashMap::from([...])
-    let rust_code = fix_hashmap_from_vec(rust_code);
+    // HashMap::from(vec![…]) → HashMap::from([…]) already handled by wrap_collections
 
     let mut imports = Vec::new();
 
@@ -133,7 +132,7 @@ fn inject_auto_imports(rust_code: &str) -> String {
     }
 
     if imports.is_empty() {
-        return rust_code;
+        return rust_code.to_string();
     }
 
     let import_line = format!("use std::collections::{{{}}};\n", imports.join(", "));
@@ -154,10 +153,177 @@ fn inject_auto_imports(rust_code: &str) -> String {
     format!("{import_line}{rust_code}")
 }
 
-/// Fix `HashMap::from(vec![...])` → `HashMap::from([...])`.
-/// Elevate wraps dict literals in vec![] but HashMap::from needs a fixed array.
-fn fix_hashmap_from_vec(rust_code: &str) -> String {
-    rust_code.replace("HashMap::from(vec![", "HashMap::from([")
+/// Fix `HashMap::from(vec![...])` → `HashMap::from([...])`
+/// AND wrap collection constructors in List/Dict newtypes.
+///
+/// Elevate sees `Vec` and `HashMap` during type-checking, but Quiche programs
+/// should work with `List` and `Dict`.  We rewrite at the Rust string level so
+/// Elevate can still resolve `.push()`, `.len()`, etc. against its Vec/HashMap
+/// knowledge, and the final Rust code uses quiche-lib newtypes.
+fn wrap_collections(rust_code: &str) -> String {
+    // Step 1: fix HashMap::from(vec![…]) → HashMap::from([…])
+    let code = rust_code.replace("HashMap::from(vec![", "HashMap::from([");
+
+    // Step 2: wrap vec![…] → List::from(vec![…])
+    //         and  Vec::new() → List::new()
+    let code = wrap_vec_in_list(&code);
+
+    // Step 3: wrap HashMap::from(…) → Dict(HashMap::from(…))
+    //         and  HashMap::new()   → Dict::new()
+    let code = wrap_hashmap_in_dict(&code);
+
+    // Step 4: rewrite type annotations  Vec<T> → List<T>
+    let code = rewrite_vec_type_annotations(&code);
+
+    // Step 5: rewrite type annotations  HashMap<K,V> → Dict<K,V>
+    rewrite_hashmap_type_annotations(&code)
+}
+
+/// Find each `vec![…]` (bracket-aware) and wrap in `List::from(vec![…])`.
+/// Also replaces `Vec::new()` → `List::new()`.
+fn wrap_vec_in_list(code: &str) -> String {
+    // First, simple replacements
+    let code = code.replace("Vec::new()", "List::new()");
+
+    let mut result = String::with_capacity(code.len() + 128);
+    let bytes = code.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        // Look for `vec![`
+        if i + 4 < bytes.len() && &code[i..i + 4] == "vec!" && bytes.get(i + 4) == Some(&b'[') {
+            // Find the matching `]`
+            let open = i + 4; // position of `[`
+            if let Some(close) = find_matching_bracket(&code, open) {
+                result.push_str("List::from(");
+                result.push_str(&code[i..=close]); // vec![…]
+                result.push(')');
+                i = close + 1;
+            } else {
+                // No matching bracket — emit as-is
+                result.push(bytes[i] as char);
+                i += 1;
+            }
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    result
+}
+
+/// Wrap `HashMap::from(…)` in `Dict(…)` and replace `HashMap::new()` with `Dict::new()`.
+fn wrap_hashmap_in_dict(code: &str) -> String {
+    // HashMap::new() → Dict::new()
+    let code = code.replace("HashMap::new()", "Dict::new()");
+
+    // HashMap::from(…) / HashMap::from_iter(…) → Dict(HashMap::…(…))
+    let mut result = String::with_capacity(code.len() + 128);
+    let bytes = code.as_bytes();
+    let mut i = 0;
+    let needles = ["HashMap::from_iter(", "HashMap::from("];
+
+    while i < bytes.len() {
+        let mut matched = false;
+        for needle in &needles {
+            if i + needle.len() <= bytes.len() && &code[i..i + needle.len()] == *needle {
+                let open = i + needle.len() - 1; // position of `(`
+                if let Some(close) = find_matching_paren(&code, open) {
+                    result.push_str("Dict(");
+                    result.push_str(&code[i..=close]); // HashMap::from(…)
+                    result.push(')');
+                    i = close + 1;
+                    matched = true;
+                }
+                break;
+            }
+        }
+        if !matched {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    result
+}
+
+/// Rewrite `Vec<…>` → `List<…>` in type positions (bindings and return types).
+fn rewrite_vec_type_annotations(code: &str) -> String {
+    code.replace(": Vec<", ": List<")
+        .replace("-> Vec<", "-> List<")
+}
+
+/// Rewrite `HashMap<…>` → `Dict<…>` in type positions (bindings and return types).
+fn rewrite_hashmap_type_annotations(code: &str) -> String {
+    code.replace(": HashMap<", ": Dict<")
+        .replace("-> HashMap<", "-> Dict<")
+}
+
+/// Find the matching `]` for a `[` at position `open`, respecting nesting.
+fn find_matching_bracket(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    if bytes.get(open) != Some(&b'[') {
+        return None;
+    }
+    let mut depth = 1;
+    let mut i = open + 1;
+    while i < bytes.len() && depth > 0 {
+        match bytes[i] {
+            b'[' => depth += 1,
+            b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            b'"' => {
+                // Skip string literals
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    if bytes[i] == b'\\' {
+                        i += 1; // skip escaped char
+                    }
+                    i += 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Find the matching `)` for a `(` at position `open`, respecting nesting.
+fn find_matching_paren(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    if bytes.get(open) != Some(&b'(') {
+        return None;
+    }
+    let mut depth = 1;
+    let mut i = open + 1;
+    while i < bytes.len() && depth > 0 {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            b'"' => {
+                // Skip string literals
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    if bytes[i] == b'\\' {
+                        i += 1; // skip escaped char
+                    }
+                    i += 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
 }
 
 #[cfg(test)]
@@ -167,7 +333,7 @@ mod tests {
     use elevate::ast::*;
 
     /// Number of Item::RustBlock items injected by the Quiche primitive type prelude.
-    const PRELUDE_COUNT: usize = 4;
+    const PRELUDE_COUNT: usize = 2;
 
     /// Extract only user-defined items (skip the smart string prelude).
     fn user_items(module: &Module) -> &[Item] {
