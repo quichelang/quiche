@@ -405,10 +405,34 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Consume one logical line break (LF, CRLF, or CR)
+    /// Returns true if a line break was consumed.
+    fn consume_line_break(&mut self) -> bool {
+        match self.peek() {
+            Some('\n') => {
+                self.advance();
+                true
+            }
+            Some('\r') => {
+                self.advance();
+                if self.peek() == Some('\n') {
+                    self.advance();
+                } else {
+                    // Bare CR: normalize to a newline transition.
+                    self.line += 1;
+                    self.column = 1;
+                    self.at_line_start = true;
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Skip whitespace (but not newlines)
     fn skip_whitespace(&mut self) {
         while let Some(ch) = self.peek() {
-            if ch == ' ' || ch == '\t' || ch == '\r' {
+            if ch == ' ' || ch == '\t' {
                 self.advance();
             } else {
                 break;
@@ -485,9 +509,8 @@ impl<'a> Lexer<'a> {
                 self.skip_comment();
             }
 
-            // Skip blank lines
-            if self.peek() == Some('\n') {
-                self.advance();
+            // Skip blank lines (support LF / CRLF / CR)
+            if self.consume_line_break() {
                 continue;
             }
 
@@ -613,11 +636,10 @@ impl<'a> Lexer<'a> {
         let line = self.line;
         let column = self.column;
 
-        // Newline - skip if inside brackets (Python implicit line continuation)
-        if ch == '\n' {
-            self.advance();
+        // Newline (LF / CRLF / CR) - skip if inside brackets
+        if ch == '\n' || ch == '\r' {
+            self.consume_line_break();
             if self.bracket_depth > 0 {
-                // Inside brackets - skip newline, recurse to get next token
                 return self.next_token();
             }
             return Ok(Token::new(
@@ -1210,6 +1232,42 @@ mod tests {
         let tokens = tok_kinds(source);
         assert!(tokens.contains(&TokenKind::Indent));
         assert!(tokens.contains(&TokenKind::Dedent));
+    }
+
+    #[test]
+    fn test_indentation_with_crlf_blank_line() {
+        let source = "def main():\r\n    x = 1\r\n\r\n    y = 2\r\n";
+        let tokens = tok_kinds(source);
+
+        let indent_count = tokens
+            .iter()
+            .filter(|t| matches!(t, TokenKind::Indent))
+            .count();
+        let dedent_count = tokens
+            .iter()
+            .filter(|t| matches!(t, TokenKind::Dedent))
+            .count();
+
+        assert_eq!(indent_count, 1, "Unexpected indent tokens: {:?}", tokens);
+        assert_eq!(dedent_count, 1, "Unexpected dedent tokens: {:?}", tokens);
+    }
+
+    #[test]
+    fn test_indentation_with_cr_blank_line() {
+        let source = "def main():\r    x = 1\r\r    y = 2\r";
+        let tokens = tok_kinds(source);
+
+        let indent_count = tokens
+            .iter()
+            .filter(|t| matches!(t, TokenKind::Indent))
+            .count();
+        let dedent_count = tokens
+            .iter()
+            .filter(|t| matches!(t, TokenKind::Dedent))
+            .count();
+
+        assert_eq!(indent_count, 1, "Unexpected indent tokens: {:?}", tokens);
+        assert_eq!(dedent_count, 1, "Unexpected dedent tokens: {:?}", tokens);
     }
 
     #[test]
