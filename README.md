@@ -4,6 +4,16 @@
 
 Quiche is a language that looks and feels like Python but compiles to **100% safe Rust** - no `unsafe`, no runtime panics, no garbage collector. You get the clean syntax you love with the raw performance and safety guarantees you need.
 
+> Note: Quiche (via Elevate) depends on `rustdex`, which relies on rustdoc JSON features only available on the Rust **nightly** toolchain. Building or running Quiche/Elevate therefore requires the Rust nightly toolchain and the `rust-docs-json` component. Example setup:
+
+```bash
+rustup toolchain install nightly
+rustup component add rust-docs-json --toolchain nightly
+# use nightly when building/running: `cargo +nightly build` / `cargo +nightly run`
+
+This repository includes a `rust-toolchain.toml` that requests `nightly` and the `rust-docs-json` component; running `cargo` inside the repo will pick that toolchain automatically.
+```
+
 ```python
 type Student:
     name: String
