@@ -588,22 +588,7 @@ impl<'a> Parser<'a> {
 
         // ── Struct form: `type Name:\n    field: Type` ───────────────
         self.expect(&TokenKind::Colon)?;
-        let body = self.parse_block()?;
-
-        let fields: Vec<e::Field> = body
-            .statements
-            .iter()
-            .filter_map(|s| {
-                if let e::Stmt::Const(c) = s {
-                    c.ty.as_ref().map(|ty| e::Field {
-                        name: c.name.clone(),
-                        ty: ty.clone(),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let (fields, methods) = self.parse_type_struct_body()?;
 
         // Register field names for positional struct construction
         self.struct_fields.insert(
@@ -611,13 +596,79 @@ impl<'a> Parser<'a> {
             fields.iter().map(|f| f.name.clone()).collect(),
         );
 
-        Ok(vec![e::Item::Struct(e::StructDef {
+        let mut items = vec![e::Item::Struct(e::StructDef {
             visibility: e::Visibility::Public,
             name,
             type_params,
             fields,
             span: self.span_from(type_start),
-        })])
+        })];
+
+        if !methods.is_empty() {
+            let (name, type_params) = match &items[0] {
+                e::Item::Struct(s) => (s.name.clone(), s.type_params.clone()),
+                _ => unreachable!(),
+            };
+            let target_args = type_params
+                .iter()
+                .map(|param| e::Type {
+                    path: vec![param.name.clone()],
+                    args: vec![],
+                    trait_bounds: vec![],
+                })
+                .collect();
+            items.push(e::Item::Impl(e::ImplBlock {
+                type_params,
+                target: name,
+                target_args,
+                trait_target: None,
+                methods,
+                span: self.span_from(type_start),
+            }));
+        }
+
+        Ok(items)
+    }
+
+    fn parse_type_struct_body(&mut self) -> Result<(Vec<e::Field>, Vec<e::FunctionDef>), ParseError> {
+        self.skip_newlines()?;
+        self.expect(&TokenKind::Indent)?;
+
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+
+        while !self.check(&TokenKind::Dedent) && !self.check(&TokenKind::Eof) {
+            self.skip_newlines()?;
+            if self.check(&TokenKind::Dedent) || self.check(&TokenKind::Eof) {
+                break;
+            }
+
+            if self.check_kw(Keyword::Def) {
+                methods.push(self.parse_function_def()?);
+                self.skip_newlines()?;
+                continue;
+            }
+
+            if matches!(self.kind(), TokenKind::Ident(_)) {
+                let name = self.expect_ident()?;
+                self.expect(&TokenKind::Colon)?;
+                let ty = self.parse_type()?;
+                fields.push(e::Field { name, ty });
+                self.skip_newlines()?;
+                continue;
+            }
+
+            return Err(self.error(
+                "expected field declaration (`name: Type`) or method (`def ...`) in type body"
+                    .into(),
+            ));
+        }
+
+        if self.check(&TokenKind::Dedent) {
+            self.advance()?;
+        }
+
+        Ok((fields, methods))
     }
 
     /// Convert a Type to a PascalCase variant name for union enum generation.
@@ -1248,8 +1299,28 @@ impl<'a> Parser<'a> {
     fn desugar_pipe(lhs: e::Expr, rhs: e::Expr) -> Result<e::Expr, ParseError> {
         match rhs {
             e::Expr::Call { callee, mut args } => {
+                if matches!(callee.as_ref(), e::Expr::Path(path) if path.len() == 1 && path[0] == "len")
+                    && args.is_empty()
+                {
+                    return Ok(Self::coerce_len_call_result(e::Expr::Call {
+                        callee: Box::new(e::Expr::Field {
+                            base: Box::new(lhs),
+                            field: "len".into(),
+                        }),
+                        args: vec![],
+                    }));
+                }
                 args.insert(0, lhs);
-                Ok(e::Expr::Call { callee, args })
+                Ok(Self::coerce_len_call_result(e::Expr::Call { callee, args }))
+            }
+            e::Expr::Path(path) if path.len() == 1 && path[0] == "len" => {
+                Ok(Self::coerce_len_call_result(e::Expr::Call {
+                    callee: Box::new(e::Expr::Field {
+                        base: Box::new(lhs),
+                        field: "len".into(),
+                    }),
+                    args: vec![],
+                }))
             }
             e::Expr::Path(_) | e::Expr::Field { .. } => Ok(e::Expr::Call {
                 callee: Box::new(rhs),
@@ -1324,13 +1395,63 @@ impl<'a> Parser<'a> {
             };
             self.advance()?;
             let right = self.parse_addition()?;
+            let (left_coerced, right_coerced) = Self::rewrite_len_comparison_operands(left, right);
             left = e::Expr::Binary {
                 op,
-                left: Box::new(left),
-                right: Box::new(right),
+                left: Box::new(left_coerced),
+                right: Box::new(right_coerced),
             };
         }
         Ok(left)
+    }
+
+    fn rewrite_len_comparison_operands(left: e::Expr, right: e::Expr) -> (e::Expr, e::Expr) {
+        let left_is_len = Self::is_len_call_expr(&left);
+        let right_is_len = Self::is_len_call_expr(&right);
+
+        match (left_is_len, right_is_len) {
+            (true, false) => (Self::cast_expr_to_i64(left), right),
+            (false, true) => (left, Self::cast_expr_to_i64(right)),
+            _ => (left, right),
+        }
+    }
+
+    fn is_len_call_expr(expr: &e::Expr) -> bool {
+        matches!(
+            expr,
+            e::Expr::Call {
+                callee,
+                args,
+            } if (
+                args.is_empty() && matches!(
+                    callee.as_ref(),
+                    e::Expr::Field { field, .. } if field == "len"
+                )
+            ) || (
+                args.len() == 1 && matches!(
+                    callee.as_ref(),
+                    e::Expr::Path(path) if path.last().is_some_and(|segment| segment == "len")
+                )
+            )
+        )
+    }
+
+    fn coerce_len_call_result(expr: e::Expr) -> e::Expr {
+        if Self::is_len_call_expr(&expr) {
+            return Self::cast_expr_to_i64(expr);
+        }
+        expr
+    }
+
+    fn cast_expr_to_i64(expr: e::Expr) -> e::Expr {
+        e::Expr::Cast {
+            expr: Box::new(expr),
+            target_type: e::Type {
+                path: vec!["i64".into()],
+                args: vec![],
+                trait_bounds: vec![],
+            },
+        }
     }
 
     fn parse_addition(&mut self) -> Result<e::Expr, ParseError> {
@@ -1647,14 +1768,14 @@ impl<'a> Parser<'a> {
                         .collect()
                 };
 
-                // Convert str(x) → x.to_string()
+                // Convert len(x) → x.len()
                 if let e::Expr::Path(ref path) = expr {
-                    if path.len() == 1 && path[0] == "str" && args.len() == 1 {
+                    if path.len() == 1 && path[0] == "len" && args.len() == 1 {
                         let receiver = args.into_iter().next().unwrap();
                         expr = e::Expr::Call {
                             callee: Box::new(e::Expr::Field {
                                 base: Box::new(receiver),
-                                field: "to_string".into(),
+                                field: "len".into(),
                             }),
                             args: vec![],
                         };
@@ -1693,6 +1814,7 @@ impl<'a> Parser<'a> {
                     callee: Box::new(expr),
                     args,
                 };
+                expr = Self::coerce_len_call_result(expr);
             } else if self.check(&TokenKind::LBracket) {
                 self.advance()?;
                 let index = self.parse_expr()?;
@@ -2552,6 +2674,25 @@ mod tests {
                 other => panic!("Expected Field, got {:?}", other),
             },
             other => panic!("Expected Assign, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_body_methods_emit_impl_block() {
+        let module = parse(
+            "type Session:\n    name: str\n\n    def advance(self: Session, event: str):\n        return\n",
+        )
+        .unwrap();
+
+        let user_items = &module.items[2..];
+        assert!(matches!(&user_items[0], Item::Struct(_)));
+        match &user_items[1] {
+            Item::Impl(imp) => {
+                assert_eq!(imp.target, "Session");
+                assert_eq!(imp.methods.len(), 1);
+                assert_eq!(imp.methods[0].name, "advance");
+            }
+            other => panic!("Expected Impl item, got {:?}", other),
         }
     }
 

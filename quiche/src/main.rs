@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Flag Definitions — single source of truth for CLI parsing AND help text
@@ -65,6 +66,7 @@ fn main() {
     let emit_rust = has_flag(&args, "--emit-rust");
     let emit_elevate = has_flag(&args, "--emit-elevate");
     let dump_ast = has_flag(&args, "--emit-ast");
+    let lib_path = flag_value(&args, "--lib");
 
     // Start with defaults (core experiments enabled)
     let mut options = quiche::default_options();
@@ -134,7 +136,7 @@ fn main() {
                 print!("{}", rust_code);
             } else {
                 // Default: compile and run
-                run_rust_code(&rust_code);
+                run_rust_code(&rust_code, lib_path.as_deref());
             }
         }
         Err(e) => {
@@ -144,72 +146,181 @@ fn main() {
     }
 }
 
-fn run_rust_code(rust_code: &str) {
-    let tmp_dir = env::temp_dir().join("quiche");
-    fs::create_dir_all(&tmp_dir).unwrap_or_else(|e| {
-        eprintln!("Error: Failed to create temp dir: {}", e);
-        process::exit(1);
-    });
+fn run_rust_code(rust_code: &str, lib_path: Option<&str>) {
+    let rs_path = unique_temp_path("quiche-script-runner", "rs");
+    let bin_path = unique_temp_path("quiche-script-runner", binary_ext());
 
-    let rs_path = tmp_dir.join("__quiche_run.rs");
-    let bin_path = tmp_dir.join("__quiche_run");
+    if let Some(parent) = rs_path.parent() {
+        fs::create_dir_all(parent).unwrap_or_else(|e| {
+            eprintln!("Error: Failed to create temp dir: {}", e);
+            process::exit(1);
+        });
+    }
+
+    let quiche_lib_src = match resolve_quiche_lib_source(lib_path) {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            process::exit(1);
+        }
+    };
+
+    let rust_code = inject_quiche_lib_module(rust_code, &quiche_lib_src);
 
     fs::write(&rs_path, rust_code).unwrap_or_else(|e| {
         eprintln!("Error: Failed to write temp file: {}", e);
         process::exit(1);
     });
 
-    // Compile with rustc
-    // Locate quiche-lib rlib for --extern
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let workspace_root = std::path::Path::new(manifest_dir)
-        .parent()
-        .expect("workspace root");
-    let rlib = workspace_root.join("target/debug/libquiche_lib.rlib");
-    let deps_dir = workspace_root.join("target/debug/deps");
+    if let Err(error) = compile_rust_to_binary(&rs_path, &bin_path) {
+        let _ = fs::remove_file(&rs_path);
+        let _ = fs::remove_file(&bin_path);
+        eprintln!("{error}");
+        process::exit(1);
+    }
 
-    let compile = Command::new("rustc")
-        .arg(&rs_path)
-        .arg("-o")
-        .arg(&bin_path)
-        .arg("--edition")
-        .arg("2021")
-        .arg("--extern")
-        .arg(format!("quiche_lib={}", rlib.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", deps_dir.display()))
-        .output();
-
-    match compile {
-        Ok(output) if output.status.success() => {
-            // Run the compiled binary
-            let run = Command::new(&bin_path).status();
-            match run {
-                Ok(status) => process::exit(status.code().unwrap_or(1)),
-                Err(e) => {
-                    eprintln!("Error: Failed to run binary: {}", e);
-                    process::exit(1);
-                }
-            }
-        }
-        Ok(output) => {
-            eprintln!(
-                "rustc failed:\n{}{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-            process::exit(1);
-        }
+    let run = Command::new(&bin_path).status();
+    let _ = fs::remove_file(&rs_path);
+    let _ = fs::remove_file(&bin_path);
+    match run {
+        Ok(status) => process::exit(status.code().unwrap_or(1)),
         Err(e) => {
-            eprintln!("Error: Failed to invoke rustc: {}", e);
-            eprintln!("Make sure rustc is installed (https://rustup.rs)");
+            eprintln!("Error: Failed to run binary: {}", e);
             process::exit(1);
         }
     }
 }
 
+fn compile_rust_to_binary(rust_path: &Path, output_path: &Path) -> Result<(), String> {
+    let output = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg(rust_path)
+        .arg("-o")
+        .arg(output_path)
+        .output()
+        .map_err(|error| format!("failed to run rustc for {}: {error}", rust_path.display()))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "rustc failed for {} (status: {})\n{}",
+            rust_path.display(),
+            output.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    Ok(())
+}
+
+fn unique_temp_path(prefix: &str, ext: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let pid = process::id();
+    let suffix = if ext.is_empty() {
+        format!("{prefix}-{pid}-{nanos}")
+    } else {
+        format!("{prefix}-{pid}-{nanos}.{ext}")
+    };
+    env::temp_dir().join(suffix)
+}
+
+fn binary_ext() -> &'static str {
+    if cfg!(windows) { "exe" } else { "" }
+}
+
 fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
+}
+
+fn flag_value(args: &[String], flag: &str) -> Option<String> {
+    args.windows(2)
+        .find(|w| w[0] == flag)
+        .map(|w| w[1].clone())
+}
+
+fn resolve_quiche_lib_source(lib_path: Option<&str>) -> Result<PathBuf, String> {
+    let default_lib_dir = if let Some(root) = find_workspace_root() {
+        root.join("lib")
+    } else {
+        env::current_dir()
+            .map_err(|e| format!("failed to resolve current directory: {e}"))?
+            .join("lib")
+    };
+
+    let selected_path = match lib_path {
+        Some(path) => PathBuf::from(path),
+        None => default_lib_dir,
+    };
+
+    if selected_path.is_file() {
+        let is_lib_rs = selected_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "lib.rs");
+        if !is_lib_rs {
+            return Err(format!(
+                "--lib expects a library directory or lib.rs source file, got '{}'",
+                selected_path.display()
+            ));
+        }
+        return selected_path
+            .canonicalize()
+            .map_err(|e| format!("failed to canonicalize '{}': {e}", selected_path.display()));
+    }
+
+    if !selected_path.is_dir() {
+        return Err(format!(
+            "quiche-lib path '{}' does not exist. Use --lib PATH or place quiche-lib at ./lib",
+            selected_path.display()
+        ));
+    }
+
+    let lib_rs = selected_path.join("src").join("lib.rs");
+    if !lib_rs.exists() {
+        return Err(format!(
+            "quiche-lib path '{}' is missing src/lib.rs",
+            selected_path.display()
+        ));
+    }
+
+    lib_rs
+        .canonicalize()
+        .map_err(|e| format!("failed to canonicalize '{}': {e}", lib_rs.display()))
+}
+
+fn inject_quiche_lib_module(rust_code: &str, lib_src: &Path) -> String {
+    if rust_code.contains("mod quiche_lib;") {
+        return rust_code.to_string();
+    }
+
+    let escaped_path = lib_src
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    let module_decl = format!("#[path = \"{escaped_path}\"]\nmod quiche_lib;\n");
+
+    let mut insert_at = 0usize;
+    for line in rust_code.split_inclusive('\n') {
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+        if trimmed.starts_with("#![") {
+            insert_at += line.len();
+        } else {
+            break;
+        }
+    }
+
+    if insert_at == 0 {
+        format!("{module_decl}\n{rust_code}")
+    } else {
+        let mut out = String::with_capacity(rust_code.len() + module_decl.len() + 1);
+        out.push_str(&rust_code[..insert_at]);
+        out.push_str(&module_decl);
+        out.push('\n');
+        out.push_str(&rust_code[insert_at..]);
+        out
+    }
 }
 
 fn has_any_flag(args: &[String], flag: &str, aliases: &[&str]) -> bool {
@@ -234,6 +345,7 @@ fn print_usage() {
          \x20   --emit-rust              Emit generated Rust code to stdout\n\
          \x20   --emit-elevate           Emit Elevate (.ers) source to stdout\n\
          \x20   --emit-ast               Dump raw AST with metadata (debug)\n\
+            \x20   --lib <path>             quiche-lib source path (dir or src/lib.rs; default ./lib)\n\
          \x20   -h, --help               Show this help message"
     );
 
