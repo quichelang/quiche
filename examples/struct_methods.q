@@ -6,7 +6,7 @@
 #   4. Multiple methods per struct
 #   5. Impl blocks are properly emitted (not dropped)
 
-class Counter(Struct):
+type Counter:
     value: i64
 
     def new(v: i64) -> Counter:

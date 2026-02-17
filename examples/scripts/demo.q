@@ -3,7 +3,7 @@ from std.collections import HashMap
 # Quiche Demo: structs, methods, constructors, lambdas
 # This demos features that fully transpile through Elevate to Rust.
 
-class Student(Struct):
+type Student:
     name: String
     age: i64
 
@@ -13,7 +13,7 @@ class Student(Struct):
     def bio(self) -> String:
         return f"{self.name} is {self.age} years old"
 
-class Classroom(Struct):
+type Classroom:
     code: String
     teacher: String
 
